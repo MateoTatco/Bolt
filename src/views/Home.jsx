@@ -1,65 +1,18 @@
 import { useState } from 'react'
-import { Button, Card, Progress, Avatar } from '@/components/ui'
+import { Button, Card, Progress, Avatar, Dialog, Input, Select } from '@/components/ui'
 import { CiStar } from "react-icons/ci"
 import { HiOutlineUser } from 'react-icons/hi'
+import { projectsData } from '@/mock/data/projectData'
+import { projectManagersData } from '@/mock/data/commonData'
 
 const Home = () => {
-    const [projects, setProjects] = useState([
-        {
-            id: 1,
-            title: "EVO SaaS",
-            description: "Most of you are familiar with the virtues of a programmer",
-            progress: 75,
-            pm: null, // No image available
-            pmName: "Alex Thompson",
-            isFavorite: true
-        },
-        {
-            id: 2,
-            title: "AIA Bill App",
-            description: "We are not shipping your machine!",
-            progress: 45,
-            pm: null, // No image available
-            pmName: "Sarah Wilson",
-            isFavorite: true
-        },
-        {
-            id: 3,
-            title: "Octonine POS",
-            description: "Everything that can be invented has been invented.",
-            progress: 90,
-            pm: null, // No image available
-            pmName: "Mike Chen",
-            isFavorite: true
-        },
-        {
-            id: 4,
-            title: "Evo SaaS API",
-            description: "Debugging is twice as hard as writing the code in the first place.",
-            progress: 30,
-            pm: null, // No image available
-            pmName: "Emma Davis",
-            isFavorite: true
-        },
-        {
-            id: 5,
-            title: "Project Alpha",
-            description: "Some quick example text to build on the card title and make up the bulk of the card's content.",
-            progress: 60,
-            pm: null, // No image available
-            pmName: "John Smith",
-            isFavorite: false
-        },
-        {
-            id: 6,
-            title: "Project Beta",
-            description: "Another example project with different content and progress tracking.",
-            progress: 25,
-            pm: null, // No image available
-            pmName: "Lisa Brown",
-            isFavorite: false
-        }
-    ])
+    const [projects, setProjects] = useState(projectsData)
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+    const [newProject, setNewProject] = useState({
+        title: '',
+        assignee: null,
+        content: ''
+    })
 
     const toggleFavorite = (projectId) => {
         setProjects(projects.map(project => 
@@ -71,6 +24,24 @@ const Home = () => {
 
     const favoriteProjects = projects.filter(project => project.isFavorite)
     const regularProjects = projects.filter(project => !project.isFavorite)
+
+    const handleCreateProject = () => {
+        if (newProject.title && newProject.assignee && newProject.content) {
+            const selectedPM = projectManagersData.find(pm => pm.value === newProject.assignee.value)
+            const newProjectData = {
+                id: projects.length + 1,
+                title: newProject.title,
+                description: newProject.content,
+                progress: 0,
+                pm: null,
+                pmName: selectedPM.pmName,
+                isFavorite: false
+            }
+            setProjects([...projects, newProjectData])
+            setNewProject({ title: '', assignee: null, content: '' })
+            setIsCreateModalOpen(false)
+        }
+    }
 
     // Generate avatar colors based on name
     const getAvatarColor = (name) => {
@@ -200,7 +171,12 @@ const Home = () => {
         <div className="space-y-8">
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
-                <Button variant="solid">Create project</Button>
+                <Button 
+                    variant="solid" 
+                    onClick={() => setIsCreateModalOpen(true)}
+                >
+                    Create project
+                </Button>
             </div>
 
             {/* Important Section */}
@@ -222,6 +198,85 @@ const Home = () => {
                     ))}
                 </div>
             </div>
+
+            {/* Create Project Modal */}
+            <Dialog
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                width={600}
+            >
+                <Card className="border-0">
+                    <div className="p-6">
+                        <div className="flex items-center justify-between mb-6 pt-2">
+                            <h5 className="text-xl font-semibold">Add new project</h5>
+                            <div className="w-6 h-6"></div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            {/* Title Input */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Title
+                                </label>
+                                <Input 
+                                    placeholder="Enter project title"
+                                    value={newProject.title}
+                                    onChange={(e) => setNewProject({...newProject, title: e.target.value})}
+                                />
+                            </div>
+
+                            {/* Project Manager Dropdown */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Project Manager
+                                </label>
+                                <Select
+                                    placeholder="Please Select"
+                                    options={projectManagersData}
+                                    value={newProject.assignee}
+                                    onChange={(selectedOption) => setNewProject({...newProject, assignee: selectedOption})}
+                                    formatOptionLabel={(option) => (
+                                        <div className="flex items-center">
+                                            <Avatar 
+                                                className={`${getAvatarColor(option.pmName)} mr-3`}
+                                                size="sm"
+                                            >
+                                                {getInitials(option.pmName)}
+                                            </Avatar>
+                                            <span>{option.label}</span>
+                                        </div>
+                                    )}
+                                />
+                            </div>
+
+                            {/* Content Section */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Content
+                                </label>
+                                <Input 
+                                    placeholder="Enter project description"
+                                    textArea
+                                    rows={4}
+                                    value={newProject.content}
+                                    onChange={(e) => setNewProject({...newProject, content: e.target.value})}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="mt-6">
+                            <Button 
+                                variant="solid" 
+                                block
+                                onClick={handleCreateProject}
+                            >
+                                Create Project
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+            </Dialog>
         </div>
     )
 }
