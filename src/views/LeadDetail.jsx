@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { Card, Button, Input, Select, DatePicker, Tag, Avatar } from '@/components/ui'
+import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert } from '@/components/ui'
+import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
 import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog } from 'react-icons/hi'
@@ -13,6 +14,10 @@ const LeadDetail = () => {
     const loading = useCrmStore((s) => s.loading)
     
     const [activeTab, setActiveTab] = useState('overview')
+    const [isEditing, setIsEditing] = useState(false)
+    const [editedContent, setEditedContent] = useState('')
+    const [showAlert, setShowAlert] = useState(false)
+    const [originalContent, setOriginalContent] = useState('')
     const [filters, setFilters] = useState({
         dateFrom: null,
         dateTo: null,
@@ -26,6 +31,55 @@ const LeadDetail = () => {
             navigate('/home')
         }
     }, [lead, loading, navigate])
+
+    useEffect(() => {
+        if (lead) {
+            const defaultContent = `
+<h3>Project Description</h3>
+<p>Asked for case studies</p>
+
+<h3>Project Goals</h3>
+<ul>
+<li>Increase lead conversion rates by 25%</li>
+<li>Improve customer relationship management</li>
+<li>Streamline sales pipeline processes</li>
+<li>Enhance data-driven decision making</li>
+</ul>
+
+<h3>Key Metrics</h3>
+<p><strong>$125K</strong> - Potential Value</p>
+<p><strong>85%</strong> - Probability</p>
+
+<h3>Next Steps</h3>
+<ul>
+<li>Schedule follow-up meeting</li>
+<li>Prepare proposal document</li>
+<li>Review contract terms</li>
+</ul>
+            `
+            const content = lead.notes || defaultContent
+            setEditedContent(content)
+            setOriginalContent(content)
+        }
+    }, [lead])
+
+    const handleEditLead = () => {
+        setIsEditing(true)
+        setActiveTab('settings')
+    }
+
+    const handleSaveChanges = () => {
+        // Here you would typically update the lead data in your store
+        // For now, we'll just show a success message
+        setShowAlert(true)
+        // TODO: Implement actual save functionality to update the lead data
+        // The content will automatically update in the overview section since it uses editedContent
+    }
+
+    const handleCancelEdit = () => {
+        setIsEditing(false)
+        setEditedContent(originalContent)
+    }
 
     if (!lead) {
         return (
@@ -141,13 +195,25 @@ const LeadDetail = () => {
                             <Tag className={statusColor(lead.status)}>
                                 {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
                             </Tag>
-                            <Button variant="solid">Edit Lead</Button>
+                            <Button variant="solid" onClick={handleEditLead}>Edit Lead</Button>
                         </div>
                     </div>
                 </div>
 
                 {/* Content Area */}
                 <div className="flex-1 p-6">
+                    {showAlert && (
+                        <Alert
+                            type="success"
+                            showIcon
+                            closable
+                            onClose={() => setShowAlert(false)}
+                            className="mb-4"
+                        >
+                            Changes saved successfully!
+                        </Alert>
+                    )}
+                    
                     {activeTab === 'overview' && (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Project Overview */}
@@ -155,54 +221,13 @@ const LeadDetail = () => {
                                 <Card className="p-6">
                                     <h3 className="text-lg font-semibold mb-4">Project Overview</h3>
                                     <div className="space-y-4">
-                                        <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Project Description</h4>
-                                            <p className="text-gray-600 dark:text-gray-400">
-                                                {lead.notes || 'No description provided for this project. This is a comprehensive CRM solution designed to streamline lead management and improve sales processes.'}
-                                            </p>
-                                        </div>
-                                        
-                                        <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Project Goals</h4>
-                                            <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
-                                                <li>Increase lead conversion rates by 25%</li>
-                                                <li>Improve customer relationship management</li>
-                                                <li>Streamline sales pipeline processes</li>
-                                                <li>Enhance data-driven decision making</li>
-                                            </ul>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Key Metrics</h4>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                                                    <div className="text-2xl font-bold text-primary">$125K</div>
-                                                    <div className="text-sm text-gray-600 dark:text-gray-400">Potential Value</div>
-                                                </div>
-                                                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                                                    <div className="text-2xl font-bold text-primary">85%</div>
-                                                    <div className="text-sm text-gray-600 dark:text-gray-400">Probability</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2">Next Steps</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                    <span className="text-gray-600 dark:text-gray-400">Schedule follow-up meeting</span>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                                    <span className="text-gray-600 dark:text-gray-400">Prepare proposal document</span>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                                    <span className="text-gray-600 dark:text-gray-400">Review contract terms</span>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <div 
+                                            key={editedContent} // Force re-render when content changes
+                                            className="prose prose-sm max-w-none dark:prose-invert"
+                                            dangerouslySetInnerHTML={{ 
+                                                __html: editedContent || '<p>No description provided for this project.</p>' 
+                                            }}
+                                        />
                                     </div>
                                 </Card>
                             </div>
@@ -340,37 +365,53 @@ const LeadDetail = () => {
 
                     {activeTab === 'settings' && (
                         <Card className="p-6">
-                            <h3 className="text-lg font-semibold mb-4">Settings</h3>
-                            <p className="text-gray-600 dark:text-gray-400">Lead settings and preferences will be managed here.</p>
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-lg font-semibold">Settings</h3>
+                                <div className="flex items-center space-x-2">
+                                    <Button 
+                                        variant="plain" 
+                                        onClick={handleCancelEdit}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button 
+                                        variant="solid" 
+                                        onClick={handleSaveChanges}
+                                    >
+                                        Save Changes
+                                    </Button>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-6">
+                                <div>
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                        Project Overview
+                                    </h4>
+                                    <RichTextEditor
+                                        content={editedContent}
+                                        onChange={(content) => {
+                                            if (typeof content === 'string') {
+                                                setEditedContent(content)
+                                            } else if (content && content.html) {
+                                                setEditedContent(content.html)
+                                            }
+                                        }}
+                                        editorContentClass="min-h-[300px]"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                        Lead Information
+                                    </h4>
+                                    <p className="text-gray-600 dark:text-gray-400">
+                                        Additional lead settings and preferences will be managed here.
+                                    </p>
+                                </div>
+                            </div>
                         </Card>
                     )}
-                </div>
-                
-                {/* Footer */}
-                <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                    <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-                        <span>
-                            Copyright &copy; {`${new Date().getFullYear()}`}{' '}
-                            <span className="font-semibold">{`${APP_NAME}`}</span> All rights reserved.
-                        </span>
-                        <div className="flex items-center space-x-2">
-                            <a
-                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                                href="/#"
-                                onClick={(e) => e.preventDefault()}
-                            >
-                                Term & Conditions
-                            </a>
-                            <span className="text-gray-300">|</span>
-                            <a
-                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                                href="/#"
-                                onClick={(e) => e.preventDefault()}
-                            >
-                                Privacy & Policy
-                            </a>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
