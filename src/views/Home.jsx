@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Drawer, Timeline } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
@@ -6,6 +7,7 @@ import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from 
 import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
 
 const Home = () => {
+    const navigate = useNavigate()
     const leads = useCrmStore((s) => s.leads)
     const filters = useCrmStore((s) => s.filters)
     const loading = useCrmStore((s) => s.loading)
@@ -114,7 +116,14 @@ const Home = () => {
                 header: 'Lead Name',
                 accessorKey: 'leadName',
                 size: 220,
-                cell: (props) => <span className="font-semibold">{props.row.original.leadName}</span>,
+                cell: (props) => (
+                    <button 
+                        onClick={() => navigate(`/leads/${props.row.original.id}`)}
+                        className="font-semibold text-left hover:text-primary transition-colors"
+                    >
+                        {props.row.original.leadName}
+                    </button>
+                ),
             },
             { header: 'Title', accessorKey: 'title', size: 180 },
             { header: 'Email', accessorKey: 'email', size: 220 },

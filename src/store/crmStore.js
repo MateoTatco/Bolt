@@ -102,3 +102,5 @@ export const useCrmStore = create((set, get) => ({
         leads: state.leads.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
     })),
 }))
+
+

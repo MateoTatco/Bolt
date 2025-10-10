@@ -11,6 +11,12 @@ export const protectedRoutes = [
         component: lazy(() => import('@/views/Home')),
         authority: [],
     },
+    {
+        key: 'leadDetail',
+        path: '/leads/:leadId',
+        component: lazy(() => import('@/views/LeadDetail')),
+        authority: [],
+    },
     /** Example purpose only, please remove */
     {
         key: 'singleMenuItem',
