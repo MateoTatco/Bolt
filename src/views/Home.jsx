@@ -32,16 +32,6 @@ const Home = () => {
     const searchDebounceRef = useRef(null)
     const dateDebounceRef = useRef(null)
 
-    // Saved filters state (list of named presets from localStorage)
-    const [savedFilters, setSavedFilters] = useState(() => {
-        try {
-            const raw = localStorage.getItem('crmSavedFilters')
-            return raw ? JSON.parse(raw) : []
-        } catch {
-            return []
-        }
-    })
-    const [activeSavedFilter, setActiveSavedFilter] = useState('')
     // Column visibility & order persistence
     const defaultColumnKeys = [
         'leadName',
@@ -91,6 +81,40 @@ const Home = () => {
 
     // UI state for collapsible sections
     const [showMoreFilters, setShowMoreFilters] = useState(false)
+    
+    // Confirmation dialog state
+    const [confirmDialog, setConfirmDialog] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null,
+        onCancel: null
+    })
+
+
+    // Helper function to show confirmation dialog
+    const showConfirmDialog = (title, message, onConfirm, onCancel = null) => {
+        console.log('[Home] showConfirmDialog called with:', { title, message })
+        setConfirmDialog({
+            isOpen: true,
+            title,
+            message,
+            onConfirm: () => {
+                setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+                onConfirm()
+            },
+            onCancel: () => {
+                setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+                onCancel?.()
+            }
+        })
+        console.log('[Home] confirmDialog state set to open')
+    }
+
+    // Debug dialog state changes
+    useEffect(() => {
+        console.log('[Home] confirmDialog state changed:', confirmDialog)
+    }, [confirmDialog])
 
     // Sync state from URL query on first load
     useEffect(() => {
@@ -240,13 +264,17 @@ const Home = () => {
     const selectedLead = useMemo(() => leads.find(l => l.id === selectedLeadId) || null, [leads, selectedLeadId])
 
     const handleDeleteLead = async (leadId) => {
-        if (window.confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
+        showConfirmDialog(
+            'Delete Lead',
+            'Are you sure you want to delete this lead? This action cannot be undone.',
+            async () => {
             try {
                 await deleteLead(leadId)
             } catch (error) {
                 console.error('Error deleting lead:', error)
             }
         }
+        )
     }
 
     const allColumns = useMemo(
@@ -258,7 +286,7 @@ const Home = () => {
                 meta: { key: 'leadName' },
                 cell: (props) => (
                     <button 
-                        onClick={() => navigate(`/leads/${props.row.original.id}`)}
+                        onClick={(e) => handleLeadNameClick(e, props.row.original.id)}
                         className="font-semibold text-left hover:text-primary transition-colors"
                     >
                         {props.row.original.leadName}
@@ -373,6 +401,18 @@ const Home = () => {
         return finalCols
     }, [allColumns, columnOrder, visibleColumns])
 
+    // Ctrl/Cmd click handler for new tab
+    const handleLeadNameClick = (e, leadId) => {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            // Open in new tab with the correct route
+            window.open(`/leads/${leadId}`, '_blank')
+            console.log('[Home] opened lead in new tab', leadId)
+        } else {
+            navigate(`/leads/${leadId}`)
+        }
+    }
+
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     // Multi-select & bulk actions state
     const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -423,16 +463,21 @@ const Home = () => {
     }
     const handleBulkDelete = async () => {
         if (!selectedIds.size) return
-        if (!window.confirm(`Delete ${selectedIds.size} selected lead(s)? This cannot be undone.`)) return
-        try {
-            const ids = Array.from(selectedIds)
-            for (const id of ids) {
-                await deleteLead(id)
+        showConfirmDialog(
+            'Delete Selected Leads',
+            `Delete ${selectedIds.size} selected lead(s)? This cannot be undone.`,
+            async () => {
+                try {
+                    const ids = Array.from(selectedIds)
+                    for (const id of ids) {
+                        await deleteLead(id)
+                    }
+                    setSelectedIds(new Set())
+                } catch (e) {
+                    console.log('[Home] bulk delete error', e)
+                }
             }
-            setSelectedIds(new Set())
-        } catch (e) {
-            console.log('[Home] bulk delete error', e)
-        }
+        )
     }
 
     const [newLead, setNewLead] = useState({
@@ -540,43 +585,12 @@ const Home = () => {
         console.log('[Home] applyDatePreset', { preset, from, to })
     }
 
-    // Helpers: Saved filters (localStorage)
-    const saveCurrentFilters = () => {
-        const name = window.prompt('Save current filters as? (name)')
-        if (!name) return
-        const preset = {
-            name,
-            filters,
-            sort,
-            pageSize,
-        }
-        try {
-            const next = [...savedFilters.filter((p) => p.name !== name), preset]
-            localStorage.setItem('crmSavedFilters', JSON.stringify(next))
-            setSavedFilters(next)
-            setActiveSavedFilter(name)
-            console.log('[Home] saved filter preset', preset)
-        } catch (e) {
-            console.log('[Home] failed to save filter preset', e)
-        }
-    }
-
-    const applySavedFilter = (name) => {
-        const preset = savedFilters.find((p) => p.name === name)
-        if (!preset) return
-        setActiveSavedFilter(name)
-        setSort(preset.sort || { key: '', order: '' })
-        setPageSize(preset.pageSize || 10)
-        setPageIndex(1)
-        setFilters(preset.filters || {})
-        console.log('[Home] applySavedFilter', preset)
-    }
 
     // Clear sort handler: reset local sort and force table remount
     const handleClearSort = () => {
         setSort({ key: '', order: '' })
         setTableInstanceKey((k) => k + 1)
-        console.log('[Home] clear sort')
+        console.log('[Home] clear sort - reset to default')
     }
 
     return (
@@ -584,15 +598,7 @@ const Home = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
                 <div className="flex items-center gap-2">
-                    <Button onClick={saveCurrentFilters} variant="twoTone">Save filter</Button>
-                    <Select
-                        placeholder="Saved filters"
-                        isClearable
-                        options={savedFilters.map((p) => ({ value: p.name, label: p.name }))}
-                        value={activeSavedFilter ? { value: activeSavedFilter, label: activeSavedFilter } : null}
-                        onChange={(opt) => applySavedFilter(opt?.value || '')}
-                    />
-                    <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
                 </div>
             </div>
 
@@ -606,7 +612,7 @@ const Home = () => {
                             const value = e.target.value
                             if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
                             searchDebounceRef.current = setTimeout(() => {
-                                setPageIndex(1)
+                            setPageIndex(1)
                                 setFilters({ search: value })
                                 console.log('[Home] search updated', value)
                             }, 250)
@@ -652,11 +658,11 @@ const Home = () => {
                                 const arr = Array.isArray(vals) ? vals : [null, null]
                                 const [from, to] = arr
                                 setDatePreset('none')
-                                setPageIndex(1)
-                                setFilters({
-                                    dateFrom: from || null,
-                                    dateTo: to || null,
-                                })
+                            setPageIndex(1)
+                            setFilters({
+                                dateFrom: from || null,
+                                dateTo: to || null,
+                            })
                                 console.log('[Home] date range updated', { from, to })
                             }, 200)
                         }}
@@ -766,7 +772,7 @@ const Home = () => {
                                 </div>
                             </Card>
                         </div>
-                    </div>
+                            </div>
                 )}
             </Card>
 
@@ -776,9 +782,16 @@ const Home = () => {
                     {sort.key && sort.order ? ` • Sorted by ${sort.key} (${sort.order})` : ''}
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={handleClearSort}>
-                        Clear sort
-                    </Button>
+                    {sort.key && sort.order && (
+                        <Button 
+                            size="sm" 
+                            variant="twoTone"
+                            onClick={handleClearSort}
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Clear sort
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -840,7 +853,7 @@ const Home = () => {
 
             {/* Guard against duplicate modal registration by unmounting drawer on large state transitions */}
             {selectedLead && (
-                <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
+            <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
             )}
 
             <Dialog isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} width={700}>
@@ -1015,6 +1028,468 @@ const LeadDetail = ({ lead, onClose }) => {
                 </Card>
             </div>
         </Drawer>
+    )
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-xl font-semibold">CRM</h1>
+                <div className="flex items-center gap-2">
+                <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                </div>
+            </div>
+
+            <Card className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
+                    <Input
+                        placeholder="Search leads"
+                        value={filters.search}
+                        onChange={(e) => {
+                            const val = e.target.value
+                            setFilters({ search: val })
+                            setPageIndex(1)
+                            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                            searchDebounceRef.current = setTimeout(() => {
+                                console.log('[Home] search debounced', val)
+                            }, 300)
+                        }}
+                    />
+                    <Select
+                        placeholder="Status"
+                        isClearable
+                        options={leadStatusOptions}
+                        value={filters.status}
+                        onChange={(opt) => {
+                            setPageIndex(1)
+                            setFilters({ status: opt || null })
+                        }}
+                    />
+                    <Select
+                        placeholder="Method"
+                        isClearable
+                        options={methodOfContactOptions}
+                        value={filters.methodOfContact}
+                        onChange={(opt) => {
+                            setPageIndex(1)
+                            setFilters({ methodOfContact: opt || null })
+                        }}
+                    />
+                    <Select
+                        placeholder="Responded"
+                        isClearable
+                        options={respondedOptions}
+                        value={filters.responded}
+                        onChange={(opt) => {
+                            setPageIndex(1)
+                            setFilters({ responded: opt || null })
+                        }}
+                    />
+                    <DatePicker.DatePickerRange
+                        placeholder="Date range"
+                        value={[filters.dateFrom || null, filters.dateTo || null]}
+                        onChange={(dates) => {
+                            const [from, to] = dates || [null, null]
+                            setFilters({ dateFrom: from, dateTo: to })
+                            setPageIndex(1)
+                            if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                            dateDebounceRef.current = setTimeout(() => {
+                                console.log('[Home] date range debounced', { from, to })
+                            }, 200)
+                        }}
+                    />
+                    <Select
+                        placeholder="Date presets"
+                        isClearable={false}
+                        options={datePresetOptions}
+                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                    />
+                </div>
+
+                {/* Collapsible advanced filters */}
+                {showMoreFilters && (
+                    <div className="mt-4 space-y-4">
+                        {/* Column visibility & order controls */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Card className="p-4">
+                                <h6 className="font-semibold mb-3">Column Visibility</h6>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {defaultColumnKeys.map((key) => (
+                                        <label key={key} className="flex items-center gap-2 text-sm">
+                                            <Checkbox
+                                                checked={visibleColumns[key] !== false}
+                                                onChange={(checked) => {
+                                                    setVisibleColumns((prev) => ({ ...prev, [key]: Boolean(checked) }))
+                                                    console.log('[Home] column visibility', key, checked)
+                                                }}
+                                            />
+                                            <span className="capitalize">{key}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </Card>
+                            <Card className="p-4">
+                                <h6 className="font-semibold mb-3">Column Order</h6>
+                                <div className="space-y-2">
+                                    {columnOrder.map((key, index) => (
+                                        <div key={key} className="flex items-center gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                icon={<span>↑</span>}
+                                                onClick={() => {
+                                                    if (index > 0) {
+                                                        const newOrder = [...columnOrder]
+                                                        ;[newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]]
+                                                        setColumnOrder(newOrder)
+                                                        localStorage.setItem('crmColumnOrder', JSON.stringify(newOrder))
+                                                    }
+                                                }}
+                                                disabled={index === 0}
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                icon={<span>↓</span>}
+                                                onClick={() => {
+                                                    if (index < columnOrder.length - 1) {
+                                                        const newOrder = [...columnOrder]
+                                                        ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
+                                                        setColumnOrder(newOrder)
+                                                        localStorage.setItem('crmColumnOrder', JSON.stringify(newOrder))
+                                                    }
+                                                }}
+                                                disabled={index === columnOrder.length - 1}
+                                            />
+                                            <span className="text-sm capitalize">{key}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </Card>
+                        </div>
+
+                        {/* Quick filter chips */}
+                        <div className="space-y-2">
+                            <h6 className="font-semibold">Quick Filters</h6>
+                            <div className="flex flex-wrap gap-2">
+                                {leadStatusOptions.map((option) => (
+                                    <Button
+                                        key={option.value}
+                                        size="sm"
+                                        variant={filters.status?.value === option.value ? 'solid' : 'twoTone'}
+                                        onClick={() => {
+                                            setPageIndex(1)
+                                            setFilters({ status: filters.status?.value === option.value ? null : option })
+                                        }}
+                                    >
+                                        {option.label}
+                                    </Button>
+                                ))}
+                                {respondedOptions.map((option) => (
+                                    <Button
+                                        key={option.value}
+                                        size="sm"
+                                        variant={filters.responded?.value === option.value ? 'solid' : 'twoTone'}
+                                        onClick={() => {
+                                            setPageIndex(1)
+                                            setFilters({ responded: filters.responded?.value === option.value ? null : option })
+                                        }}
+                                    >
+                                        {option.label}
+                                    </Button>
+                                ))}
+                                <Button
+                                    size="sm"
+                                    variant="twoTone"
+                                    onClick={() => {
+                                        setFilters({ status: null, responded: null })
+                                        setPageIndex(1)
+                                    }}
+                                >
+                                    Clear
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-between">
+                    <Button
+                        variant="twoTone"
+                        onClick={() => setShowMoreFilters(!showMoreFilters)}
+                    >
+                        {showMoreFilters ? 'Less Filters' : 'More Filters'}
+                    </Button>
+                </div>
+            </Card>
+
+            {/* Table summary and controls */}
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-500">
+                    {pageTotal} lead{pageTotal === 1 ? '' : 's'} • Page {pageIndex}
+                    {sort.key && sort.order ? ` • Sorted by ${sort.key} (${sort.order})` : ''}
+                </div>
+                <div className="flex items-center gap-2">
+                    {sort.key && sort.order && (
+                        <Button 
+                            size="sm" 
+                            variant="twoTone"
+                            onClick={handleClearSort}
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Clear sort
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* Bulk actions bar */}
+            {selectedLead /* noop to appease reference before declaration lints */}
+            {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
+                <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <span className="font-medium text-blue-900 dark:text-blue-100">
+                                {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} selected
+                            </span>
+                            <Select
+                                placeholder="Bulk status update"
+                                options={leadStatusOptions}
+                                value={bulkStatus}
+                                onChange={setBulkStatus}
+                                className="min-w-[200px]"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={handleApplyBulkStatus}
+                                disabled={!bulkStatus}
+                            >
+                                Apply
+                            </Button>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="twoTone"
+                            onClick={handleBulkDelete}
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Delete Selected
+                        </Button>
+                    </div>
+                </Card>
+            )}
+
+            {loading && (
+                <Card className="p-6">
+                    <div className="flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="text-lg font-semibold text-gray-500">Loading leads...</div>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
+            <DataTable
+                key={tableInstanceKey}
+                columns={orderedAndVisibleColumns}
+                data={pageData}
+                loading={loading}
+                pagingData={{ total: pageTotal, pageIndex, pageSize }}
+                onPaginationChange={(pi) => setPageIndex(pi)}
+                onSelectChange={(ps) => {
+                    setPageIndex(1)
+                    setPageSize(ps)
+                }}
+                onSort={({ key, order }) => setSort({ key, order })}
+                selectable
+                checkboxChecked={(row) => checkboxChecked(row)}
+                indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
+                onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
+                onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
+                className="card"
+            />
+
+            {!loading && pageTotal === 0 && (
+                <Card className="p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No leads found</h3>
+                            <p className="text-gray-600 dark:text-gray-400 mt-1">
+                                {Object.values(filters).some(v => v !== null && v !== '') 
+                                    ? 'Try adjusting your filters to see more results.' 
+                                    : 'Get started by creating your first lead.'
+                                }
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="solid" onClick={() => setIsCreateOpen(true)}>
+                                Create lead
+                            </Button>
+                            <Button variant="twoTone" onClick={() => window.open('/import', '_blank')}>
+                                Import CSV
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
+            {/* Create Lead Dialog */}
+            <Dialog
+                isOpen={isCreateOpen}
+                onClose={() => {
+                    setIsCreateOpen(false)
+                    resetNewLead()
+                }}
+                width={800}
+            >
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Create New Lead</h3>
+                    <Form>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormItem label="Lead Name" required>
+                                <Input
+                                    value={newLead.leadName}
+                                    onChange={(e) => setNewLead({ ...newLead, leadName: e.target.value })}
+                                    placeholder="Enter lead name"
+                                />
+                            </FormItem>
+                            <FormItem label="Contact Person">
+                                <Input
+                                    value={newLead.leadContact}
+                                    onChange={(e) => setNewLead({ ...newLead, leadContact: e.target.value })}
+                                    placeholder="Enter contact person"
+                                />
+                            </FormItem>
+                            <FormItem label="Title" required>
+                                <Input
+                                    value={newLead.title}
+                                    onChange={(e) => setNewLead({ ...newLead, title: e.target.value })}
+                                    placeholder="Enter title"
+                                />
+                            </FormItem>
+                            <FormItem label="Email">
+                                <Input
+                                    value={newLead.email}
+                                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                                    placeholder="Enter email"
+                                />
+                            </FormItem>
+                            <FormItem label="Phone">
+                                <Input
+                                    value={newLead.phone}
+                                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                                    placeholder="Enter phone"
+                                />
+                            </FormItem>
+                            <FormItem label="Status" required>
+                                <Select
+                                    placeholder="Select status"
+                                    options={leadStatusOptions}
+                                    value={newLead.status}
+                                    onChange={(opt) => setNewLead({ ...newLead, status: opt })}
+                                />
+                            </FormItem>
+                            <FormItem label="Method of contact">
+                                <Select
+                                    placeholder="Select method"
+                                    options={methodOfContactOptions}
+                                    value={newLead.methodOfContact}
+                                    onChange={(opt) => setNewLead({ ...newLead, methodOfContact: opt })}
+                                />
+                            </FormItem>
+                            <FormItem label="Project market">
+                                <Select
+                                    placeholder="Select market"
+                                    options={projectMarketOptions}
+                                    value={newLead.projectMarket}
+                                    onChange={(opt) => setNewLead({ ...newLead, projectMarket: opt })}
+                                />
+                            </FormItem>
+                            <FormItem label="Lead conception">
+                                <Select
+                                    placeholder="Select conception"
+                                    options={leadConceptionOptions}
+                                    value={newLead.leadConception}
+                                    onChange={(opt) => setNewLead({ ...newLead, leadConception: opt })}
+                                />
+                            </FormItem>
+                            <FormItem label="Date last contacted">
+                                <DatePicker
+                                    value={newLead.dateLastContacted}
+                                    onChange={(date) => setNewLead({ ...newLead, dateLastContacted: date })}
+                                />
+                            </FormItem>
+                            <FormItem label="Responded">
+                                <Switcher
+                                    checked={newLead.responded}
+                                    onChange={(checked) => setNewLead({ ...newLead, responded: checked })}
+                                />
+                            </FormItem>
+                            <FormItem label="Notes" className="md:col-span-2">
+                                <Input
+                                    value={newLead.notes}
+                                    onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
+                                    placeholder="Enter notes"
+                                    textArea
+                                />
+                            </FormItem>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6">
+                            <Button
+                                variant="twoTone"
+                                onClick={() => {
+                                    setIsCreateOpen(false)
+                                    resetNewLead()
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="solid"
+                                onClick={handleCreateLead}
+                                disabled={!newLead.leadName || !newLead.title || !newLead.status}
+                            >
+                                Create Lead
+                            </Button>
+                        </div>
+                    </Form>
+                </div>
+            </Dialog>
+
+            {/* Lead Detail Drawer */}
+            {selectedLead && (
+                <LeadDetail
+                    lead={selectedLead}
+                    onClose={() => setSelectedLeadId(null)}
+                />
+            )}
+
+            {/* Confirmation Dialog */}
+            {confirmDialog.isOpen && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '8px', maxWidth: '400px', width: '100%', margin: '20px' }}>
+                        <h3 className="text-lg font-semibold mb-4">{confirmDialog.title}</h3>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6">{confirmDialog.message}</p>
+                        <div className="flex justify-end gap-2">
+                            <Button
+                                variant="twoTone"
+                                onClick={confirmDialog.onCancel}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="solid"
+                                onClick={confirmDialog.onConfirm}
+                                className="bg-red-600 hover:bg-red-700"
+                            >
+                                Confirm
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </div>
     )
 }
 

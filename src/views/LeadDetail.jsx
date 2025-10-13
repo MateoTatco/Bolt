@@ -12,6 +12,7 @@ const LeadDetail = () => {
     const navigate = useNavigate()
     const leads = useCrmStore((s) => s.leads)
     const loading = useCrmStore((s) => s.loading)
+    const loadLeads = useCrmStore((s) => s.loadLeads)
     
     const [activeTab, setActiveTab] = useState('overview')
     const [isEditing, setIsEditing] = useState(false)
@@ -26,11 +27,18 @@ const LeadDetail = () => {
 
     const lead = leads.find(l => l.id === parseInt(leadId))
 
+    // Load leads if not available (for new tab scenarios)
     useEffect(() => {
-        if (!lead && !loading) {
+        if (leads.length === 0 && !loading) {
+            loadLeads()
+        }
+    }, [leads.length, loading, loadLeads])
+
+    useEffect(() => {
+        if (!lead && !loading && leads.length > 0) {
             navigate('/home')
         }
-    }, [lead, loading, navigate])
+    }, [lead, loading, leads.length, navigate])
 
     useEffect(() => {
         if (lead) {
@@ -79,6 +87,17 @@ const LeadDetail = () => {
     const handleCancelEdit = () => {
         setIsEditing(false)
         setEditedContent(originalContent)
+    }
+
+    // Show loading state while leads are being loaded
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="text-lg font-semibold text-gray-500">Loading lead...</div>
+                </div>
+            </div>
+        )
     }
 
     if (!lead) {
@@ -219,7 +238,7 @@ const LeadDetail = () => {
                             {/* Project Overview */}
                             <div className="lg:col-span-2">
                                 <Card className="p-6">
-                                    <h3 className="text-lg font-semibold mb-4">Project Overview</h3>
+                                    <h3 className="text-lg font-semibold mb-4">Lead Overview</h3>
                                     <div className="space-y-4">
                                         <div 
                                             key={editedContent} // Force re-render when content changes
