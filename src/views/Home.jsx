@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Drawer, Timeline } from '@/components/ui'
+import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Drawer, Timeline, Checkbox } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
@@ -42,6 +42,42 @@ const Home = () => {
         }
     })
     const [activeSavedFilter, setActiveSavedFilter] = useState('')
+    // Column visibility & order persistence
+    const defaultColumnKeys = [
+        'leadName',
+        'title',
+        'email',
+        'phone',
+        'methodOfContact',
+        'projectMarket',
+        'dateLastContacted',
+        'status',
+        'responded',
+        'actions',
+    ]
+    const [columnOrder, setColumnOrder] = useState(() => {
+        try {
+            const raw = localStorage.getItem('crmColumnOrder')
+            const parsed = raw ? JSON.parse(raw) : null
+            return Array.isArray(parsed) && parsed.length ? parsed : defaultColumnKeys
+        } catch {
+            return defaultColumnKeys
+        }
+    })
+    const [visibleColumns, setVisibleColumns] = useState(() => {
+        try {
+            const raw = localStorage.getItem('crmVisibleColumns')
+            const parsed = raw ? JSON.parse(raw) : null
+            if (parsed && typeof parsed === 'object') return parsed
+        } catch {}
+        return defaultColumnKeys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+    })
+    useEffect(() => {
+        try {
+            localStorage.setItem('crmVisibleColumns', JSON.stringify(visibleColumns))
+            localStorage.setItem('crmColumnOrder', JSON.stringify(columnOrder))
+        } catch {}
+    }, [visibleColumns, columnOrder])
 
     // Date presets
     const datePresetOptions = [
@@ -52,6 +88,9 @@ const Home = () => {
         { value: 'lastMonth', label: 'Date: Last month' },
     ]
     const [datePreset, setDatePreset] = useState('none')
+
+    // UI state for collapsible sections
+    const [showMoreFilters, setShowMoreFilters] = useState(false)
 
     // Sync state from URL query on first load
     useEffect(() => {
@@ -210,12 +249,13 @@ const Home = () => {
         }
     }
 
-    const columns = useMemo(
+    const allColumns = useMemo(
         () => [
             {
                 header: 'Lead Name',
                 accessorKey: 'leadName',
                 size: 220,
+                meta: { key: 'leadName' },
                 cell: (props) => (
                     <button 
                         onClick={() => navigate(`/leads/${props.row.original.id}`)}
@@ -225,13 +265,14 @@ const Home = () => {
                     </button>
                 ),
             },
-            { header: 'Title', accessorKey: 'title', size: 180 },
-            { header: 'Email', accessorKey: 'email', size: 220 },
-            { header: 'Phone', accessorKey: 'phone', size: 160 },
+            { header: 'Title', accessorKey: 'title', size: 180, meta: { key: 'title' } },
+            { header: 'Email', accessorKey: 'email', size: 220, meta: { key: 'email' } },
+            { header: 'Phone', accessorKey: 'phone', size: 160, meta: { key: 'phone' } },
             {
                 header: 'Method',
                 accessorKey: 'methodOfContact',
                 size: 140,
+                meta: { key: 'methodOfContact' },
                 cell: (props) => {
                     const val = props.row.original.methodOfContact
                     const opt = methodOfContactOptions.find((o) => o.value === val)
@@ -242,6 +283,7 @@ const Home = () => {
                 header: 'Market',
                 accessorKey: 'projectMarket',
                 size: 150,
+                meta: { key: 'projectMarket' },
                 cell: (props) => {
                     const val = props.row.original.projectMarket
                     const opt = projectMarketOptions.find((o) => o.value === val)
@@ -252,6 +294,7 @@ const Home = () => {
                 header: 'Last Contacted',
                 accessorKey: 'dateLastContacted',
                 size: 150,
+                meta: { key: 'dateLastContacted' },
                 cell: (props) => {
                     const date = props.row.original.dateLastContacted
                     if (!date) return <span>-</span>
@@ -264,6 +307,7 @@ const Home = () => {
                 header: 'Status',
                 accessorKey: 'status',
                 size: 140,
+                meta: { key: 'status' },
                 cell: (props) => {
                     const val = props.row.original.status
                     const opt = leadStatusOptions.find((o) => o.value === val)
@@ -274,6 +318,7 @@ const Home = () => {
                 header: 'Responded',
                 accessorKey: 'responded',
                 size: 120,
+                meta: { key: 'responded' },
                 cell: (props) => (
                     <span className={props.row.original.responded ? 'text-emerald-600' : 'text-gray-500'}>
                         {props.row.original.responded ? 'Yes' : 'No'}
@@ -284,6 +329,7 @@ const Home = () => {
                 header: 'Actions',
                 id: 'actions',
                 size: 200,
+                meta: { key: 'actions' },
                 cell: (props) => (
                     <div className="flex items-center gap-2">
                         <Tooltip title="View">
@@ -311,7 +357,83 @@ const Home = () => {
         [toggleFavorite, setSelectedLeadId, handleDeleteLead]
     )
 
+    const orderedAndVisibleColumns = useMemo(() => {
+        const byKey = {}
+        allColumns.forEach((c) => {
+            const key = c.meta?.key || c.accessorKey || c.id
+            byKey[key] = c
+        })
+        const ordered = columnOrder
+            .map((k) => byKey[k])
+            .filter(Boolean)
+        const finalCols = ordered.filter((c) => {
+            const key = c.meta?.key || c.accessorKey || c.id
+            return visibleColumns[key] !== false
+        })
+        return finalCols
+    }, [allColumns, columnOrder, visibleColumns])
+
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    // Multi-select & bulk actions state
+    const [selectedIds, setSelectedIds] = useState(() => new Set())
+    const checkboxChecked = (row) => selectedIds.has(row.id)
+    const indeterminateCheckboxChecked = (rows) => {
+        if (!rows?.length) return false
+        const selectedCount = rows.filter((r) => selectedIds.has(r.original.id)).length
+        return selectedCount === rows.length
+    }
+    const handleRowSelectChange = (checked, row) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev)
+            if (checked) next.add(row.id)
+            else next.delete(row.id)
+            return next
+        })
+    }
+    const handleSelectAllChange = (checked, rows) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev)
+            rows.forEach((r) => {
+                const id = r.original?.id
+                if (id === undefined || id === null) return
+                if (checked) next.add(id)
+                else next.delete(id)
+            })
+            return next
+        })
+    }
+    // Bulk actions: set status, delete
+    const [bulkStatus, setBulkStatus] = useState(null)
+    const handleApplyBulkStatus = async () => {
+        if (!bulkStatus?.value) return
+        console.log('[Home] bulk status apply', bulkStatus.value, Array.from(selectedIds))
+        try {
+            const ids = Array.from(selectedIds)
+            for (const id of ids) {
+                const lead = leads.find((l) => l.id === id)
+                if (lead) {
+                    await useCrmStore.getState().updateLead(id, { ...lead, status: bulkStatus.value })
+                }
+            }
+            setSelectedIds(new Set())
+            setBulkStatus(null)
+        } catch (e) {
+            console.log('[Home] bulk status error', e)
+        }
+    }
+    const handleBulkDelete = async () => {
+        if (!selectedIds.size) return
+        if (!window.confirm(`Delete ${selectedIds.size} selected lead(s)? This cannot be undone.`)) return
+        try {
+            const ids = Array.from(selectedIds)
+            for (const id of ids) {
+                await deleteLead(id)
+            }
+            setSelectedIds(new Set())
+        } catch (e) {
+            console.log('[Home] bulk delete error', e)
+        }
+    }
 
     const [newLead, setNewLead] = useState({
         leadName: '',
@@ -546,7 +668,106 @@ const Home = () => {
                         value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
                         onChange={(opt) => applyDatePreset(opt?.value || 'none')}
                     />
-                            </div>
+                </div>
+                {/* Quick filter chips - more mobile friendly */}
+                <div className="mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-500">Quick filters:</span>
+                        <Button 
+                            size="sm" 
+                            variant="twoTone" 
+                            onClick={() => setShowMoreFilters(!showMoreFilters)}
+                        >
+                            {showMoreFilters ? 'Less' : 'More'} Filters
+                        </Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
+                        {['new','contacted','qualified','proposal','won','lost'].map((s) => (
+                            <Button key={s} size="sm" variant={filters.status?.value === s ? 'solid' : 'twoTone'} onClick={() => {
+                                setFilters({ status: { value: s, label: s } })
+                                setPageIndex(1)
+                                console.log('[Home] quick status filter', s)
+                            }}>{s}</Button>
+                        ))}
+                        {[
+                            { v: true, label: 'responded' },
+                            { v: false, label: 'no response' },
+                        ].map((r) => (
+                            <Button key={String(r.v)} size="sm" variant={filters.responded?.value === r.v ? 'solid' : 'twoTone'} onClick={() => {
+                                setFilters({ responded: { value: r.v, label: r.label } })
+                                setPageIndex(1)
+                                console.log('[Home] quick responded filter', r)
+                            }}>{r.label}</Button>
+                        ))}
+                        <Button size="sm" onClick={() => {
+                            setFilters({ status: null, responded: null })
+                            setPageIndex(1)
+                            console.log('[Home] quick filters cleared')
+                        }}>Clear</Button>
+                    </div>
+                </div>
+
+                {/* Collapsible advanced filters */}
+                {showMoreFilters && (
+                    <div className="mt-4 space-y-4">
+                        {/* Column visibility & order controls */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Card className="p-4">
+                                <h6 className="font-semibold mb-3">Column Visibility</h6>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {defaultColumnKeys.map((key) => (
+                                        <label key={key} className="flex items-center gap-2 text-sm">
+                                            <Checkbox
+                                                checked={visibleColumns[key] !== false}
+                                                onChange={(checked) => {
+                                                    setVisibleColumns((prev) => ({ ...prev, [key]: Boolean(checked) }))
+                                                    console.log('[Home] column visibility', key, checked)
+                                                }}
+                                            />
+                                            <span className="capitalize">{key}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </Card>
+                            <Card className="p-4">
+                                <h6 className="font-semibold mb-3">Column Order</h6>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {columnOrder.map((key, idx) => (
+                                        <div key={key} className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                            <span className="capitalize flex-1">{key}</span>
+                                            <div className="flex items-center gap-1">
+                                                <Button 
+                                                    size="sm" 
+                                                    variant="twoTone"
+                                                    disabled={idx === 0}
+                                                    onClick={() => {
+                                                        if (idx === 0) return
+                                                        const next = [...columnOrder]
+                                                        ;[next[idx-1], next[idx]] = [next[idx], next[idx-1]]
+                                                        setColumnOrder(next)
+                                                        console.log('[Home] column move up', key)
+                                                    }}
+                                                >↑</Button>
+                                                <Button 
+                                                    size="sm" 
+                                                    variant="twoTone"
+                                                    disabled={idx === columnOrder.length - 1}
+                                                    onClick={() => {
+                                                        if (idx === columnOrder.length - 1) return
+                                                        const next = [...columnOrder]
+                                                        ;[next[idx+1], next[idx]] = [next[idx], next[idx+1]]
+                                                        setColumnOrder(next)
+                                                        console.log('[Home] column move down', key)
+                                                    }}
+                                                >↓</Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </Card>
+                        </div>
+                    </div>
+                )}
             </Card>
 
             <div className="flex items-center justify-between">
@@ -561,9 +782,29 @@ const Home = () => {
                 </div>
             </div>
 
+            {/* Bulk actions bar */}
+            {selectedLead /* noop to appease reference before declaration lints */}
+            {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
+                <Card className="p-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="text-sm">{selectedIds.size} selected</div>
+                        <div className="flex items-center gap-2">
+                            <Select
+                                placeholder="Set status"
+                                options={leadStatusOptions}
+                                value={bulkStatus}
+                                onChange={(opt) => setBulkStatus(opt || null)}
+                            />
+                            <Button size="sm" variant="solid" onClick={handleApplyBulkStatus} disabled={!bulkStatus}>Apply</Button>
+                            <Button size="sm" onClick={handleBulkDelete} className="text-red-600 hover:text-red-700">Delete</Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
             <DataTable
                 key={tableInstanceKey}
-                columns={columns}
+                columns={orderedAndVisibleColumns}
                 data={pageData}
                 loading={loading}
                 pagingData={{ total: pageTotal, pageIndex, pageSize }}
@@ -573,6 +814,11 @@ const Home = () => {
                     setPageSize(ps)
                 }}
                 onSort={({ key, order }) => setSort({ key, order })}
+                selectable
+                checkboxChecked={(row) => checkboxChecked(row)}
+                indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
+                onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
+                onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
                 className="card"
             />
 
