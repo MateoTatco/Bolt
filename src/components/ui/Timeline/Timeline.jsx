@@ -7,10 +7,14 @@ const Timeline = (props) => {
 
     const count = Children.count(children)
 
-    const items = mapCloneElement(children, (item, index) => ({
-        isLast: index === count - 1,
-        ...item.props,
-    }))
+    // Only pass isLast to the composed TimeLineItem component and avoid leaking to DOM
+    const items = mapCloneElement(children, (item, index) => {
+        const { isLast: _ignored, ...restProps } = item.props || {}
+        return {
+            isLast: index === count - 1,
+            ...restProps,
+        }
+    })
 
     return (
         <ul ref={ref} className={classNames('timeline', className)}>

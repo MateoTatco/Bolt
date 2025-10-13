@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useMemo, useState, useEffect, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router'
 import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Drawer, Timeline } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
@@ -8,6 +8,7 @@ import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash } from 're
 
 const Home = () => {
     const navigate = useNavigate()
+    const location = useLocation()
     const leads = useCrmStore((s) => s.leads)
     const filters = useCrmStore((s) => s.filters)
     const loading = useCrmStore((s) => s.loading)
@@ -25,6 +26,105 @@ const Home = () => {
     const [pageIndex, setPageIndex] = useState(1)
     const [pageSize, setPageSize] = useState(10)
     const [sort, setSort] = useState({ key: '', order: '' })
+    const [tableInstanceKey, setTableInstanceKey] = useState(0)
+
+    // Debounce timer refs
+    const searchDebounceRef = useRef(null)
+    const dateDebounceRef = useRef(null)
+
+    // Saved filters state (list of named presets from localStorage)
+    const [savedFilters, setSavedFilters] = useState(() => {
+        try {
+            const raw = localStorage.getItem('crmSavedFilters')
+            return raw ? JSON.parse(raw) : []
+        } catch {
+            return []
+        }
+    })
+    const [activeSavedFilter, setActiveSavedFilter] = useState('')
+
+    // Date presets
+    const datePresetOptions = [
+        { value: 'none', label: 'Date: Custom' },
+        { value: 'last7', label: 'Date: Last 7 days' },
+        { value: 'last30', label: 'Date: Last 30 days' },
+        { value: 'thisMonth', label: 'Date: This month' },
+        { value: 'lastMonth', label: 'Date: Last month' },
+    ]
+    const [datePreset, setDatePreset] = useState('none')
+
+    // Sync state from URL query on first load
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const qPage = parseInt(params.get('page') || '1', 10)
+        const qSize = parseInt(params.get('size') || '10', 10)
+        const qSortKey = params.get('sortKey') || ''
+        const qSortOrder = params.get('sortOrder') || ''
+        const qSearch = params.get('search') || ''
+        const qStatus = params.get('status') || ''
+        const qMethod = params.get('method') || ''
+        const qResponded = params.get('responded') // 'true' | 'false' | null
+        const qFrom = params.get('from')
+        const qTo = params.get('to')
+
+        // Only apply if any query param exists
+        if ([...params.keys()].length > 0) {
+            setPageIndex(Number.isNaN(qPage) ? 1 : qPage)
+            setPageSize(Number.isNaN(qSize) ? 10 : qSize)
+            setSort({ key: qSortKey, order: qSortOrder })
+
+            const nextFilters = {}
+            if (qSearch) nextFilters.search = qSearch
+            if (qStatus) nextFilters.status = { value: qStatus, label: qStatus }
+            if (qMethod) nextFilters.methodOfContact = { value: qMethod, label: qMethod }
+            if (qResponded === 'true' || qResponded === 'false') {
+                nextFilters.responded = { value: qResponded === 'true', label: qResponded === 'true' ? 'Responded' : 'No response' }
+            }
+            if (qFrom || qTo) {
+                // Parse to Date objects because DatePickerRange expects [Date, Date]
+                nextFilters.dateFrom = qFrom ? new Date(qFrom) : null
+                nextFilters.dateTo = qTo ? new Date(qTo) : null
+            }
+
+            if (Object.keys(nextFilters).length > 0) {
+                setFilters(nextFilters)
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Push state to URL when paging/sort/filters change
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        params.set('page', String(pageIndex))
+        params.set('size', String(pageSize))
+        if (sort.key && sort.order) {
+            params.set('sortKey', sort.key)
+            params.set('sortOrder', sort.order)
+        } else {
+            params.delete('sortKey')
+            params.delete('sortOrder')
+        }
+        if (filters.search) params.set('search', filters.search); else params.delete('search')
+        if (filters.status?.value) params.set('status', filters.status.value); else params.delete('status')
+        if (filters.methodOfContact?.value) params.set('method', filters.methodOfContact.value); else params.delete('method')
+        if (typeof filters.responded === 'object' && filters.responded?.value !== undefined) {
+            params.set('responded', String(filters.responded.value))
+        } else if (typeof filters.responded === 'boolean') {
+            params.set('responded', String(filters.responded))
+        } else {
+            params.delete('responded')
+        }
+        const serializeDate = (d) => d instanceof Date ? d.toISOString().slice(0,10) : d
+        if (filters.dateFrom) params.set('from', serializeDate(filters.dateFrom)); else params.delete('from')
+        if (filters.dateTo) params.set('to', serializeDate(filters.dateTo)); else params.delete('to')
+
+        const next = `${location.pathname}?${params.toString()}`
+        if (next !== `${location.pathname}${location.search ? `?${location.search.replace(/^\?/, '')}` : ''}`) {
+            window.history.replaceState(null, '', next)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pageIndex, pageSize, sort, filters])
 
     const filteredLeads = useMemo(() => {
         const { search, status, methodOfContact, responded, dateFrom, dateTo } = filters
@@ -284,21 +384,110 @@ const Home = () => {
         { value: 'other', label: 'Other' },
     ]
 
+    // Helper: apply a date preset into filters
+    const applyDatePreset = (preset) => {
+        const now = new Date()
+        let from = null
+        let to = null
+        const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1)
+        const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0)
+        if (preset === 'last7') {
+            const d = new Date(now)
+            d.setDate(now.getDate() - 7)
+            from = d
+            to = now
+        } else if (preset === 'last30') {
+            const d = new Date(now)
+            d.setDate(now.getDate() - 30)
+            from = d
+            to = now
+        } else if (preset === 'thisMonth') {
+            from = startOfMonth(now)
+            to = endOfMonth(now)
+        } else if (preset === 'lastMonth') {
+            const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+            from = startOfMonth(lastMonthDate)
+            to = endOfMonth(lastMonthDate)
+        } else {
+            from = null
+            to = null
+        }
+        setDatePreset(preset)
+        setPageIndex(1)
+        setFilters({ dateFrom: from, dateTo: to })
+        console.log('[Home] applyDatePreset', { preset, from, to })
+    }
+
+    // Helpers: Saved filters (localStorage)
+    const saveCurrentFilters = () => {
+        const name = window.prompt('Save current filters as? (name)')
+        if (!name) return
+        const preset = {
+            name,
+            filters,
+            sort,
+            pageSize,
+        }
+        try {
+            const next = [...savedFilters.filter((p) => p.name !== name), preset]
+            localStorage.setItem('crmSavedFilters', JSON.stringify(next))
+            setSavedFilters(next)
+            setActiveSavedFilter(name)
+            console.log('[Home] saved filter preset', preset)
+        } catch (e) {
+            console.log('[Home] failed to save filter preset', e)
+        }
+    }
+
+    const applySavedFilter = (name) => {
+        const preset = savedFilters.find((p) => p.name === name)
+        if (!preset) return
+        setActiveSavedFilter(name)
+        setSort(preset.sort || { key: '', order: '' })
+        setPageSize(preset.pageSize || 10)
+        setPageIndex(1)
+        setFilters(preset.filters || {})
+        console.log('[Home] applySavedFilter', preset)
+    }
+
+    // Clear sort handler: reset local sort and force table remount
+    const handleClearSort = () => {
+        setSort({ key: '', order: '' })
+        setTableInstanceKey((k) => k + 1)
+        console.log('[Home] clear sort')
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
-                <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                <div className="flex items-center gap-2">
+                    <Button onClick={saveCurrentFilters} variant="twoTone">Save filter</Button>
+                    <Select
+                        placeholder="Saved filters"
+                        isClearable
+                        options={savedFilters.map((p) => ({ value: p.name, label: p.name }))}
+                        value={activeSavedFilter ? { value: activeSavedFilter, label: activeSavedFilter } : null}
+                        onChange={(opt) => applySavedFilter(opt?.value || '')}
+                    />
+                    <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                </div>
             </div>
 
             <Card className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
                     <Input
                         placeholder="Search leads"
                         value={filters.search}
                         onChange={(e) => {
-                            setPageIndex(1)
-                            setFilters({ search: e.target.value })
+                            // Debounce search input updates to reduce filter churn
+                            const value = e.target.value
+                            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                            searchDebounceRef.current = setTimeout(() => {
+                                setPageIndex(1)
+                                setFilters({ search: value })
+                                console.log('[Home] search updated', value)
+                            }, 250)
                         }}
                     />
                     <Select
@@ -333,24 +522,47 @@ const Home = () => {
                     />
                     <DatePicker.DatePickerRange
                         placeholder={['From', 'To']}
-                        value={
-                            filters.dateFrom && filters.dateTo
-                                ? [filters.dateFrom, filters.dateTo]
-                                : null
-                        }
+                        value={[filters.dateFrom || null, filters.dateTo || null]}
                         onChange={(vals) => {
-                            const [from, to] = vals || []
-                            setPageIndex(1)
-                            setFilters({
-                                dateFrom: from || null,
-                                dateTo: to || null,
-                            })
+                            // Debounce date range updates; also reset preset to custom
+                            if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                            dateDebounceRef.current = setTimeout(() => {
+                                const arr = Array.isArray(vals) ? vals : [null, null]
+                                const [from, to] = arr
+                                setDatePreset('none')
+                                setPageIndex(1)
+                                setFilters({
+                                    dateFrom: from || null,
+                                    dateTo: to || null,
+                                })
+                                console.log('[Home] date range updated', { from, to })
+                            }, 200)
                         }}
-                                />
+                    />
+                    <Select
+                        placeholder="Date presets"
+                        isClearable={false}
+                        options={datePresetOptions}
+                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                    />
                             </div>
             </Card>
 
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-500">
+                    {pageTotal} lead{pageTotal === 1 ? '' : 's'} • Page {pageIndex}
+                    {sort.key && sort.order ? ` • Sorted by ${sort.key} (${sort.order})` : ''}
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={handleClearSort}>
+                        Clear sort
+                    </Button>
+                </div>
+            </div>
+
             <DataTable
+                key={tableInstanceKey}
                 columns={columns}
                 data={pageData}
                 loading={loading}
@@ -364,7 +576,26 @@ const Home = () => {
                 className="card"
             />
 
-            <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
+            {!loading && pageTotal === 0 && (
+                <Card className="p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h5 className="font-semibold mb-1">No leads found</h5>
+                            <p className="text-sm text-gray-600">Try adjusting filters or create your first lead.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="twoTone" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                            {/* In a future iteration, we can wire this to an import workflow */}
+                            <Button>Import CSV</Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
+            {/* Guard against duplicate modal registration by unmounting drawer on large state transitions */}
+            {selectedLead && (
+                <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
+            )}
 
             <Dialog isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} width={700}>
                 <div className="p-6">

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
+import React from 'react'
 import { CrmService } from '@/services/CrmService'
 import { toast } from '@/components/ui/toast'
+import Notification from '@/components/ui/Notification'
 
 export const useCrmStore = create((set, get) => ({
     leads: [],
@@ -32,7 +34,14 @@ export const useCrmStore = create((set, get) => ({
             set({ leads: response.data.data, loading: false })
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push('Failed to load leads', { type: 'error' })
+            // Show a proper Notification component to satisfy toast wrapper expectations
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to load leads',
+                ),
+            )
         }
     },
 
@@ -48,11 +57,23 @@ export const useCrmStore = create((set, get) => ({
                 loading: false
             }))
             
-            toast.push('Lead created successfully!', { type: 'success' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Lead created successfully!',
+                ),
+            )
             return newLead
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push('Failed to create lead', { type: 'error' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to create lead',
+                ),
+            )
             throw error
         }
     },
@@ -69,11 +90,23 @@ export const useCrmStore = create((set, get) => ({
                 loading: false
             }))
             
-            toast.push('Lead updated successfully!', { type: 'success' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Lead updated successfully!',
+                ),
+            )
             return updatedLead
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push('Failed to update lead', { type: 'error' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to update lead',
+                ),
+            )
             throw error
         }
     },
@@ -89,10 +122,22 @@ export const useCrmStore = create((set, get) => ({
                 loading: false
             }))
             
-            toast.push('Lead deleted successfully!', { type: 'success' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Lead deleted successfully!',
+                ),
+            )
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push('Failed to delete lead', { type: 'error' })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to delete lead',
+                ),
+            )
             throw error
         }
     },
