@@ -46,7 +46,7 @@ export const leadsData = [
         status: 'contacted',
         responded: true,
         notes: 'Asked for case studies',
-        favorite: true,
+        favorite: false,
         owner: 'Alex Thompson',
         createdAt: '2025-09-30',
         updatedAt: '2025-10-08',

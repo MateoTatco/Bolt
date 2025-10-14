@@ -10,18 +10,23 @@ const Home = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const leads = useCrmStore((s) => s.leads)
+    const clients = useCrmStore((s) => s.clients)
     const filters = useCrmStore((s) => s.filters)
     const loading = useCrmStore((s) => s.loading)
     const setFilters = useCrmStore((s) => s.setFilters)
     const toggleFavorite = useCrmStore((s) => s.toggleFavorite)
     const loadLeads = useCrmStore((s) => s.loadLeads)
+    const loadClients = useCrmStore((s) => s.loadClients)
     const addLead = useCrmStore((s) => s.addLead)
+    const addClient = useCrmStore((s) => s.addClient)
     const deleteLead = useCrmStore((s) => s.deleteLead)
+    const deleteClient = useCrmStore((s) => s.deleteClient)
 
-    // Load leads on component mount
+    // Load data on component mount
     useEffect(() => {
         loadLeads()
-    }, [loadLeads])
+        loadClients()
+    }, [loadLeads, loadClients])
 
     const [pageIndex, setPageIndex] = useState(1)
     const [pageSize, setPageSize] = useState(10)
@@ -125,6 +130,7 @@ const Home = () => {
         const qSortKey = params.get('sortKey') || ''
         const qSortOrder = params.get('sortOrder') || ''
         const qSearch = params.get('search') || ''
+        const qType = params.get('type') || ''
         const qStatus = params.get('status') || ''
         const qMethod = params.get('method') || ''
         const qResponded = params.get('responded') // 'true' | 'false' | null
@@ -139,6 +145,7 @@ const Home = () => {
 
             const nextFilters = {}
             if (qSearch) nextFilters.search = qSearch
+            if (qType) nextFilters.type = { value: qType, label: qType === 'lead' ? '👤 Lead' : '🏢 Client' }
             if (qStatus) nextFilters.status = { value: qStatus, label: qStatus }
             if (qMethod) nextFilters.methodOfContact = { value: qMethod, label: qMethod }
             if (qResponded === 'true' || qResponded === 'false') {
@@ -170,6 +177,7 @@ const Home = () => {
             params.delete('sortOrder')
         }
         if (filters.search) params.set('search', filters.search); else params.delete('search')
+        if (filters.type?.value) params.set('type', filters.type.value); else params.delete('type')
         if (filters.status?.value) params.set('status', filters.status.value); else params.delete('status')
         if (filters.methodOfContact?.value) params.set('method', filters.methodOfContact.value); else params.delete('method')
         if (typeof filters.responded === 'object' && filters.responded?.value !== undefined) {
@@ -191,37 +199,59 @@ const Home = () => {
     }, [pageIndex, pageSize, sort, filters])
 
     const filteredLeads = useMemo(() => {
-        const { search, status, methodOfContact, responded, dateFrom, dateTo } = filters
-        return leads
-            .filter((l) => {
+        const { search, status, methodOfContact, responded, dateFrom, dateTo, type } = filters
+        
+        // Combine leads and clients with type indicators
+        const combinedData = [
+            ...leads.map(lead => ({ ...lead, entityType: 'lead' })),
+            ...clients.map(client => ({ ...client, entityType: 'client' }))
+        ]
+        
+        return combinedData
+            .filter((item) => {
                 if (search) {
                     const term = search.toLowerCase()
-                    const hay = `${l.leadName} ${l.leadContact} ${l.title} ${l.email} ${l.phone}`.toLowerCase()
+                    let hay = ''
+                    if (item.entityType === 'lead') {
+                        hay = `${item.leadName} ${item.leadContact} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
+                    } else {
+                        hay = `${item.clientName} ${item.clientNumber} ${item.address} ${item.city} ${item.state}`.toLowerCase()
+                    }
                     if (!hay.includes(term)) return false
                 }
+                
+                // Type filter
+                if (type && type.value) {
+                    if (item.entityType !== type.value) return false
+                }
+                
+                // Lead-specific filters
+                if (item.entityType === 'lead') {
                 if (status && status.value) {
-                    if (l.status !== status.value) return false
+                        if (item.status !== status.value) return false
                 }
                 if (methodOfContact && methodOfContact.value) {
-                    if (l.methodOfContact !== methodOfContact.value) return false
+                        if (item.methodOfContact !== methodOfContact.value) return false
                 }
                 if (responded !== null && responded !== undefined) {
                     if (typeof responded === 'object' && 'value' in responded) {
-                        if (l.responded !== responded.value) return false
+                            if (item.responded !== responded.value) return false
                     } else if (typeof responded === 'boolean') {
-                        if (l.responded !== responded) return false
+                            if (item.responded !== responded) return false
                     }
                 }
                 if (dateFrom) {
-                    if (new Date(l.dateLastContacted) < new Date(dateFrom)) return false
+                        if (new Date(item.dateLastContacted) < new Date(dateFrom)) return false
                 }
                 if (dateTo) {
-                    if (new Date(l.dateLastContacted) > new Date(dateTo)) return false
+                        if (new Date(item.dateLastContacted) > new Date(dateTo)) return false
                 }
+                }
+                
                 return true
             })
             .sort((a, b) => {
-                // Always prioritize favorite leads first
+                // Always prioritize favorite items first
                 if (a.favorite && !b.favorite) return -1
                 if (!a.favorite && b.favorite) return 1
                 
@@ -234,7 +264,7 @@ const Home = () => {
                 if (av === bv) return 0
                 return av > bv ? dir : -dir
             })
-    }, [leads, filters, sort])
+    }, [leads, clients, filters, sort])
 
     const pageTotal = filteredLeads.length
     const pageStart = (pageIndex - 1) * pageSize
@@ -271,137 +301,250 @@ const Home = () => {
             'Delete Lead',
             'Are you sure you want to delete this lead? This action cannot be undone.',
             async () => {
-                try {
-                    await deleteLead(leadId)
-                } catch (error) {
-                    console.error('Error deleting lead:', error)
-                }
+            try {
+                await deleteLead(leadId)
+            } catch (error) {
+                console.error('Error deleting lead:', error)
             }
+        }
+        )
+    }
+
+    const handleDeleteClient = async (clientId) => {
+        showConfirmDialog(
+            'Delete Client',
+            'Are you sure you want to delete this client? This action cannot be undone.',
+            async () => {
+            try {
+                await deleteClient(clientId)
+            } catch (error) {
+                console.error('Error deleting client:', error)
+            }
+        }
         )
     }
 
     const allColumns = useMemo(
         () => [
             {
-                header: 'Lead Name',
-                accessorKey: 'leadName',
+                header: 'Type',
+                accessorKey: 'entityType',
+                size: 100,
+                meta: { key: 'entityType' },
+                cell: (props) => {
+                    const type = props.row.original.entityType
+                    return (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            type === 'lead' 
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
+                                : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                            {type === 'lead' ? '👤 Lead' : '🏢 Client'}
+                        </span>
+                    )
+                },
+            },
+            {
+                header: 'Name',
+                accessorKey: 'name',
                 size: 220,
-                meta: { key: 'leadName' },
-                cell: (props) => (
+                meta: { key: 'name' },
+                cell: (props) => {
+                    const item = props.row.original
+                    const name = item.entityType === 'lead' ? item.leadName : item.clientName
+                    return (
                     <button 
-                        onClick={(e) => handleLeadNameClick(e, props.row.original.id)}
+                            onClick={(e) => handleLeadNameClick(e, item.id)}
                         className="font-semibold text-left hover:text-primary transition-colors"
                     >
-                        {props.row.original.leadName}
+                            {name}
                     </button>
-                ),
+                    )
+                },
             },
-            { header: 'Title', accessorKey: 'title', size: 180, meta: { key: 'title' } },
-            { header: 'Email', accessorKey: 'email', size: 220, meta: { key: 'email' } },
-            { header: 'Phone', accessorKey: 'phone', size: 160, meta: { key: 'phone' } },
+            { 
+                header: 'Title/Type', 
+                accessorKey: 'title', 
+                size: 180, 
+                meta: { key: 'title' },
+                cell: (props) => {
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        return <span>{item.title || '-'}</span>
+                    } else {
+                        return <span>{item.clientType || '-'}</span>
+                    }
+                }
+            },
+            { 
+                header: 'Email/Address', 
+                accessorKey: 'email', 
+                size: 220, 
+                meta: { key: 'email' },
+                cell: (props) => {
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        return <span>{item.email || '-'}</span>
+                    } else {
+                        return <span>{item.address || '-'}</span>
+                    }
+                }
+            },
+            { 
+                header: 'Phone/City', 
+                accessorKey: 'phone', 
+                size: 160, 
+                meta: { key: 'phone' },
+                cell: (props) => {
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        return <span>{item.phone || '-'}</span>
+                    } else {
+                        return <span>{item.city || '-'}</span>
+                    }
+                }
+            },
             {
-                header: 'Method',
+                header: 'Method/State',
                 accessorKey: 'methodOfContact',
                 size: 140,
                 meta: { key: 'methodOfContact' },
                 cell: (props) => {
-                    const val = props.row.original.methodOfContact
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        const val = item.methodOfContact
                     const opt = methodOfContactOptions.find((o) => o.value === val)
                     return <span>{opt ? opt.label : val}</span>
+                    } else {
+                        return <span>{item.state || '-'}</span>
+                    }
                 },
             },
             {
-                header: 'Market',
+                header: 'Market/ZIP',
                 accessorKey: 'projectMarket',
                 size: 150,
                 meta: { key: 'projectMarket' },
                 cell: (props) => {
-                    const val = props.row.original.projectMarket
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        const val = item.projectMarket
                     const opt = projectMarketOptions.find((o) => o.value === val)
                     return <span>{opt ? opt.label : val}</span>
+                    } else {
+                        return <span>{item.zip || '-'}</span>
+                    }
                 },
             },
             {
-                header: 'Last Contacted',
+                header: 'Last Contacted/Notes',
                 accessorKey: 'dateLastContacted',
                 size: 150,
                 meta: { key: 'dateLastContacted' },
                 cell: (props) => {
-                    const date = props.row.original.dateLastContacted
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        const date = item.dateLastContacted
                     if (!date) return <span>-</span>
-                    // Handle both Date objects and string dates
                     const dateStr = date instanceof Date ? date.toISOString().slice(0,10) : date
                     return <span>{dateStr}</span>
+                    } else {
+                        return <span>{item.notes ? item.notes.substring(0, 20) + (item.notes.length > 20 ? '...' : '') : '-'}</span>
+                    }
                 },
             },
             {
-                header: 'Status',
+                header: 'Status/Tags',
                 accessorKey: 'status',
                 size: 140,
                 meta: { key: 'status' },
                 cell: (props) => {
-                    const val = props.row.original.status
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        const val = item.status
                     const opt = leadStatusOptions.find((o) => o.value === val)
                     return <Tag className={statusColor(val)}>{opt ? opt.label : val}</Tag>
+                    } else {
+                        return <span>{item.tags || '-'}</span>
+                    }
                 },
             },
             {
-                header: 'Responded',
+                header: 'Responded/Client #',
                 accessorKey: 'responded',
                 size: 120,
                 meta: { key: 'responded' },
-                cell: (props) => (
-                    <span className={props.row.original.responded ? 'text-emerald-600' : 'text-gray-500'}>
-                        {props.row.original.responded ? 'Yes' : 'No'}
+                cell: (props) => {
+                    const item = props.row.original
+                    if (item.entityType === 'lead') {
+                        return (
+                            <span className={item.responded ? 'text-emerald-600' : 'text-gray-500'}>
+                                {item.responded ? 'Yes' : 'No'}
                     </span>
-                ),
+                        )
+                    } else {
+                        return <span>{item.clientNumber || '-'}</span>
+                    }
+                },
             },
             {
                 header: 'Actions',
                 id: 'actions',
                 size: 200,
                 meta: { key: 'actions' },
-                cell: (props) => (
+                cell: (props) => {
+                    const item = props.row.original
+                    const isLead = item.entityType === 'lead'
+                    const detailPath = isLead ? `/leads/${item.id}` : `/clients/${item.id}`
+                    const editPath = isLead ? `/leads/${item.id}?tab=settings` : `/clients/${item.id}?tab=settings`
+                    
+                    return (
                     <div className="flex items-center gap-2">
                         <Tooltip title="View">
-                            <Button 
-                                size="sm" 
-                                variant="twoTone" 
-                                icon={<HiOutlineEye />} 
-                                onClick={() => navigate(`/leads/${props.row.original.id}`)} 
-                            />
+                                <Button 
+                                    size="sm" 
+                                    variant="twoTone" 
+                                    icon={<HiOutlineEye />} 
+                                    onClick={() => navigate(detailPath)} 
+                                />
                         </Tooltip>
                         <Tooltip title="Edit">
-                            <Button 
-                                size="sm" 
-                                variant="twoTone" 
-                                icon={<HiOutlinePencil />} 
-                                onClick={() => navigate(`/leads/${props.row.original.id}?tab=settings`)} 
-                            />
+                                <Button 
+                                    size="sm" 
+                                    variant="twoTone" 
+                                    icon={<HiOutlinePencil />} 
+                                    onClick={() => navigate(editPath)} 
+                                />
                         </Tooltip>
-                        <Tooltip title={props.row.original.favorite ? "Remove from favorites" : "Add to favorites"}>
-                            <Button 
-                                size="sm" 
-                                variant={props.row.original.favorite ? "solid" : "twoTone"} 
-                                icon={<HiOutlineStar />} 
-                                onClick={() => toggleFavorite(props.row.original.id)}
-                                className={props.row.original.favorite ? "text-yellow-500" : ""}
-                            />
+                            <Tooltip title={item.favorite ? "Remove from favorites" : "Add to favorites"}>
+                                <Button 
+                                    size="sm" 
+                                    variant={item.favorite ? "solid" : "twoTone"} 
+                                    icon={<HiOutlineStar />} 
+                                    onClick={() => {
+                                        console.log('[Home] Favorite button clicked for item:', item)
+                                        console.log('[Home] Current favorite state:', item.favorite)
+                                        console.log('[Home] Item ID:', item.id)
+                                        toggleFavorite(item.id)
+                                    }}
+                                    className={item.favorite ? "text-yellow-500" : ""}
+                                />
                         </Tooltip>
                         <Tooltip title="Delete">
                             <Button 
                                 size="sm" 
                                 variant="twoTone" 
                                 icon={<HiOutlineTrash />} 
-                                onClick={() => handleDeleteLead(props.row.original.id)}
+                                    onClick={() => isLead ? handleDeleteLead(item.id) : handleDeleteClient(item.id)}
                                 className="text-red-600 hover:text-red-700"
                             />
                         </Tooltip>
                     </div>
-                ),
+                    )
+                },
             },
         ],
-        [toggleFavorite, handleDeleteLead]
+        [toggleFavorite, handleDeleteLead, handleDeleteClient]
     )
 
     const orderedAndVisibleColumns = useMemo(() => {
@@ -432,16 +575,17 @@ const Home = () => {
     }
 
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false)
+    const [createType, setCreateType] = useState('') // 'lead' or 'client'
     
     // Multi-step wizard state
     const [wizardStep, setWizardStep] = useState(1)
     const [wizardData, setWizardData] = useState({
-        // Step 1: Basic Info
+        // Lead fields
         leadName: '',
         leadContact: '',
         email: '',
         phone: '',
-        // Step 2: Details
         title: '',
         company: '',
         status: 'new',
@@ -449,10 +593,18 @@ const Home = () => {
         market: 'us',
         dateLastContacted: null,
         responded: false,
-        // Step 3: Additional Info
         notes: '',
         source: '',
-        priority: 'medium'
+        priority: 'medium',
+        // Client fields
+        clientNumber: '',
+        clientType: '',
+        clientName: '',
+        address: '',
+        city: '',
+        state: '',
+        zip: '',
+        tags: ''
     })
     // Multi-select & bulk actions state
     const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -578,36 +730,71 @@ const Home = () => {
             responded: false,
             notes: '',
             source: '',
-            priority: 'medium'
+            priority: 'medium',
+            clientNumber: '',
+            clientType: '',
+            clientName: '',
+            address: '',
+            city: '',
+            state: '',
+            zip: '',
+            tags: ''
         })
+    }
+
+    // Type selector handlers
+    const handleCreateClick = () => {
+        setIsTypeSelectorOpen(true)
+    }
+
+    const handleTypeSelect = (type) => {
+        setCreateType(type)
+        setIsTypeSelectorOpen(false)
+        setIsCreateOpen(true)
+        resetWizard()
     }
     
     const handleWizardSubmit = async () => {
         try {
-            const payload = {
-                leadName: wizardData.leadName,
-                leadContact: wizardData.leadContact || '',
-                title: wizardData.title,
-                email: wizardData.email || '',
-                phone: wizardData.phone || '',
-                methodOfContact: wizardData.method,
-                projectMarket: wizardData.market,
-                dateLastContacted: wizardData.dateLastContacted
-                    ? (wizardData.dateLastContacted instanceof Date
-                        ? wizardData.dateLastContacted.toISOString().slice(0,10)
-                        : wizardData.dateLastContacted)
-                    : null,
-                status: wizardData.status,
-                responded: Boolean(wizardData.responded),
-                notes: wizardData.notes || '',
-                favorite: false,
+            if (createType === 'lead') {
+                const payload = {
+                    leadName: wizardData.leadName,
+                    leadContact: wizardData.leadContact || '',
+                    title: wizardData.title,
+                    email: wizardData.email || '',
+                    phone: wizardData.phone || '',
+                    methodOfContact: wizardData.method,
+                    projectMarket: wizardData.market,
+                    dateLastContacted: wizardData.dateLastContacted
+                        ? (wizardData.dateLastContacted instanceof Date
+                            ? wizardData.dateLastContacted.toISOString().slice(0,10)
+                            : wizardData.dateLastContacted)
+                        : null,
+                    status: wizardData.status,
+                    responded: Boolean(wizardData.responded),
+                    notes: wizardData.notes || '',
+                    favorite: false,
+                }
+                await addLead(payload)
+            } else if (createType === 'client') {
+                const payload = {
+                    clientNumber: wizardData.clientNumber,
+                    clientType: wizardData.clientType,
+                    clientName: wizardData.clientName,
+                    address: wizardData.address,
+                    city: wizardData.city,
+                    state: wizardData.state,
+                    zip: wizardData.zip,
+                    tags: wizardData.tags,
+                    notes: wizardData.notes || '',
+                }
+                await addClient(payload)
             }
             
-            await addLead(payload)
             setIsCreateOpen(false)
             resetWizard()
         } catch (error) {
-            console.error('Error creating lead:', error)
+            console.error('Error creating:', error)
         }
     }
 
@@ -697,7 +884,7 @@ const Home = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
                 <div className="flex items-center gap-2">
-                <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
+                <Button variant="solid" onClick={handleCreateClick}>Create</Button>
                 </div>
             </div>
 
@@ -714,9 +901,22 @@ const Home = () => {
                             // Debounce the actual filter application
                             if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
                             searchDebounceRef.current = setTimeout(() => {
-                                setPageIndex(1)
+                            setPageIndex(1)
                                 setFilters({ search: value })
                             }, 300)
+                        }}
+                    />
+                    <Select
+                        placeholder="Type"
+                        isClearable
+                        options={[
+                            { value: 'lead', label: '👤 Lead' },
+                            { value: 'client', label: '🏢 Client' }
+                        ]}
+                        value={filters.type}
+                        onChange={(opt) => {
+                            setPageIndex(1)
+                            setFilters({ type: opt || null })
                         }}
                     />
                     <Select
@@ -829,7 +1029,7 @@ const Home = () => {
                                             <span className="capitalize">{key}</span>
                                         </label>
                                     ))}
-                                </div>
+                            </div>
                             </Card>
                             <Card className="p-4">
                                 <h6 className="font-semibold mb-3">Column Order</h6>
@@ -945,15 +1145,44 @@ const Home = () => {
             )}
 
 
-            {/* Multi-Step Create Lead Wizard */}
+            {/* Type Selector Dialog */}
+            <Dialog isOpen={isTypeSelectorOpen} onClose={() => setIsTypeSelectorOpen(false)} width={500}>
+                <div className="p-6">
+                    <h5 className="text-xl font-semibold mb-4">What would you like to create?</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Card 
+                            className="p-6 cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-blue-500"
+                            onClick={() => handleTypeSelect('lead')}
+                        >
+                            <div className="text-center">
+                                <div className="text-3xl mb-3">👤</div>
+                                <h6 className="font-semibold text-lg mb-2">Lead</h6>
+                                <p className="text-sm text-gray-600">Create a new lead for an individual contact</p>
+                            </div>
+                        </Card>
+                        <Card 
+                            className="p-6 cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-blue-500"
+                            onClick={() => handleTypeSelect('client')}
+                        >
+                            <div className="text-center">
+                                <div className="text-3xl mb-3">🏢</div>
+                                <h6 className="font-semibold text-lg mb-2">Client</h6>
+                                <p className="text-sm text-gray-600">Create a new client company</p>
+                            </div>
+                        </Card>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Multi-Step Create Wizard */}
             <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetWizard(); }} width={800}>
                 <div className="p-6">
                     <div className="flex items-center justify-between mb-6">
-                        <h5 className="text-xl font-semibold">Create Lead</h5>
+                        <h5 className="text-xl font-semibold">Create {createType === 'lead' ? 'Lead' : 'Client'}</h5>
                         <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">Step {wizardStep} of 3</span>
+                            <span className="text-sm text-gray-500">Step {wizardStep} of {createType === 'lead' ? '3' : '2'}</span>
                             <div className="flex gap-1">
-                                {[1, 2, 3].map((step) => (
+                                {Array.from({ length: createType === 'lead' ? 3 : 2 }, (_, i) => i + 1).map((step) => (
                                     <div
                                         key={step}
                                         className={`w-2 h-2 rounded-full ${
@@ -967,135 +1196,238 @@ const Home = () => {
                     
                     {/* Step 1: Basic Information */}
                     {wizardStep === 1 && (
-                        <div className="space-y-4">
+                    <div className="space-y-4">
                             <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Basic Information</h6>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Lead name *</label>
-                                    <Input 
-                                        value={wizardData.leadName} 
-                                        onChange={(e) => setWizardData({ ...wizardData, leadName: e.target.value })} 
-                                        placeholder="Enter lead name"
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Contact person</label>
-                                    <Input 
-                                        value={wizardData.leadContact} 
-                                        onChange={(e) => setWizardData({ ...wizardData, leadContact: e.target.value })} 
-                                        placeholder="Enter contact name"
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Email</label>
-                                    <Input 
-                                        value={wizardData.email} 
-                                        onChange={(e) => setWizardData({ ...wizardData, email: e.target.value })} 
-                                        placeholder="Enter email address"
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Phone</label>
-                                    <Input 
-                                        value={wizardData.phone} 
-                                        onChange={(e) => setWizardData({ ...wizardData, phone: e.target.value })} 
-                                        placeholder="Enter phone number"
-                                    />
-                                </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {createType === 'lead' ? (
+                                    <>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Lead name *</label>
+                                <Input 
+                                                value={wizardData.leadName} 
+                                                onChange={(e) => setWizardData({ ...wizardData, leadName: e.target.value })} 
+                                    placeholder="Enter lead name"
+                                />
+                            </div>
+                            
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Contact person</label>
+                                <Input 
+                                                value={wizardData.leadContact} 
+                                                onChange={(e) => setWizardData({ ...wizardData, leadContact: e.target.value })} 
+                                                placeholder="Enter contact name"
+                                />
+        </div>
+                            
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Email</label>
+                                <Input 
+                                                value={wizardData.email} 
+                                                onChange={(e) => setWizardData({ ...wizardData, email: e.target.value })} 
+                                                placeholder="Enter email address"
+                                />
+            </div>
+
+            <div>
+                                            <label className="block text-sm font-medium mb-2">Phone</label>
+                                <Input 
+                                                value={wizardData.phone} 
+                                                onChange={(e) => setWizardData({ ...wizardData, phone: e.target.value })} 
+                                                placeholder="Enter phone number"
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Client # *</label>
+                                            <Input 
+                                                value={wizardData.clientNumber} 
+                                                onChange={(e) => setWizardData({ ...wizardData, clientNumber: e.target.value })} 
+                                                placeholder="Enter client number"
+                                />
+            </div>
+
+            <div>
+                                            <label className="block text-sm font-medium mb-2">Client Type</label>
+                                            <Select
+                                                options={[
+                                                    { value: 'enterprise', label: 'Enterprise' },
+                                                    { value: 'small_business', label: 'Small Business' },
+                                                    { value: 'startup', label: 'Startup' },
+                                                    { value: 'nonprofit', label: 'Nonprofit' },
+                                                    { value: 'government', label: 'Government' }
+                                                ]}
+                                                value={wizardData.clientType ? { value: wizardData.clientType, label: wizardData.clientType } : null}
+                                                onChange={(opt) => setWizardData({ ...wizardData, clientType: opt?.value || '' })}
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Client Name *</label>
+                                <Input 
+                                                value={wizardData.clientName} 
+                                                onChange={(e) => setWizardData({ ...wizardData, clientName: e.target.value })} 
+                                                placeholder="Enter client name"
+                                />
+            </div>
+
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Address</label>
+                                            <Input 
+                                                value={wizardData.address} 
+                                                onChange={(e) => setWizardData({ ...wizardData, address: e.target.value })} 
+                                                placeholder="Enter address"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">City</label>
+                                            <Input 
+                                                value={wizardData.city} 
+                                                onChange={(e) => setWizardData({ ...wizardData, city: e.target.value })} 
+                                                placeholder="Enter city"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">State</label>
+                                            <Input 
+                                                value={wizardData.state} 
+                                                onChange={(e) => setWizardData({ ...wizardData, state: e.target.value })} 
+                                                placeholder="Enter state"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">ZIP</label>
+                                            <Input 
+                                                value={wizardData.zip} 
+                                                onChange={(e) => setWizardData({ ...wizardData, zip: e.target.value })} 
+                                                placeholder="Enter ZIP code"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Tags</label>
+                                            <Input 
+                                                value={wizardData.tags} 
+                                                onChange={(e) => setWizardData({ ...wizardData, tags: e.target.value })} 
+                                                placeholder="Enter tags (comma separated)"
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
                     
-                    {/* Step 2: Lead Details */}
+                    {/* Step 2: Details */}
                     {wizardStep === 2 && (
                         <div className="space-y-4">
-                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Lead Details</h6>
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">
+                                {createType === 'lead' ? 'Lead Details' : 'Additional Information'}
+                            </h6>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Job title</label>
-                                    <Input 
-                                        value={wizardData.title} 
-                                        onChange={(e) => setWizardData({ ...wizardData, title: e.target.value })} 
-                                        placeholder="Enter job title"
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Company</label>
-                                    <Input 
-                                        value={wizardData.company} 
-                                        onChange={(e) => setWizardData({ ...wizardData, company: e.target.value })} 
-                                        placeholder="Enter company name"
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Status</label>
-                                    <Select
-                                        options={leadStatusOptions}
-                                        value={leadStatusOptions.find(o => o.value === wizardData.status) || null}
-                                        onChange={(opt) => setWizardData({ ...wizardData, status: opt?.value || 'new' })}
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Method of contact</label>
-                                    <Select
-                                        options={methodOfContactOptions}
-                                        value={methodOfContactOptions.find(o => o.value === wizardData.method) || null}
-                                        onChange={(opt) => setWizardData({ ...wizardData, method: opt?.value || 'email' })}
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Market</label>
-                                    <Select
-                                        options={projectMarketOptions}
-                                        value={projectMarketOptions.find(o => o.value === wizardData.market) || null}
-                                        onChange={(opt) => setWizardData({ ...wizardData, market: opt?.value || 'us' })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Last contacted</label>
-                                    <DatePicker
-                                        value={wizardData.dateLastContacted}
-                                        onChange={(date) => setWizardData({ ...wizardData, dateLastContacted: date })}
-                                    />
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <label className="text-sm font-medium mb-0">Responded</label>
-                                    <Switcher
-                                        checked={wizardData.responded}
-                                        onChange={(checked) => setWizardData({ ...wizardData, responded: checked })}
-                                    />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Priority</label>
-                                    <Select
-                                        options={[
-                                            { value: 'low', label: 'Low' },
-                                            { value: 'medium', label: 'Medium' },
-                                            { value: 'high', label: 'High' }
-                                        ]}
-                                        value={{ value: wizardData.priority, label: wizardData.priority.charAt(0).toUpperCase() + wizardData.priority.slice(1) }}
-                                        onChange={(opt) => setWizardData({ ...wizardData, priority: opt?.value || 'medium' })}
-                                    />
-                                </div>
+                                {createType === 'lead' ? (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Job title</label>
+                                            <Input 
+                                                value={wizardData.title} 
+                                                onChange={(e) => setWizardData({ ...wizardData, title: e.target.value })} 
+                                                placeholder="Enter job title"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Company</label>
+                                            <Input 
+                                                value={wizardData.company} 
+                                                onChange={(e) => setWizardData({ ...wizardData, company: e.target.value })} 
+                                                placeholder="Enter company name"
+                                            />
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Status</label>
+                                <Select
+                                    options={leadStatusOptions}
+                                                value={leadStatusOptions.find(o => o.value === wizardData.status) || null}
+                                                onChange={(opt) => setWizardData({ ...wizardData, status: opt?.value || 'new' })}
+                                />
+                        </div>
+                        
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Method of contact</label>
+                                <Select
+                                    options={methodOfContactOptions}
+                                                value={methodOfContactOptions.find(o => o.value === wizardData.method) || null}
+                                                onChange={(opt) => setWizardData({ ...wizardData, method: opt?.value || 'email' })}
+                                />
+                            </div>
+
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Market</label>
+                                <Select
+                                    options={projectMarketOptions}
+                                                value={projectMarketOptions.find(o => o.value === wizardData.market) || null}
+                                                onChange={(opt) => setWizardData({ ...wizardData, market: opt?.value || 'us' })}
+                                />
+                            </div>
+
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Last contacted</label>
+                                <DatePicker
+                                                value={wizardData.dateLastContacted}
+                                                onChange={(date) => setWizardData({ ...wizardData, dateLastContacted: date })}
+                                />
+                            </div>
+                                        
+                                        <div className="flex items-center gap-3">
+                                            <label className="text-sm font-medium mb-0">Responded</label>
+                                            <Switcher
+                                                checked={wizardData.responded}
+                                                onChange={(checked) => setWizardData({ ...wizardData, responded: checked })}
+                                            />
+                        </div>
+
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Priority</label>
+                                            <Select
+                                                options={[
+                                                    { value: 'low', label: 'Low' },
+                                                    { value: 'medium', label: 'Medium' },
+                                                    { value: 'high', label: 'High' }
+                                                ]}
+                                                value={{ value: wizardData.priority, label: wizardData.priority.charAt(0).toUpperCase() + wizardData.priority.slice(1) }}
+                                                onChange={(opt) => setWizardData({ ...wizardData, priority: opt?.value || 'medium' })}
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="col-span-2">
+                            <label className="block text-sm font-medium mb-2">Notes</label>
+                                        <textarea
+                                            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            rows={4}
+                                            value={wizardData.notes}
+                                            onChange={(e) => setWizardData({ ...wizardData, notes: e.target.value })}
+                                            placeholder="Enter any additional notes about this client..."
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
                     
-                    {/* Step 3: Additional Information */}
-                    {wizardStep === 3 && (
+                    {/* Step 3: Additional Information (Leads only) */}
+                    {wizardStep === 3 && createType === 'lead' && (
                         <div className="space-y-4">
                             <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Additional Information</h6>
                             <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Notes</label>
+                            <div>
+                            <label className="block text-sm font-medium mb-2">Notes</label>
                                     <textarea
                                         className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         rows={4}
@@ -1107,13 +1439,13 @@ const Home = () => {
                                 
                                 <div>
                                     <label className="block text-sm font-medium mb-2">Lead source</label>
-                                    <Input 
+                                <Input 
                                         value={wizardData.source} 
                                         onChange={(e) => setWizardData({ ...wizardData, source: e.target.value })} 
                                         placeholder="e.g., Website, Referral, Cold call"
-                                    />
-                                </div>
+                                />
                             </div>
+                        </div>
                         </div>
                     )}
                     
@@ -1131,18 +1463,34 @@ const Home = () => {
                             <Button variant="twoTone" onClick={() => { setIsCreateOpen(false); resetWizard(); }}>
                                 Cancel
                             </Button>
-                            {wizardStep < 3 ? (
-                                <Button variant="solid" onClick={nextWizardStep} disabled={!wizardData.leadName.trim()}>
+                            {wizardStep < (createType === 'lead' ? 3 : 2) ? (
+                            <Button 
+                                variant="solid" 
+                                    onClick={nextWizardStep} 
+                                    disabled={
+                                        createType === 'lead' 
+                                            ? !wizardData.leadName.trim() 
+                                            : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
+                                    }
+                                >
                                     Next →
-                                </Button>
+                            </Button>
                             ) : (
-                                <Button variant="solid" onClick={handleWizardSubmit} disabled={!wizardData.leadName.trim()}>
-                                    Create Lead
+                                <Button 
+                                    variant="solid" 
+                                    onClick={handleWizardSubmit} 
+                                    disabled={
+                                        createType === 'lead' 
+                                            ? !wizardData.leadName.trim() 
+                                            : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
+                                    }
+                                >
+                                    Create {createType === 'lead' ? 'Lead' : 'Client'}
                                 </Button>
                             )}
                         </div>
                     </div>
-                </div>
+        </div>
             </Dialog>
 
             {/* Confirmation Dialog */}
@@ -1158,19 +1506,19 @@ const Home = () => {
                             >
                                 Cancel
                             </Button>
-                            <Button
-                                variant="solid"
+                            <Button 
+                                variant="solid" 
                                 onClick={confirmDialog.onConfirm}
                                 className="bg-red-600 hover:bg-red-700"
                             >
                                 Confirm
                             </Button>
-                        </div>
                     </div>
-                </div>
+                            </div>
+                            </div>
             )}
 
-        </div>
+            </div>
     )
 }
 

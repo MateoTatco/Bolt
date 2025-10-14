@@ -6,6 +6,7 @@ import Notification from '@/components/ui/Notification'
 
 export const useCrmStore = create((set, get) => ({
     leads: [],
+    clients: [],
     filters: {
         search: '',
         status: null,
@@ -13,6 +14,7 @@ export const useCrmStore = create((set, get) => ({
         responded: null,
         dateFrom: null,
         dateTo: null,
+        type: null, // 'lead' | 'client'
     },
     view: 'list', // 'list' | 'board'
     selectedLeadId: null,
@@ -40,6 +42,24 @@ export const useCrmStore = create((set, get) => ({
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
                     'Failed to load leads',
+                ),
+            )
+        }
+    },
+
+    // Load clients from API
+    loadClients: async () => {
+        set({ loading: true, error: null })
+        try {
+            const response = await CrmService.getClients()
+            set({ clients: response.data.data, loading: false })
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to load clients',
                 ),
             )
         }
@@ -143,9 +163,127 @@ export const useCrmStore = create((set, get) => ({
     },
 
     // Toggle favorite (local state only for now)
-    toggleFavorite: (id) => set((state) => ({
-        leads: state.leads.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
-    })),
+    toggleFavorite: (id) => set((state) => {
+        console.log('[Store] toggleFavorite called with id:', id)
+        
+        // Check if it's a lead or client
+        const lead = state.leads.find(l => l.id === id)
+        const client = state.clients.find(c => c.id === id)
+        
+        console.log('[Store] Found lead:', lead)
+        console.log('[Store] Found client:', client)
+        
+        if (lead) {
+            console.log('[Store] Toggling lead favorite from', lead.favorite, 'to', !lead.favorite)
+            return {
+                leads: state.leads.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
+            }
+        } else if (client) {
+            console.log('[Store] Toggling client favorite from', client.favorite, 'to', !client.favorite)
+            return {
+                clients: state.clients.map((c) => (c.id === id ? { ...c, favorite: !c.favorite } : c)),
+            }
+        }
+        console.log('[Store] No matching lead or client found for id:', id)
+        return state
+    }),
+
+    // Create new client
+    addClient: async (clientData) => {
+        set({ loading: true, error: null })
+        try {
+            const response = await CrmService.createClient(clientData)
+            const newClient = response.data.data
+            
+            set((state) => ({
+                clients: [...state.clients, newClient],
+                loading: false
+            }))
+            
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Client created successfully!',
+                ),
+            )
+            return newClient
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to create client',
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Update client
+    updateClient: async (id, clientData) => {
+        set({ loading: true, error: null })
+        try {
+            const response = await CrmService.updateClient(id, clientData)
+            const updatedClient = response.data.data
+            
+            set((state) => ({
+                clients: state.clients.map((c) => (c.id === id ? updatedClient : c)),
+                loading: false
+            }))
+            
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Client updated successfully!',
+                ),
+            )
+            return updatedClient
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to update client',
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Delete client
+    deleteClient: async (id) => {
+        set({ loading: true, error: null })
+        try {
+            await CrmService.deleteClient(id)
+            
+            set((state) => ({
+                clients: state.clients.filter((c) => c.id !== id),
+                loading: false
+            }))
+            
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Client deleted successfully!',
+                ),
+            )
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    'Failed to delete client',
+                ),
+            )
+            throw error
+        }
+    },
 }))
 
 
