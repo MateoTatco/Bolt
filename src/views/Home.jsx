@@ -414,6 +414,28 @@ const Home = () => {
     }
 
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    
+    // Multi-step wizard state
+    const [wizardStep, setWizardStep] = useState(1)
+    const [wizardData, setWizardData] = useState({
+        // Step 1: Basic Info
+        leadName: '',
+        leadContact: '',
+        email: '',
+        phone: '',
+        // Step 2: Details
+        title: '',
+        company: '',
+        status: 'new',
+        method: 'email',
+        market: 'us',
+        dateLastContacted: null,
+        responded: false,
+        // Step 3: Additional Info
+        notes: '',
+        source: '',
+        priority: 'medium'
+    })
     // Multi-select & bulk actions state
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     const checkboxChecked = (row) => selectedIds.has(row.id)
@@ -509,6 +531,68 @@ const Home = () => {
         responded: false,
         notes: '',
     })
+
+    // Wizard handlers
+    const nextWizardStep = () => {
+        if (wizardStep < 3) {
+            setWizardStep(prev => prev + 1)
+        }
+    }
+    
+    const prevWizardStep = () => {
+        if (wizardStep > 1) {
+            setWizardStep(prev => prev - 1)
+        }
+    }
+    
+    const resetWizard = () => {
+        setWizardStep(1)
+        setWizardData({
+            leadName: '',
+            leadContact: '',
+            email: '',
+            phone: '',
+            title: '',
+            company: '',
+            status: 'new',
+            method: 'email',
+            market: 'us',
+            dateLastContacted: null,
+            responded: false,
+            notes: '',
+            source: '',
+            priority: 'medium'
+        })
+    }
+    
+    const handleWizardSubmit = async () => {
+        try {
+            const payload = {
+                leadName: wizardData.leadName,
+                leadContact: wizardData.leadContact || '',
+                title: wizardData.title,
+                email: wizardData.email || '',
+                phone: wizardData.phone || '',
+                methodOfContact: wizardData.method,
+                projectMarket: wizardData.market,
+                dateLastContacted: wizardData.dateLastContacted
+                    ? (wizardData.dateLastContacted instanceof Date
+                        ? wizardData.dateLastContacted.toISOString().slice(0,10)
+                        : wizardData.dateLastContacted)
+                    : null,
+                status: wizardData.status,
+                responded: Boolean(wizardData.responded),
+                notes: wizardData.notes || '',
+                favorite: false,
+            }
+            
+            await addLead(payload)
+            setIsCreateOpen(false)
+            resetWizard()
+        } catch (error) {
+            console.error('Error creating lead:', error)
+        }
+    }
 
     const handleCreateLead = async () => {
         if (!newLead.leadName || !newLead.title || !newLead.status) {
@@ -856,127 +940,204 @@ const Home = () => {
             <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
             )}
 
-            <Dialog isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} width={700}>
+            {/* Multi-Step Create Lead Wizard */}
+            <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetWizard(); }} width={800}>
                 <div className="p-6">
-                    <h5 className="text-xl font-semibold mb-4">Create Lead</h5>
-                    
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Lead name *</label>
-                                <Input 
-                                    value={newLead.leadName} 
-                                    onChange={(e) => setNewLead({ ...newLead, leadName: e.target.value })} 
-                                    placeholder="Enter lead name"
-                                />
+                    <div className="flex items-center justify-between mb-6">
+                        <h5 className="text-xl font-semibold">Create Lead</h5>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">Step {wizardStep} of 3</span>
+                            <div className="flex gap-1">
+                                {[1, 2, 3].map((step) => (
+                                    <div
+                                        key={step}
+                                        className={`w-2 h-2 rounded-full ${
+                                            step <= wizardStep ? 'bg-blue-500' : 'bg-gray-300'
+                                        }`}
+                                    />
+                                ))}
                             </div>
-                            
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Lead contact</label>
-                                <Input 
-                                    value={newLead.leadContact} 
-                                    onChange={(e) => setNewLead({ ...newLead, leadContact: e.target.value })} 
-                                    placeholder="Enter contact person"
-                                />
-        </div>
-                            
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Title *</label>
-                                <Input 
-                                    value={newLead.title} 
-                                    onChange={(e) => setNewLead({ ...newLead, title: e.target.value })} 
-                                    placeholder="Enter title"
-                                />
-            </div>
-
-            <div>
-                                <label className="block text-sm font-medium mb-2">Email</label>
-                                <Input 
-                                    type="email"
-                                    value={newLead.email} 
-                                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })} 
-                                    placeholder="Enter email"
-                                />
-            </div>
-
-            <div>
-                                <label className="block text-sm font-medium mb-2">Phone</label>
-                                <Input 
-                                    value={newLead.phone} 
-                                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })} 
-                                    placeholder="Enter phone"
-                                />
-            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Status *</label>
-                                <Select
-                                    placeholder="Select status"
-                                    options={leadStatusOptions}
-                                    value={newLead.status}
-                                    onChange={(opt) => setNewLead({ ...newLead, status: opt })}
-                                />
-                        </div>
-                        
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Method of contact</label>
-                                <Select
-                                    placeholder="Select method"
-                                    isClearable
-                                    options={methodOfContactOptions}
-                                    value={newLead.methodOfContact}
-                                    onChange={(opt) => setNewLead({ ...newLead, methodOfContact: opt })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Project market</label>
-                                <Select
-                                    placeholder="Select market"
-                                    isClearable
-                                    options={projectMarketOptions}
-                                    value={newLead.projectMarket}
-                                    onChange={(opt) => setNewLead({ ...newLead, projectMarket: opt })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Date last contacted</label>
-                                <DatePicker
-                                    placeholder="Select date"
-                                    value={newLead.dateLastContacted}
-                                    onChange={(val) => {
-                                        console.log('DatePicker onChange:', val)
-                                        setNewLead({ ...newLead, dateLastContacted: val })
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                            <div>
-                            <label className="block text-sm font-medium mb-2">Notes</label>
-                                <Input 
-                                    textArea
-                                rows={3}
-                                value={newLead.notes} 
-                                onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })} 
-                                placeholder="Enter notes"
-                                />
-                            </div>
-                        </div>
-
-                    <div className="flex justify-end gap-2 mt-6">
-                        <Button onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                            <Button 
-                                variant="solid" 
-                            onClick={handleCreateLead}
-                            disabled={!newLead.leadName || !newLead.title || !newLead.status || loading}
-                            loading={loading}
-                            >
-                            Create
-                            </Button>
                         </div>
                     </div>
+                    
+                    {/* Step 1: Basic Information */}
+                    {wizardStep === 1 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Basic Information</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Lead name *</label>
+                                    <Input 
+                                        value={wizardData.leadName} 
+                                        onChange={(e) => setWizardData({ ...wizardData, leadName: e.target.value })} 
+                                        placeholder="Enter lead name"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Contact person</label>
+                                    <Input 
+                                        value={wizardData.leadContact} 
+                                        onChange={(e) => setWizardData({ ...wizardData, leadContact: e.target.value })} 
+                                        placeholder="Enter contact name"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Email</label>
+                                    <Input 
+                                        value={wizardData.email} 
+                                        onChange={(e) => setWizardData({ ...wizardData, email: e.target.value })} 
+                                        placeholder="Enter email address"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Phone</label>
+                                    <Input 
+                                        value={wizardData.phone} 
+                                        onChange={(e) => setWizardData({ ...wizardData, phone: e.target.value })} 
+                                        placeholder="Enter phone number"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Step 2: Lead Details */}
+                    {wizardStep === 2 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Lead Details</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Job title</label>
+                                    <Input 
+                                        value={wizardData.title} 
+                                        onChange={(e) => setWizardData({ ...wizardData, title: e.target.value })} 
+                                        placeholder="Enter job title"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Company</label>
+                                    <Input 
+                                        value={wizardData.company} 
+                                        onChange={(e) => setWizardData({ ...wizardData, company: e.target.value })} 
+                                        placeholder="Enter company name"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Status</label>
+                                    <Select
+                                        options={leadStatusOptions}
+                                        value={leadStatusOptions.find(o => o.value === wizardData.status) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, status: opt?.value || 'new' })}
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Method of contact</label>
+                                    <Select
+                                        options={methodOfContactOptions}
+                                        value={methodOfContactOptions.find(o => o.value === wizardData.method) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, method: opt?.value || 'email' })}
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Market</label>
+                                    <Select
+                                        options={projectMarketOptions}
+                                        value={projectMarketOptions.find(o => o.value === wizardData.market) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, market: opt?.value || 'us' })}
+                                    />
+                                </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Last contacted</label>
+                            <DatePicker
+                                value={wizardData.dateLastContacted}
+                                onChange={(date) => setWizardData({ ...wizardData, dateLastContacted: date })}
+                            />
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <label className="text-sm font-medium mb-0">Responded</label>
+                            <Switcher
+                                checked={wizardData.responded}
+                                onChange={(checked) => setWizardData({ ...wizardData, responded: checked })}
+                            />
+                        </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Priority</label>
+                                    <Select
+                                        options={[
+                                            { value: 'low', label: 'Low' },
+                                            { value: 'medium', label: 'Medium' },
+                                            { value: 'high', label: 'High' }
+                                        ]}
+                                        value={{ value: wizardData.priority, label: wizardData.priority.charAt(0).toUpperCase() + wizardData.priority.slice(1) }}
+                                        onChange={(opt) => setWizardData({ ...wizardData, priority: opt?.value || 'medium' })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Step 3: Additional Information */}
+                    {wizardStep === 3 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Additional Information</h6>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Notes</label>
+                                    <textarea
+                                        className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        rows={4}
+                                        value={wizardData.notes}
+                                        onChange={(e) => setWizardData({ ...wizardData, notes: e.target.value })}
+                                        placeholder="Enter any additional notes about this lead..."
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Lead source</label>
+                                    <Input 
+                                        value={wizardData.source} 
+                                        onChange={(e) => setWizardData({ ...wizardData, source: e.target.value })} 
+                                        placeholder="e.g., Website, Referral, Cold call"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Navigation buttons */}
+                    <div className="flex justify-between mt-8">
+                        <div>
+                            {wizardStep > 1 && (
+                                <Button variant="twoTone" onClick={prevWizardStep}>
+                                    ← Previous
+                                </Button>
+                            )}
+                        </div>
+                        
+                        <div className="flex gap-2">
+                            <Button variant="twoTone" onClick={() => { setIsCreateOpen(false); resetWizard(); }}>
+                                Cancel
+                            </Button>
+                            {wizardStep < 3 ? (
+                                <Button variant="solid" onClick={nextWizardStep} disabled={!wizardData.leadName.trim()}>
+                                    Next →
+                                </Button>
+                            ) : (
+                                <Button variant="solid" onClick={handleWizardSubmit} disabled={!wizardData.leadName.trim()}>
+                                    Create Lead
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </Dialog>
         </div>
     )
