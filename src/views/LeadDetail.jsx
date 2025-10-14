@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams, useNavigate, useLocation } from 'react-router'
 import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert } from '@/components/ui'
 import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
@@ -10,6 +10,7 @@ import { APP_NAME } from '@/constants/app.constant'
 const LeadDetail = () => {
     const { leadId } = useParams()
     const navigate = useNavigate()
+    const location = useLocation()
     const leads = useCrmStore((s) => s.leads)
     const loading = useCrmStore((s) => s.loading)
     const loadLeads = useCrmStore((s) => s.loadLeads)
@@ -33,6 +34,15 @@ const LeadDetail = () => {
             loadLeads()
         }
     }, [leads.length, loading, loadLeads])
+
+    // Handle tab query parameter
+    useEffect(() => {
+        const urlParams = new URLSearchParams(location.search)
+        const tabParam = urlParams.get('tab')
+        if (tabParam && ['overview', 'settings', 'activities', 'files'].includes(tabParam)) {
+            setActiveTab(tabParam)
+        }
+    }, [location.search])
 
     useEffect(() => {
         if (!lead && !loading && leads.length > 0) {

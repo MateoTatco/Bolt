@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Drawer, Timeline, Checkbox } from '@/components/ui'
+import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Checkbox } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
@@ -220,6 +220,11 @@ const Home = () => {
                 return true
             })
             .sort((a, b) => {
+                // Always prioritize favorite leads first
+                if (a.favorite && !b.favorite) return -1
+                if (!a.favorite && b.favorite) return 1
+                
+                // Then apply manual sorting if specified
                 const { key, order } = sort
                 if (!key || !order) return 0
                 const dir = order === 'asc' ? 1 : -1
@@ -259,21 +264,21 @@ const Home = () => {
         { value: false, label: 'No response' },
     ]
 
-    const setSelectedLeadId = useCrmStore((s) => s.setSelectedLeadId)
-    const selectedLeadId = useCrmStore((s) => s.selectedLeadId)
-    const selectedLead = useMemo(() => leads.find(l => l.id === selectedLeadId) || null, [leads, selectedLeadId])
 
     const handleDeleteLead = async (leadId) => {
+        console.log('[Home] Delete lead requested for ID:', leadId)
         showConfirmDialog(
             'Delete Lead',
             'Are you sure you want to delete this lead? This action cannot be undone.',
             async () => {
-            try {
-                await deleteLead(leadId)
-            } catch (error) {
-                console.error('Error deleting lead:', error)
+                try {
+                    console.log('[Home] Confirmed delete for lead ID:', leadId)
+                    await deleteLead(leadId)
+                    console.log('[Home] Lead deleted successfully')
+                } catch (error) {
+                    console.error('Error deleting lead:', error)
+                }
             }
-        }
         )
     }
 
@@ -361,13 +366,32 @@ const Home = () => {
                 cell: (props) => (
                     <div className="flex items-center gap-2">
                         <Tooltip title="View">
-                            <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => setSelectedLeadId(props.row.original.id)} />
+                            <Button 
+                                size="sm" 
+                                variant="twoTone" 
+                                icon={<HiOutlineEye />} 
+                                onClick={() => navigate(`/leads/${props.row.original.id}`)} 
+                            />
                         </Tooltip>
                         <Tooltip title="Edit">
-                            <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} />
+                            <Button 
+                                size="sm" 
+                                variant="twoTone" 
+                                icon={<HiOutlinePencil />} 
+                                onClick={() => navigate(`/leads/${props.row.original.id}?tab=settings`)} 
+                            />
                         </Tooltip>
-                        <Tooltip title="Star">
-                            <Button size="sm" variant="twoTone" icon={<HiOutlineStar />} onClick={() => toggleFavorite(props.row.original.id)} />
+                        <Tooltip title={props.row.original.favorite ? "Remove from favorites" : "Add to favorites"}>
+                            <Button 
+                                size="sm" 
+                                variant={props.row.original.favorite ? "solid" : "twoTone"} 
+                                icon={<HiOutlineStar />} 
+                                onClick={() => {
+                                    console.log('[Home] Toggle favorite for lead ID:', props.row.original.id, 'Current favorite status:', props.row.original.favorite)
+                                    toggleFavorite(props.row.original.id)
+                                }}
+                                className={props.row.original.favorite ? "text-yellow-500" : ""}
+                            />
                         </Tooltip>
                         <Tooltip title="Delete">
                             <Button 
@@ -382,7 +406,7 @@ const Home = () => {
                 ),
             },
         ],
-        [toggleFavorite, setSelectedLeadId, handleDeleteLead]
+        [toggleFavorite, handleDeleteLead]
     )
 
     const orderedAndVisibleColumns = useMemo(() => {
@@ -880,7 +904,6 @@ const Home = () => {
             </div>
 
             {/* Bulk actions bar */}
-            {selectedLead /* noop to appease reference before declaration lints */}
             {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
                 <Card className="p-3">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -935,10 +958,6 @@ const Home = () => {
                 </Card>
             )}
 
-            {/* Guard against duplicate modal registration by unmounting drawer on large state transitions */}
-            {selectedLead && (
-            <LeadDetail lead={selectedLead} onClose={() => setSelectedLeadId(null)} />
-            )}
 
             {/* Multi-Step Create Lead Wizard */}
             <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetWizard(); }} width={800}>
@@ -1053,20 +1072,20 @@ const Home = () => {
                                         onChange={(opt) => setWizardData({ ...wizardData, market: opt?.value || 'us' })}
                                     />
                                 </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Last contacted</label>
-                            <DatePicker
-                                value={wizardData.dateLastContacted}
-                                onChange={(date) => setWizardData({ ...wizardData, dateLastContacted: date })}
-                            />
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <label className="text-sm font-medium mb-0">Responded</label>
-                            <Switcher
-                                checked={wizardData.responded}
-                                onChange={(checked) => setWizardData({ ...wizardData, responded: checked })}
-                            />
-                        </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Last contacted</label>
+                                    <DatePicker
+                                        value={wizardData.dateLastContacted}
+                                        onChange={(date) => setWizardData({ ...wizardData, dateLastContacted: date })}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <label className="text-sm font-medium mb-0">Responded</label>
+                                    <Switcher
+                                        checked={wizardData.responded}
+                                        onChange={(checked) => setWizardData({ ...wizardData, responded: checked })}
+                                    />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium mb-2">Priority</label>
@@ -1139,491 +1158,6 @@ const Home = () => {
                     </div>
                 </div>
             </Dialog>
-        </div>
-    )
-}
-
-const LeadDetail = ({ lead, onClose }) => {
-    if (!lead) return null
-    return (
-        <Drawer isOpen={Boolean(lead)} onClose={onClose} width={520} title={`Lead: ${lead.leadName}`}>
-            <div className="space-y-4">
-                <Card className="p-4">
-                    <div className="grid grid-cols-1 gap-2 text-sm">
-                        <div><span className="text-gray-500">Contact:</span> {lead.leadContact || '-'}</div>
-                        <div><span className="text-gray-500">Title:</span> {lead.title || '-'}</div>
-                        <div><span className="text-gray-500">Email:</span> {lead.email || '-'}</div>
-                        <div><span className="text-gray-500">Phone:</span> {lead.phone || '-'}</div>
-                        <div><span className="text-gray-500">Method:</span> {lead.methodOfContact}</div>
-                        <div><span className="text-gray-500">Market:</span> {lead.projectMarket}</div>
-                        <div><span className="text-gray-500">Status:</span> {lead.status}</div>
-                        <div><span className="text-gray-500">Responded:</span> {lead.responded ? 'Yes' : 'No'}</div>
-                        <div><span className="text-gray-500">Last Contacted:</span> {lead.dateLastContacted ? 
-                            (lead.dateLastContacted instanceof Date ? 
-                                lead.dateLastContacted.toISOString().slice(0,10) : 
-                                lead.dateLastContacted) : '-'}</div>
-                    </div>
-                </Card>
-                <Card className="p-4">
-                    <h6 className="font-semibold mb-2">Notes</h6>
-                    <div className="text-sm whitespace-pre-wrap">{lead.notes || '—'}</div>
-                </Card>
-                <Card className="p-4">
-                    <h6 className="font-semibold mb-2">Activity</h6>
-                    <Timeline>
-                        <li className="timeline-item">
-                            <div className="timeline-item-point"></div>
-                            <div className="timeline-item-content">
-                                <div className="timeline-item-title">Lead created</div>
-                                <span className="timeline-item-description">{lead.createdAt}</span>
-                            </div>
-                        </li>
-                        <li className="timeline-item">
-                            <div className="timeline-item-point"></div>
-                            <div className="timeline-item-content">
-                                <div className="timeline-item-title">Last updated</div>
-                                <span className="timeline-item-description">{lead.updatedAt}</span>
-                            </div>
-                        </li>
-                    </Timeline>
-                </Card>
-            </div>
-        </Drawer>
-    )
-
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold">CRM</h1>
-                <div className="flex items-center gap-2">
-                <Button variant="solid" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
-                </div>
-            </div>
-
-            <Card className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-                    <Input
-                        placeholder="Search leads"
-                        value={filters.search}
-                        onChange={(e) => {
-                            const val = e.target.value
-                            setFilters({ search: val })
-                            setPageIndex(1)
-                            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                            searchDebounceRef.current = setTimeout(() => {
-                                console.log('[Home] search debounced', val)
-                            }, 300)
-                        }}
-                    />
-                    <Select
-                        placeholder="Status"
-                        isClearable
-                        options={leadStatusOptions}
-                        value={filters.status}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ status: opt || null })
-                        }}
-                    />
-                    <Select
-                        placeholder="Method"
-                        isClearable
-                        options={methodOfContactOptions}
-                        value={filters.methodOfContact}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ methodOfContact: opt || null })
-                        }}
-                    />
-                    <Select
-                        placeholder="Responded"
-                        isClearable
-                        options={respondedOptions}
-                        value={filters.responded}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ responded: opt || null })
-                        }}
-                    />
-                    <DatePicker.DatePickerRange
-                        placeholder="Date range"
-                        value={[filters.dateFrom || null, filters.dateTo || null]}
-                        onChange={(dates) => {
-                            const [from, to] = dates || [null, null]
-                            setFilters({ dateFrom: from, dateTo: to })
-                            setPageIndex(1)
-                            if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
-                            dateDebounceRef.current = setTimeout(() => {
-                                console.log('[Home] date range debounced', { from, to })
-                            }, 200)
-                        }}
-                    />
-                    <Select
-                        placeholder="Date presets"
-                        isClearable={false}
-                        options={datePresetOptions}
-                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
-                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
-                    />
-                </div>
-
-                {/* Collapsible advanced filters */}
-                {showMoreFilters && (
-                    <div className="mt-4 space-y-4">
-                        {/* Column visibility & order controls */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Card className="p-4">
-                                <h6 className="font-semibold mb-3">Column Visibility</h6>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {defaultColumnKeys.map((key) => (
-                                        <label key={key} className="flex items-center gap-2 text-sm">
-                                            <Checkbox
-                                                checked={visibleColumns[key] !== false}
-                                                onChange={(checked) => {
-                                                    setVisibleColumns((prev) => ({ ...prev, [key]: Boolean(checked) }))
-                                                    console.log('[Home] column visibility', key, checked)
-                                                }}
-                                            />
-                                            <span className="capitalize">{key}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </Card>
-                            <Card className="p-4">
-                                <h6 className="font-semibold mb-3">Column Order</h6>
-                                <div className="space-y-2">
-                                    {columnOrder.map((key, index) => (
-                                        <div key={key} className="flex items-center gap-2">
-                                            <Button
-                                                size="sm"
-                                                variant="plain"
-                                                icon={<span>↑</span>}
-                                                onClick={() => {
-                                                    if (index > 0) {
-                                                        const newOrder = [...columnOrder]
-                                                        ;[newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]]
-                                                        setColumnOrder(newOrder)
-                                                        localStorage.setItem('crmColumnOrder', JSON.stringify(newOrder))
-                                                    }
-                                                }}
-                                                disabled={index === 0}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="plain"
-                                                icon={<span>↓</span>}
-                                                onClick={() => {
-                                                    if (index < columnOrder.length - 1) {
-                                                        const newOrder = [...columnOrder]
-                                                        ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
-                                                        setColumnOrder(newOrder)
-                                                        localStorage.setItem('crmColumnOrder', JSON.stringify(newOrder))
-                                                    }
-                                                }}
-                                                disabled={index === columnOrder.length - 1}
-                                            />
-                                            <span className="text-sm capitalize">{key}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        </div>
-
-                        {/* Quick filter chips */}
-                        <div className="space-y-2">
-                            <h6 className="font-semibold">Quick Filters</h6>
-                            <div className="flex flex-wrap gap-2">
-                                {leadStatusOptions.map((option) => (
-                                    <Button
-                                        key={option.value}
-                                        size="sm"
-                                        variant={filters.status?.value === option.value ? 'solid' : 'twoTone'}
-                                        onClick={() => {
-                                            setPageIndex(1)
-                                            setFilters({ status: filters.status?.value === option.value ? null : option })
-                                        }}
-                                    >
-                                        {option.label}
-                                    </Button>
-                                ))}
-                                {respondedOptions.map((option) => (
-                                    <Button
-                                        key={option.value}
-                                        size="sm"
-                                        variant={filters.responded?.value === option.value ? 'solid' : 'twoTone'}
-                                        onClick={() => {
-                                            setPageIndex(1)
-                                            setFilters({ responded: filters.responded?.value === option.value ? null : option })
-                                        }}
-                                    >
-                                        {option.label}
-                                    </Button>
-                                ))}
-                                <Button
-                                    size="sm"
-                                    variant="twoTone"
-                                    onClick={() => {
-                                        setFilters({ status: null, responded: null })
-                                        setPageIndex(1)
-                                    }}
-                                >
-                                    Clear
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <div className="mt-4 flex items-center justify-between">
-                    <Button
-                        variant="twoTone"
-                        onClick={() => setShowMoreFilters(!showMoreFilters)}
-                    >
-                        {showMoreFilters ? 'Less Filters' : 'More Filters'}
-                    </Button>
-                </div>
-            </Card>
-
-            {/* Table summary and controls */}
-            <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-500">
-                    {pageTotal} lead{pageTotal === 1 ? '' : 's'} • Page {pageIndex}
-                    {sort.key && sort.order ? ` • Sorted by ${sort.key} (${sort.order})` : ''}
-                </div>
-                <div className="flex items-center gap-2">
-                    {sort.key && sort.order && (
-                        <Button 
-                            size="sm" 
-                            variant="twoTone"
-                            onClick={handleClearSort}
-                            className="text-red-600 hover:text-red-700"
-                        >
-                            Clear sort
-                        </Button>
-                    )}
-                </div>
-            </div>
-
-            {/* Bulk actions bar */}
-            {selectedLead /* noop to appease reference before declaration lints */}
-            {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
-                <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <span className="font-medium text-blue-900 dark:text-blue-100">
-                                {selectedIds.size} lead{selectedIds.size === 1 ? '' : 's'} selected
-                            </span>
-                            <Select
-                                placeholder="Bulk status update"
-                                options={leadStatusOptions}
-                                value={bulkStatus}
-                                onChange={setBulkStatus}
-                                className="min-w-[200px]"
-                            />
-                            <Button
-                                size="sm"
-                                onClick={handleApplyBulkStatus}
-                                disabled={!bulkStatus}
-                            >
-                                Apply
-                            </Button>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant="twoTone"
-                            onClick={handleBulkDelete}
-                            className="text-red-600 hover:text-red-700"
-                        >
-                            Delete Selected
-                        </Button>
-                    </div>
-                </Card>
-            )}
-
-            {loading && (
-                <Card className="p-6">
-                    <div className="flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="text-lg font-semibold text-gray-500">Loading leads...</div>
-                        </div>
-                    </div>
-                </Card>
-            )}
-
-            <DataTable
-                key={tableInstanceKey}
-                columns={orderedAndVisibleColumns}
-                data={pageData}
-                loading={loading}
-                pagingData={{ total: pageTotal, pageIndex, pageSize }}
-                onPaginationChange={(pi) => setPageIndex(pi)}
-                onSelectChange={(ps) => {
-                    setPageIndex(1)
-                    setPageSize(ps)
-                }}
-                onSort={({ key, order }) => setSort({ key, order })}
-                selectable
-                checkboxChecked={(row) => checkboxChecked(row)}
-                indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
-                onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
-                onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
-                className="card"
-            />
-
-            {!loading && pageTotal === 0 && (
-                <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No leads found</h3>
-                            <p className="text-gray-600 dark:text-gray-400 mt-1">
-                                {Object.values(filters).some(v => v !== null && v !== '') 
-                                    ? 'Try adjusting your filters to see more results.' 
-                                    : 'Get started by creating your first lead.'
-                                }
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="solid" onClick={() => setIsCreateOpen(true)}>
-                                Create lead
-                            </Button>
-                            <Button variant="twoTone" onClick={() => window.open('/import', '_blank')}>
-                                Import CSV
-                            </Button>
-                        </div>
-                    </div>
-                </Card>
-            )}
-
-            {/* Create Lead Dialog */}
-            <Dialog
-                isOpen={isCreateOpen}
-                onClose={() => {
-                    setIsCreateOpen(false)
-                    resetNewLead()
-                }}
-                width={800}
-            >
-                <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Create New Lead</h3>
-                    <Form>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormItem label="Lead Name" required>
-                                <Input
-                                    value={newLead.leadName}
-                                    onChange={(e) => setNewLead({ ...newLead, leadName: e.target.value })}
-                                    placeholder="Enter lead name"
-                                />
-                            </FormItem>
-                            <FormItem label="Contact Person">
-                                <Input
-                                    value={newLead.leadContact}
-                                    onChange={(e) => setNewLead({ ...newLead, leadContact: e.target.value })}
-                                    placeholder="Enter contact person"
-                                />
-                            </FormItem>
-                            <FormItem label="Title" required>
-                                <Input
-                                    value={newLead.title}
-                                    onChange={(e) => setNewLead({ ...newLead, title: e.target.value })}
-                                    placeholder="Enter title"
-                                />
-                            </FormItem>
-                            <FormItem label="Email">
-                                <Input
-                                    value={newLead.email}
-                                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-                                    placeholder="Enter email"
-                                />
-                            </FormItem>
-                            <FormItem label="Phone">
-                                <Input
-                                    value={newLead.phone}
-                                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
-                                    placeholder="Enter phone"
-                                />
-                            </FormItem>
-                            <FormItem label="Status" required>
-                                <Select
-                                    placeholder="Select status"
-                                    options={leadStatusOptions}
-                                    value={newLead.status}
-                                    onChange={(opt) => setNewLead({ ...newLead, status: opt })}
-                                />
-                            </FormItem>
-                            <FormItem label="Method of contact">
-                                <Select
-                                    placeholder="Select method"
-                                    options={methodOfContactOptions}
-                                    value={newLead.methodOfContact}
-                                    onChange={(opt) => setNewLead({ ...newLead, methodOfContact: opt })}
-                                />
-                            </FormItem>
-                            <FormItem label="Project market">
-                                <Select
-                                    placeholder="Select market"
-                                    options={projectMarketOptions}
-                                    value={newLead.projectMarket}
-                                    onChange={(opt) => setNewLead({ ...newLead, projectMarket: opt })}
-                                />
-                            </FormItem>
-                            <FormItem label="Lead conception">
-                                <Select
-                                    placeholder="Select conception"
-                                    options={leadConceptionOptions}
-                                    value={newLead.leadConception}
-                                    onChange={(opt) => setNewLead({ ...newLead, leadConception: opt })}
-                                />
-                            </FormItem>
-                            <FormItem label="Date last contacted">
-                                <DatePicker
-                                    value={newLead.dateLastContacted}
-                                    onChange={(date) => setNewLead({ ...newLead, dateLastContacted: date })}
-                                />
-                            </FormItem>
-                            <FormItem label="Responded">
-                                <Switcher
-                                    checked={newLead.responded}
-                                    onChange={(checked) => setNewLead({ ...newLead, responded: checked })}
-                                />
-                            </FormItem>
-                            <FormItem label="Notes" className="md:col-span-2">
-                                <Input
-                                    value={newLead.notes}
-                                    onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
-                                    placeholder="Enter notes"
-                                    textArea
-                                />
-                            </FormItem>
-                        </div>
-                        <div className="flex justify-end gap-2 mt-6">
-                            <Button
-                                variant="twoTone"
-                                onClick={() => {
-                                    setIsCreateOpen(false)
-                                    resetNewLead()
-                                }}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="solid"
-                                onClick={handleCreateLead}
-                                disabled={!newLead.leadName || !newLead.title || !newLead.status}
-                            >
-                                Create Lead
-                            </Button>
-                        </div>
-                    </Form>
-                </div>
-            </Dialog>
-
-            {/* Lead Detail Drawer */}
-            {selectedLead && (
-                <LeadDetail
-                    lead={selectedLead}
-                    onClose={() => setSelectedLeadId(null)}
-                />
-            )}
 
             {/* Confirmation Dialog */}
             {confirmDialog.isOpen && (
@@ -1653,5 +1187,6 @@ const LeadDetail = ({ lead, onClose }) => {
         </div>
     )
 }
+
 
 export default Home
