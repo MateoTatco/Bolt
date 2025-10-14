@@ -31,6 +31,9 @@ const Home = () => {
     // Debounce timer refs
     const searchDebounceRef = useRef(null)
     const dateDebounceRef = useRef(null)
+    
+    // Local search state for immediate UI updates
+    const [localSearchValue, setLocalSearchValue] = useState('')
 
     // Column visibility & order persistence
     const defaultColumnKeys = [
@@ -94,7 +97,6 @@ const Home = () => {
 
     // Helper function to show confirmation dialog
     const showConfirmDialog = (title, message, onConfirm, onCancel = null) => {
-        console.log('[Home] showConfirmDialog called with:', { title, message })
         setConfirmDialog({
             isOpen: true,
             title,
@@ -108,13 +110,12 @@ const Home = () => {
                 onCancel?.()
             }
         })
-        console.log('[Home] confirmDialog state set to open')
     }
 
-    // Debug dialog state changes
+    // Sync local search value with filters
     useEffect(() => {
-        console.log('[Home] confirmDialog state changed:', confirmDialog)
-    }, [confirmDialog])
+        setLocalSearchValue(filters.search || '')
+    }, [filters.search])
 
     // Sync state from URL query on first load
     useEffect(() => {
@@ -266,15 +267,12 @@ const Home = () => {
 
 
     const handleDeleteLead = async (leadId) => {
-        console.log('[Home] Delete lead requested for ID:', leadId)
         showConfirmDialog(
             'Delete Lead',
             'Are you sure you want to delete this lead? This action cannot be undone.',
             async () => {
                 try {
-                    console.log('[Home] Confirmed delete for lead ID:', leadId)
                     await deleteLead(leadId)
-                    console.log('[Home] Lead deleted successfully')
                 } catch (error) {
                     console.error('Error deleting lead:', error)
                 }
@@ -386,10 +384,7 @@ const Home = () => {
                                 size="sm" 
                                 variant={props.row.original.favorite ? "solid" : "twoTone"} 
                                 icon={<HiOutlineStar />} 
-                                onClick={() => {
-                                    console.log('[Home] Toggle favorite for lead ID:', props.row.original.id, 'Current favorite status:', props.row.original.favorite)
-                                    toggleFavorite(props.row.original.id)
-                                }}
+                                onClick={() => toggleFavorite(props.row.original.id)}
                                 className={props.row.original.favorite ? "text-yellow-500" : ""}
                             />
                         </Tooltip>
@@ -431,7 +426,6 @@ const Home = () => {
             e.preventDefault()
             // Open in new tab with the correct route
             window.open(`/leads/${leadId}`, '_blank')
-            console.log('[Home] opened lead in new tab', leadId)
         } else {
             navigate(`/leads/${leadId}`)
         }
@@ -492,7 +486,6 @@ const Home = () => {
     const [bulkStatus, setBulkStatus] = useState(null)
     const handleApplyBulkStatus = async () => {
         if (!bulkStatus?.value) return
-        console.log('[Home] bulk status apply', bulkStatus.value, Array.from(selectedIds))
         try {
             const ids = Array.from(selectedIds)
             for (const id of ids) {
@@ -504,7 +497,7 @@ const Home = () => {
             setSelectedIds(new Set())
             setBulkStatus(null)
         } catch (e) {
-            console.log('[Home] bulk status error', e)
+            console.error('Bulk status update error:', e)
         }
     }
     const handleBulkDelete = async () => {
@@ -520,7 +513,7 @@ const Home = () => {
                     }
                     setSelectedIds(new Set())
                 } catch (e) {
-                    console.log('[Home] bulk delete error', e)
+                    console.error('Bulk delete error:', e)
                 }
             }
         )
@@ -690,7 +683,6 @@ const Home = () => {
         setDatePreset(preset)
         setPageIndex(1)
         setFilters({ dateFrom: from, dateTo: to })
-        console.log('[Home] applyDatePreset', { preset, from, to })
     }
 
 
@@ -698,7 +690,6 @@ const Home = () => {
     const handleClearSort = () => {
         setSort({ key: '', order: '' })
         setTableInstanceKey((k) => k + 1)
-        console.log('[Home] clear sort - reset to default')
     }
 
     return (
@@ -714,16 +705,18 @@ const Home = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
                     <Input
                         placeholder="Search leads"
-                        value={filters.search}
+                        value={localSearchValue}
                         onChange={(e) => {
-                            // Debounce search input updates to reduce filter churn
                             const value = e.target.value
+                            // Update local state immediately for smooth typing
+                            setLocalSearchValue(value)
+                            
+                            // Debounce the actual filter application
                             if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
                             searchDebounceRef.current = setTimeout(() => {
-                            setPageIndex(1)
+                                setPageIndex(1)
                                 setFilters({ search: value })
-                                console.log('[Home] search updated', value)
-                            }, 250)
+                            }, 300)
                         }}
                     />
                     <Select
@@ -771,7 +764,6 @@ const Home = () => {
                                 dateFrom: from || null,
                                 dateTo: to || null,
                             })
-                                console.log('[Home] date range updated', { from, to })
                             }, 200)
                         }}
                     />
@@ -797,26 +789,23 @@ const Home = () => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
                         {['new','contacted','qualified','proposal','won','lost'].map((s) => (
-                            <Button key={s} size="sm" variant={filters.status?.value === s ? 'solid' : 'twoTone'} onClick={() => {
+                            <Button key={s} size="sm" variant={filters.status?.value === s ? 'solid' : 'twoTone'}                             onClick={() => {
                                 setFilters({ status: { value: s, label: s } })
                                 setPageIndex(1)
-                                console.log('[Home] quick status filter', s)
                             }}>{s}</Button>
                         ))}
                         {[
                             { v: true, label: 'responded' },
                             { v: false, label: 'no response' },
                         ].map((r) => (
-                            <Button key={String(r.v)} size="sm" variant={filters.responded?.value === r.v ? 'solid' : 'twoTone'} onClick={() => {
+                            <Button key={String(r.v)} size="sm" variant={filters.responded?.value === r.v ? 'solid' : 'twoTone'}                             onClick={() => {
                                 setFilters({ responded: { value: r.v, label: r.label } })
                                 setPageIndex(1)
-                                console.log('[Home] quick responded filter', r)
                             }}>{r.label}</Button>
                         ))}
                         <Button size="sm" onClick={() => {
                             setFilters({ status: null, responded: null })
                             setPageIndex(1)
-                            console.log('[Home] quick filters cleared')
                         }}>Clear</Button>
                     </div>
                 </div>
@@ -835,7 +824,6 @@ const Home = () => {
                                                 checked={visibleColumns[key] !== false}
                                                 onChange={(checked) => {
                                                     setVisibleColumns((prev) => ({ ...prev, [key]: Boolean(checked) }))
-                                                    console.log('[Home] column visibility', key, checked)
                                                 }}
                                             />
                                             <span className="capitalize">{key}</span>
@@ -859,7 +847,6 @@ const Home = () => {
                                                         const next = [...columnOrder]
                                                         ;[next[idx-1], next[idx]] = [next[idx], next[idx-1]]
                                                         setColumnOrder(next)
-                                                        console.log('[Home] column move up', key)
                                                     }}
                                                 >↑</Button>
                                                 <Button 
@@ -871,7 +858,6 @@ const Home = () => {
                                                         const next = [...columnOrder]
                                                         ;[next[idx+1], next[idx]] = [next[idx], next[idx+1]]
                                                         setColumnOrder(next)
-                                                        console.log('[Home] column move down', key)
                                                     }}
                                                 >↓</Button>
                                             </div>
