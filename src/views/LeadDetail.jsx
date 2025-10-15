@@ -112,12 +112,12 @@ const LeadDetail = () => {
         setActiveTab('settings')
     }
 
-    const handleSaveChanges = () => {
-        // Here you would typically update the lead data in your store
-        // For now, we'll just show a success message
-        setShowAlert(true)
-        // TODO: Implement actual save functionality to update the lead data
-        // The content will automatically update in the overview section since it uses editedContent
+    const handleSaveChanges = async () => {
+        try {
+            await updateLead(lead.id, { ...lead, notes: editedContent })
+            setOriginalContent(editedContent)
+            setShowAlert(true)
+        } catch (e) {}
     }
 
     const handleCancelEdit = () => {

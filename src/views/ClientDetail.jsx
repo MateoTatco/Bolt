@@ -106,12 +106,13 @@ const ClientDetail = () => {
         setActiveTab('settings')
     }
 
-    const handleSaveChanges = () => {
-        // Here you would typically update the client data in your store
-        // For now, we'll just show a success message
-        setShowAlert(true)
-        // TODO: Implement actual save functionality to update the client data
-        // The content will automatically update in the overview section since it uses editedContent
+    const handleSaveChanges = async () => {
+        try {
+            // Persist the HTML content as notes
+            await updateClient(client.id, { ...client, notes: editedContent })
+            setOriginalContent(editedContent)
+            setShowAlert(true)
+        } catch (e) {}
     }
 
     const handleCancelEdit = () => {
@@ -314,6 +315,8 @@ const ClientDetail = () => {
                                                     state: infoForm.state,
                                                     zip: infoForm.zip,
                                                     tags: infoForm.tags,
+                                                    // Preserve existing notes
+                                                    notes: client.notes ?? editedContent,
                                                 }
                                                 await updateClient(client.id, payload)
                                                 setIsInfoEditing(false)

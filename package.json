@@ -25,6 +25,7 @@
     "@tanstack/match-sorter-utils": "^8.19.4",
     "@tanstack/react-table": "^8.20.5",
     "@tanstack/react-virtual": "^3.11.2",
+    "@tiptap/extension-image": "^2.10.4",
     "@tiptap/pm": "^2.10.4",
     "@tiptap/react": "^2.10.4",
     "@tiptap/starter-kit": "^2.10.4",

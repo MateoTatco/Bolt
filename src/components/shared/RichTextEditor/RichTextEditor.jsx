@@ -7,6 +7,7 @@ import ToolButtonOrderedList from './toolButtons/ToolButtonOrderedList'
 import ToolButtonCodeBlock from './toolButtons/ToolButtonCodeBlock'
 import ToolButtonBlockquote from './toolButtons/ToolButtonBlockquote'
 import ToolButtonHorizontalRule from './toolButtons/ToolButtonHorizontalRule'
+import ToolButtonImage from './toolButtons/ToolButtonImage'
 import ToolButtonHeading from './toolButtons/ToolButtonHeading'
 import ToolButtonParagraph from './toolButtons/ToolButtonParagraph'
 import ToolButtonUndo from './toolButtons/ToolButtonUndo'
@@ -14,6 +15,7 @@ import ToolButtonRedo from './toolButtons/ToolButtonRedo'
 import ToolButtonBulletList from './toolButtons/ToolButtonBulletList'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import Image from '@tiptap/extension-image'
 
 const RichTextEditor = (props) => {
     const {
@@ -39,6 +41,7 @@ const RichTextEditor = (props) => {
                           keepMarks: true,
                       },
                   }),
+                  Image,
               ],
               editorProps: {
                   attributes: {
@@ -97,6 +100,7 @@ const RichTextEditor = (props) => {
                         <ToolButtonOrderedList editor={editor} />
                         <ToolButtonCodeBlock editor={editor} />
                         <ToolButtonHorizontalRule editor={editor} />
+                        <ToolButtonImage editor={editor} />
                     </>
                 )}
             </div>
