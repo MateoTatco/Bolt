@@ -41,10 +41,10 @@ const Home = () => {
     // Local search state for immediate UI updates
     const [localSearchValue, setLocalSearchValue] = useState('')
 
-    // Column visibility & order persistence
-    const defaultColumnKeys = [
+    // Column visibility & order persistence (per entity type)
+    const defaultLeadKeys = [
         'leadName',
-        'title',
+        'leadContact',
         'email',
         'phone',
         'methodOfContact',
@@ -54,29 +54,70 @@ const Home = () => {
         'responded',
         'actions',
     ]
+    const defaultClientKeys = [
+        'clientName',
+        'clientNumber',
+        'address',
+        'city',
+        'state',
+        'zip',
+        'tags',
+        'actions',
+    ]
+
+    const currentType = (filters.type && filters.type.value) || 'lead'
+    const storageSuffix = currentType === 'client' ? 'client' : 'lead'
+    const getDefaultKeys = () => (currentType === 'client' ? defaultClientKeys : defaultLeadKeys)
+
     const [columnOrder, setColumnOrder] = useState(() => {
         try {
-            const raw = localStorage.getItem('crmColumnOrder')
+            const raw = localStorage.getItem(`crmColumnOrder_${storageSuffix}`)
             const parsed = raw ? JSON.parse(raw) : null
-            return Array.isArray(parsed) && parsed.length ? parsed : defaultColumnKeys
+            const def = getDefaultKeys()
+            return Array.isArray(parsed) && parsed.length ? parsed : def
         } catch {
-            return defaultColumnKeys
+            return getDefaultKeys()
         }
     })
     const [visibleColumns, setVisibleColumns] = useState(() => {
         try {
-            const raw = localStorage.getItem('crmVisibleColumns')
+            const raw = localStorage.getItem(`crmVisibleColumns_${storageSuffix}`)
             const parsed = raw ? JSON.parse(raw) : null
             if (parsed && typeof parsed === 'object') return parsed
         } catch {}
-        return defaultColumnKeys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+        return getDefaultKeys().reduce((acc, key) => ({ ...acc, [key]: true }), {})
     })
+
+    // When type changes, reload persisted or defaults for that type
     useEffect(() => {
         try {
-            localStorage.setItem('crmVisibleColumns', JSON.stringify(visibleColumns))
-            localStorage.setItem('crmColumnOrder', JSON.stringify(columnOrder))
+            const rawOrder = localStorage.getItem(`crmColumnOrder_${storageSuffix}`)
+            const parsedOrder = rawOrder ? JSON.parse(rawOrder) : null
+            const def = getDefaultKeys()
+            setColumnOrder(Array.isArray(parsedOrder) && parsedOrder.length ? parsedOrder : def)
+
+            const rawVisible = localStorage.getItem(`crmVisibleColumns_${storageSuffix}`)
+            const parsedVisible = rawVisible ? JSON.parse(rawVisible) : null
+            setVisibleColumns(
+                parsedVisible && typeof parsedVisible === 'object'
+                    ? parsedVisible
+                    : def.reduce((acc, key) => ({ ...acc, [key]: true }), {}),
+            )
+        } catch {
+            const def = getDefaultKeys()
+            setColumnOrder(def)
+            setVisibleColumns(def.reduce((acc, key) => ({ ...acc, [key]: true }), {}))
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storageSuffix])
+
+    // Persist per type
+    useEffect(() => {
+        try {
+            localStorage.setItem(`crmVisibleColumns_${storageSuffix}`, JSON.stringify(visibleColumns))
+            localStorage.setItem(`crmColumnOrder_${storageSuffix}`, JSON.stringify(columnOrder))
         } catch {}
-    }, [visibleColumns, columnOrder])
+    }, [visibleColumns, columnOrder, storageSuffix])
 
     // Date presets
     const datePresetOptions = [
@@ -221,10 +262,9 @@ const Home = () => {
                     if (!hay.includes(term)) return false
                 }
                 
-                // Type filter
-                if (type && type.value) {
-                    if (item.entityType !== type.value) return false
-                }
+                // Type filter (default to 'lead' if not set)
+                const currentType = type?.value || 'lead'
+                if (item.entityType !== currentType) return false
                 
                 // Lead-specific filters
                 if (item.entityType === 'lead') {
@@ -325,223 +365,159 @@ const Home = () => {
         )
     }
 
-    const allColumns = useMemo(
+    // Dedicated column sets per entity type
+    const leadColumns = useMemo(
         () => [
             {
-                header: 'Type',
-                accessorKey: 'entityType',
-                size: 100,
-                meta: { key: 'entityType' },
-                cell: (props) => {
-                    const type = props.row.original.entityType
-                    return (
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            type === 'lead' 
-                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
-                                : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        }`}>
-                            {type === 'lead' ? '👤 Lead' : '🏢 Client'}
-                        </span>
-                    )
-                },
-            },
-            {
-                header: 'Name',
-                accessorKey: 'name',
+                header: 'Lead Name',
+                accessorKey: 'leadName',
                 size: 220,
-                meta: { key: 'name' },
+                meta: { key: 'leadName' },
                 cell: (props) => {
                     const item = props.row.original
-                    const name = item.entityType === 'lead' ? item.leadName : item.clientName
                     return (
-                    <button 
+                        <button
                             onClick={(e) => handleLeadNameClick(e, item.id)}
-                        className="font-semibold text-left hover:text-primary transition-colors"
-                    >
-                            {name}
-                    </button>
+                            className="font-semibold text-left hover:text-primary transition-colors"
+                        >
+                            {item.leadName}
+                        </button>
                     )
                 },
             },
-            { 
-                header: 'Title/Type', 
-                accessorKey: 'title', 
-                size: 180, 
-                meta: { key: 'title' },
-                cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        return <span>{item.title || '-'}</span>
-                    } else {
-                        return <span>{item.clientType || '-'}</span>
-                    }
-                }
-            },
-            { 
-                header: 'Email/Address', 
-                accessorKey: 'email', 
-                size: 220, 
-                meta: { key: 'email' },
-                cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        return <span>{item.email || '-'}</span>
-                    } else {
-                        return <span>{item.address || '-'}</span>
-                    }
-                }
-            },
-            { 
-                header: 'Phone/City', 
-                accessorKey: 'phone', 
-                size: 160, 
-                meta: { key: 'phone' },
-                cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        return <span>{item.phone || '-'}</span>
-                    } else {
-                        return <span>{item.city || '-'}</span>
-                    }
-                }
-            },
             {
-                header: 'Method/State',
-                accessorKey: 'methodOfContact',
-                size: 140,
-                meta: { key: 'methodOfContact' },
+                header: 'Contact',
+                accessorKey: 'leadContact',
+                size: 180,
+                meta: { key: 'leadContact' },
+            },
+            { header: 'Email', accessorKey: 'email', size: 220, meta: { key: 'email' } },
+            { header: 'Phone', accessorKey: 'phone', size: 160, meta: { key: 'phone' } },
+            {
+                header: 'Method', accessorKey: 'methodOfContact', size: 140, meta: { key: 'methodOfContact' },
                 cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        const val = item.methodOfContact
+                    const val = props.row.original.methodOfContact
                     const opt = methodOfContactOptions.find((o) => o.value === val)
                     return <span>{opt ? opt.label : val}</span>
-                    } else {
-                        return <span>{item.state || '-'}</span>
-                    }
                 },
             },
             {
-                header: 'Market/ZIP',
-                accessorKey: 'projectMarket',
-                size: 150,
-                meta: { key: 'projectMarket' },
+                header: 'Market', accessorKey: 'projectMarket', size: 150, meta: { key: 'projectMarket' },
                 cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        const val = item.projectMarket
+                    const val = props.row.original.projectMarket
                     const opt = projectMarketOptions.find((o) => o.value === val)
                     return <span>{opt ? opt.label : val}</span>
-                    } else {
-                        return <span>{item.zip || '-'}</span>
-                    }
                 },
             },
             {
-                header: 'Last Contacted/Notes',
-                accessorKey: 'dateLastContacted',
-                size: 150,
-                meta: { key: 'dateLastContacted' },
+                header: 'Last Contacted', accessorKey: 'dateLastContacted', size: 150, meta: { key: 'dateLastContacted' },
                 cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        const date = item.dateLastContacted
+                    const date = props.row.original.dateLastContacted
                     if (!date) return <span>-</span>
                     const dateStr = date instanceof Date ? date.toISOString().slice(0,10) : date
                     return <span>{dateStr}</span>
-                    } else {
-                        return <span>{item.notes ? item.notes.substring(0, 20) + (item.notes.length > 20 ? '...' : '') : '-'}</span>
-                    }
                 },
             },
             {
-                header: 'Status/Tags',
-                accessorKey: 'status',
-                size: 140,
-                meta: { key: 'status' },
+                header: 'Status', accessorKey: 'status', size: 140, meta: { key: 'status' },
                 cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        const val = item.status
+                    const val = props.row.original.status
                     const opt = leadStatusOptions.find((o) => o.value === val)
                     return <Tag className={statusColor(val)}>{opt ? opt.label : val}</Tag>
-                    } else {
-                        return <span>{item.tags || '-'}</span>
-                    }
                 },
             },
             {
-                header: 'Responded/Client #',
-                accessorKey: 'responded',
-                size: 120,
-                meta: { key: 'responded' },
+                header: 'Responded', accessorKey: 'responded', size: 120, meta: { key: 'responded' },
                 cell: (props) => {
-                    const item = props.row.original
-                    if (item.entityType === 'lead') {
-                        return (
-                            <span className={item.responded ? 'text-emerald-600' : 'text-gray-500'}>
-                                {item.responded ? 'Yes' : 'No'}
-                    </span>
-                        )
-                    } else {
-                        return <span>{item.clientNumber || '-'}</span>
-                    }
+                    const v = props.row.original.responded
+                    return <span className={v ? 'text-emerald-600' : 'text-gray-500'}>{v ? 'Yes' : 'No'}</span>
                 },
             },
             {
-                header: 'Actions',
-                id: 'actions',
-                size: 200,
-                meta: { key: 'actions' },
+                header: 'Actions', id: 'actions', size: 200, meta: { key: 'actions' },
                 cell: (props) => {
-                    const item = props.row.original
-                    const isLead = item.entityType === 'lead'
-                    const detailPath = isLead ? `/leads/${item.id}` : `/clients/${item.id}`
-                    const editPath = isLead ? `/leads/${item.id}?tab=settings` : `/clients/${item.id}?tab=settings`
-                    
+                    const item = { ...props.row.original, entityType: 'lead' }
+                    const detailPath = `/leads/${item.id}`
+                    const editPath = `/leads/${item.id}?tab=settings`
                     return (
-                    <div className="flex items-center gap-2">
-                        <Tooltip title="View">
-                                <Button 
-                                    size="sm" 
-                                    variant="twoTone" 
-                                    icon={<HiOutlineEye />} 
-                                    onClick={() => navigate(detailPath)} 
-                                />
-                        </Tooltip>
-                        <Tooltip title="Edit">
-                                <Button 
-                                    size="sm" 
-                                    variant="twoTone" 
-                                    icon={<HiOutlinePencil />} 
-                                    onClick={() => navigate(editPath)} 
-                                />
-                        </Tooltip>
-                        <Tooltip title={item.favorite ? "Remove from favorites" : "Add to favorites"}>
-                                <Button 
-                                    size="sm" 
-                                    variant={item.favorite ? "solid" : "twoTone"} 
-                                    icon={<HiOutlineStar />} 
-                                    onClick={() => toggleFavorite(item.id, item.entityType)}
-                                    className={item.favorite ? "text-yellow-500" : ""}
-                                />
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                            <Button 
-                                size="sm" 
-                                variant="twoTone" 
-                                icon={<HiOutlineTrash />} 
-                                    onClick={() => isLead ? handleDeleteLead(item.id) : handleDeleteClient(item.id)}
-                                className="text-red-600 hover:text-red-700"
-                            />
-                        </Tooltip>
-                    </div>
+                        <div className="flex items-center gap-2">
+                            <Tooltip title="View">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
+                            </Tooltip>
+                            <Tooltip title="Edit">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
+                            </Tooltip>
+                            <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
+                                <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'lead')} className={item.favorite ? 'text-yellow-500' : ''} />
+                            </Tooltip>
+                            <Tooltip title="Delete">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteLead(item.id)} className="text-red-600 hover:text-red-700" />
+                            </Tooltip>
+                        </div>
                     )
                 },
             },
         ],
-        [toggleFavorite, handleDeleteLead, handleDeleteClient]
+        [navigate, toggleFavorite]
     )
+
+    const clientColumns = useMemo(
+        () => [
+            {
+                header: 'Client Name', accessorKey: 'clientName', size: 220, meta: { key: 'clientName' },
+                cell: (props) => {
+                    const item = props.row.original
+                    const onClick = (e) => {
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault()
+                            window.open(`/clients/${item.id}`, '_blank')
+                        } else {
+                            navigate(`/clients/${item.id}`)
+                        }
+                    }
+                    return (
+                        <button onClick={onClick} className="font-semibold text-left hover:text-primary transition-colors">{item.clientName}</button>
+                    )
+                },
+            },
+            { header: 'Client #', accessorKey: 'clientNumber', size: 140, meta: { key: 'clientNumber' } },
+            { header: 'Address', accessorKey: 'address', size: 220, meta: { key: 'address' } },
+            { header: 'City', accessorKey: 'city', size: 140, meta: { key: 'city' } },
+            { header: 'State', accessorKey: 'state', size: 100, meta: { key: 'state' } },
+            { header: 'ZIP', accessorKey: 'zip', size: 100, meta: { key: 'zip' } },
+            { header: 'Tags', accessorKey: 'tags', size: 180, meta: { key: 'tags' } },
+            {
+                header: 'Actions', id: 'actions', size: 200, meta: { key: 'actions' },
+                cell: (props) => {
+                    const item = { ...props.row.original, entityType: 'client' }
+                    const detailPath = `/clients/${item.id}`
+                    const editPath = `/clients/${item.id}?tab=settings`
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Tooltip title="View">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
+                            </Tooltip>
+                            <Tooltip title="Edit">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
+                            </Tooltip>
+                            <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
+                                <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'client')} className={item.favorite ? 'text-yellow-500' : ''} />
+                            </Tooltip>
+                            <Tooltip title="Delete">
+                                <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteClient(item.id)} className="text-red-600 hover:text-red-700" />
+                            </Tooltip>
+                        </div>
+                    )
+                },
+            },
+        ],
+        [navigate, toggleFavorite]
+    )
+
+    const allColumns = useMemo(() => {
+        const currentType = filters.type?.value || 'lead'
+        return currentType === 'client' ? clientColumns : leadColumns
+    }, [filters.type, clientColumns, leadColumns])
 
     const orderedAndVisibleColumns = useMemo(() => {
         const byKey = {}
@@ -1012,9 +988,14 @@ const Home = () => {
                         {/* Column visibility & order controls */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Card className="p-4">
-                                <h6 className="font-semibold mb-3">Column Visibility</h6>
+                                <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                    Column Visibility
+                                    <Tag className="text-xs">
+                                        {currentType === 'client' ? 'Client columns' : 'Lead columns'}
+                                    </Tag>
+                                </h6>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {defaultColumnKeys.map((key) => (
+                                    {(currentType === 'client' ? defaultClientKeys : defaultLeadKeys).map((key) => (
                                         <label key={key} className="flex items-center gap-2 text-sm">
                                             <Checkbox
                                                 checked={visibleColumns[key] !== false}
@@ -1028,7 +1009,12 @@ const Home = () => {
                             </div>
                             </Card>
                             <Card className="p-4">
-                                <h6 className="font-semibold mb-3">Column Order</h6>
+                                <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                    Column Order
+                                    <Tag className="text-xs">
+                                        {currentType === 'client' ? 'Client columns' : 'Lead columns'}
+                                    </Tag>
+                                </h6>
                                 <div className="space-y-2 max-h-48 overflow-y-auto">
                                     {columnOrder.map((key, idx) => (
                                         <div key={key} className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-gray-800 rounded">
