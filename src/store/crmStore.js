@@ -139,6 +139,35 @@ export const useCrmStore = create((set, get) => ({
         }
     },
 
+    // Link lead to clients (replace full set)
+    linkLeadToClients: async (leadId, clientIds) => {
+        const prevClientIds = (get().leads.find((l) => l.id === leadId)?.clientIds) || []
+        // Update lead clientIds and sync client leadIds locally
+        set((state) => {
+            const leads = state.leads.map((l) => (l.id === leadId ? { ...l, clientIds: [...clientIds] } : l))
+            const clients = state.clients.map((c) => {
+                const hasLink = (clientIds || []).includes(c.id)
+                const nextLeadIds = new Set(c.leadIds || [])
+                if (hasLink) nextLeadIds.add(leadId)
+                else nextLeadIds.delete(leadId)
+                return { ...c, leadIds: Array.from(nextLeadIds) }
+            })
+            return { leads, clients }
+        })
+        // Persist lead and affected clients
+        try {
+            const targetLead = get().leads.find((l) => l.id === leadId)
+            await CrmService.updateLead(leadId, targetLead)
+            const affectedIds = Array.from(new Set([...(prevClientIds || []), ...(clientIds || [])]))
+            for (const cid of affectedIds) {
+                const client = get().clients.find((c) => c.id === cid)
+                if (client) {
+                    await CrmService.updateClient(cid, client)
+                }
+            }
+        } catch {}
+    },
+
     // Delete lead
     deleteLead: async (id) => {
         set({ loading: true, error: null })

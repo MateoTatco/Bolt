@@ -11,6 +11,7 @@ const ClientDetail = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const { clients, loadClients, deleteClient } = useCrmStore()
+    const leads = useCrmStore((s) => s.leads)
     const updateClient = useCrmStore((s) => s.updateClient)
     const loading = useCrmStore((s) => s.loading)
     
@@ -407,6 +408,27 @@ const ClientDetail = () => {
                                     </div>
                                 </div>
                             )}
+                        </Card>
+                        <Card className="p-4">
+                            <h3 className="text-lg font-semibold mb-3">Linked Leads</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {(client.leadIds || []).length === 0 && (
+                                    <span className="text-sm text-gray-500">No linked leads</span>
+                                )}
+                                {(client.leadIds || []).map((id) => {
+                                    const lead = leads.find((l)=>l.id===id)
+                                    if (!lead) return null
+                                    return (
+                                        <button
+                                            key={id}
+                                            className="text-sm px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                                            onClick={() => navigate(`/leads/${id}`)}
+                                        >
+                                            {lead.leadName}
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         </Card>
                     </div>
                         </div>

@@ -34,6 +34,9 @@ const LeadDetail = () => {
         methodOfContact: '',
         dateLastContacted: null,
     })
+    const clients = useCrmStore((s) => s.clients)
+    const linkLeadToClients = useCrmStore((s) => s.linkLeadToClients)
+    const [linkedClientIds, setLinkedClientIds] = useState([])
     const [filters, setFilters] = useState({
         dateFrom: null,
         dateTo: null,
@@ -104,6 +107,7 @@ const LeadDetail = () => {
                 methodOfContact: lead.methodOfContact || '',
                 dateLastContacted: lead.dateLastContacted ? new Date(lead.dateLastContacted) : null,
             })
+            setLinkedClientIds(Array.isArray(lead.clientIds) ? lead.clientIds : [])
         }
     }, [lead])
 
@@ -499,6 +503,30 @@ const LeadDetail = () => {
                                         }}
                                         editorContentClass="min-h-[300px]"
                                     />
+                                </div>
+                                <div>
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                        Linked Clients
+                                    </h4>
+                                    <Select
+                                        isMulti
+                                        placeholder="Select clients"
+                                        options={clients.map((c)=>({ value: c.id, label: c.clientName }))}
+                                        value={linkedClientIds.map((id)=>{
+                                            const c = clients.find((x)=>x.id===id)
+                                            return c ? { value: c.id, label: c.clientName } : null
+                                        }).filter(Boolean)}
+                                        onChange={(opts)=>{
+                                            const ids = Array.isArray(opts) ? opts.map((o)=>o.value) : []
+                                            setLinkedClientIds(ids)
+                                        }}
+                                    />
+                                    <div className="mt-3">
+                                        <Button size="sm" variant="twoTone" onClick={async()=>{
+                                            await linkLeadToClients(lead.id, linkedClientIds)
+                                            setShowAlert(true)
+                                        }}>Save Links</Button>
+                                    </div>
                                 </div>
                                 
                                 <div>

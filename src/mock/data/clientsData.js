@@ -12,7 +12,8 @@ export const clientsData = [
         notes: 'Large enterprise client with multiple projects. Primary contact is John Smith.',
         favorite: false,
         createdAt: '2024-01-15',
-        updatedAt: '2024-01-15'
+        updatedAt: '2024-01-15',
+        leadIds: []
     },
     {
         id: 2,
@@ -27,7 +28,8 @@ export const clientsData = [
         notes: 'Fast-growing startup in the tech sector. Very responsive to communications.',
         favorite: false,
         createdAt: '2024-02-10',
-        updatedAt: '2024-02-10'
+        updatedAt: '2024-02-10',
+        leadIds: []
     },
     {
         id: 3,
@@ -42,6 +44,7 @@ export const clientsData = [
         notes: 'Environmental nonprofit organization. Budget-conscious but committed to quality.',
         favorite: false,
         createdAt: '2024-03-05',
-        updatedAt: '2024-03-05'
+        updatedAt: '2024-03-05',
+        leadIds: []
     }
 ]
