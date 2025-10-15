@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router'
-import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert } from '@/components/ui'
+import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert, Switcher } from '@/components/ui'
 import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
@@ -20,6 +20,20 @@ const LeadDetail = () => {
     const [editedContent, setEditedContent] = useState('')
     const [showAlert, setShowAlert] = useState(false)
     const [originalContent, setOriginalContent] = useState('')
+    const updateLead = useCrmStore((s) => s.updateLead)
+    const [isInfoEditing, setIsInfoEditing] = useState(false)
+    const [infoForm, setInfoForm] = useState({
+        leadName: '',
+        leadContact: '',
+        title: '',
+        email: '',
+        phone: '',
+        projectMarket: '',
+        status: '',
+        responded: false,
+        methodOfContact: '',
+        dateLastContacted: null,
+    })
     const [filters, setFilters] = useState({
         dateFrom: null,
         dateTo: null,
@@ -78,6 +92,18 @@ const LeadDetail = () => {
             const content = lead.notes || defaultContent
             setEditedContent(content)
             setOriginalContent(content)
+            setInfoForm({
+                leadName: lead.leadName || '',
+                leadContact: lead.leadContact || '',
+                title: lead.title || '',
+                email: lead.email || '',
+                phone: lead.phone || '',
+                projectMarket: lead.projectMarket || '',
+                status: lead.status || '',
+                responded: Boolean(lead.responded),
+                methodOfContact: lead.methodOfContact || '',
+                dateLastContacted: lead.dateLastContacted ? new Date(lead.dateLastContacted) : null,
+            })
         }
     }, [lead])
 
@@ -261,111 +287,156 @@ const LeadDetail = () => {
                                 </Card>
                             </div>
 
-                            {/* Client Information & Schedule */}
+                            {/* Client Information (editable) */}
                             <div className="space-y-4">
-                                {/* Client Information */}
                                 <Card className="p-4">
-                                    <h3 className="text-lg font-semibold mb-3">Client Information</h3>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Company</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{lead.leadName}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Contact Person</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{lead.leadContact || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Title</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{lead.title}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Email</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{lead.email || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Phone</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{lead.phone || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Market</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">
-                                                {projectMarketOptions.find(opt => opt.value === lead.projectMarket)?.label || lead.projectMarket || 'N/A'}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Status</label>
-                                            <Tag className={statusColor(lead.status)}>
-                                                {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
-                                            </Tag>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Responded</label>
-                                            <p className={`font-medium text-sm ${lead.responded ? 'text-green-600' : 'text-gray-500'}`}>
-                                                {lead.responded ? 'Yes' : 'No'}
-                                            </p>
-                                        </div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-lg font-semibold">Client Information</h3>
+                                        {!isInfoEditing ? (
+                                            <Button size="sm" variant="twoTone" onClick={() => setIsInfoEditing(true)}>Edit</Button>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <Button size="sm" variant="plain" onClick={() => {
+                                                    setIsInfoEditing(false)
+                                                    setInfoForm({
+                                                        leadName: lead.leadName || '',
+                    leadContact: lead.leadContact || '',
+                    title: lead.title || '',
+                    email: lead.email || '',
+                    phone: lead.phone || '',
+                    projectMarket: lead.projectMarket || '',
+                    status: lead.status || '',
+                    responded: Boolean(lead.responded),
+                    methodOfContact: lead.methodOfContact || '',
+                    dateLastContacted: lead.dateLastContacted ? new Date(lead.dateLastContacted) : null,
+                                                    })
+                                                }}>Cancel</Button>
+                                                <Button size="sm" variant="solid" onClick={async () => {
+                                                    const payload = {
+                                                        ...lead,
+                                                        leadName: infoForm.leadName,
+                                                        leadContact: infoForm.leadContact,
+                                                        title: infoForm.title,
+                                                        email: infoForm.email,
+                                                        phone: infoForm.phone,
+                                                        projectMarket: infoForm.projectMarket,
+                                                        status: infoForm.status,
+                                                        responded: infoForm.responded,
+                                                        methodOfContact: infoForm.methodOfContact,
+                                                        dateLastContacted: infoForm.dateLastContacted ? infoForm.dateLastContacted.toISOString().slice(0,10) : null,
+                                                    }
+                                                    await updateLead(lead.id, payload)
+                                                    setIsInfoEditing(false)
+                                                    setShowAlert(true)
+                                                }}>Save</Button>
+                                            </div>
+                                        )}
                                     </div>
-                                </Card>
-
-                                {/* Schedule */}
-                                <Card className="p-4">
-                                    <h3 className="text-lg font-semibold mb-3">Schedule</h3>
-                                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Date Range
-                                            </label>
-                                            <DatePicker.DatePickerRange
-                                                placeholder={['From', 'To']}
-                                                value={filters.dateFrom && filters.dateTo ? [filters.dateFrom, filters.dateTo] : null}
-                                                onChange={(vals) => {
-                                                    const [from, to] = vals || []
-                                                    setFilters({ ...filters, dateFrom: from, dateTo: to })
-                                                }}
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Status Filter
-                                            </label>
-                                            <Select
-                                                placeholder="All Statuses"
-                                                isClearable
-                                                options={leadStatusOptions}
-                                                value={filters.status}
-                                                onChange={(opt) => setFilters({ ...filters, status: opt })}
-                                            />
-                                        </div>
-
-                                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2 text-sm">Upcoming Events</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Follow-up Call</p>
-                                                        <p className="text-xs text-gray-500">Tomorrow, 2:00 PM</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Proposal Review</p>
-                                                        <p className="text-xs text-gray-500">Friday, 10:00 AM</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Contract Discussion</p>
-                                                        <p className="text-xs text-gray-500">Next Monday, 3:00 PM</p>
-                                                    </div>
-                                                </div>
+                                    {!isInfoEditing ? (
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Company</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.leadName}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Contact Person</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.leadContact || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Title</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.title || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Email</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.email || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Phone</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.phone || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Market</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{projectMarketOptions.find(opt => opt.value === lead.projectMarket)?.label || lead.projectMarket || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Status</label>
+                                                <Tag className={statusColor(lead.status)}>
+                                                    {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
+                                                </Tag>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Responded</label>
+                                                <p className={`font-medium text-sm ${lead.responded ? 'text-green-600' : 'text-gray-500'}`}>{lead.responded ? 'Yes' : 'No'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Method</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{methodOfContactOptions.find(o=>o.value===lead.methodOfContact)?.label || lead.methodOfContact || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Last Contacted</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.dateLastContacted || 'N/A'}</p>
                                             </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <div>
+                                                <label className="text-sm font-medium">Company</label>
+                                                <Input value={infoForm.leadName} onChange={(e)=>setInfoForm({...infoForm, leadName: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Contact Person</label>
+                                                <Input value={infoForm.leadContact} onChange={(e)=>setInfoForm({...infoForm, leadContact: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Title</label>
+                                                <Input value={infoForm.title} onChange={(e)=>setInfoForm({...infoForm, title: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Email</label>
+                                                <Input value={infoForm.email} onChange={(e)=>setInfoForm({...infoForm, email: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Phone</label>
+                                                <Input value={infoForm.phone} onChange={(e)=>setInfoForm({...infoForm, phone: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Market</label>
+                                                <Select value={infoForm.projectMarket ? {value: infoForm.projectMarket, label: projectMarketOptions.find(o=>o.value===infoForm.projectMarket)?.label || infoForm.projectMarket } : null}
+                                                    options={projectMarketOptions}
+                                                    onChange={(opt)=>setInfoForm({...infoForm, projectMarket: opt?.value || ''})}
+                                                    isClearable
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Status</label>
+                                                <Select value={infoForm.status ? {value: infoForm.status, label: leadStatusOptions.find(o=>o.value===infoForm.status)?.label || infoForm.status } : null}
+                                                    options={leadStatusOptions}
+                                                    onChange={(opt)=>setInfoForm({...infoForm, status: opt?.value || ''})}
+                                                    isClearable
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Responded</label>
+                                                <Switcher checked={infoForm.responded} onChange={(val)=>setInfoForm({...infoForm, responded: Boolean(val)})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Method</label>
+                                                <Select value={infoForm.methodOfContact ? {value: infoForm.methodOfContact, label: methodOfContactOptions.find(o=>o.value===infoForm.methodOfContact)?.label || infoForm.methodOfContact } : null}
+                                                    options={methodOfContactOptions}
+                                                    onChange={(opt)=>setInfoForm({...infoForm, methodOfContact: opt?.value || ''})}
+                                                    isClearable
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Last Contacted</label>
+                                                <DatePicker
+                                                    value={infoForm.dateLastContacted}
+                                                    onChange={(d)=>setInfoForm({...infoForm, dateLastContacted: d || null})}
+                                                    placeholder="Select date"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </Card>
                             </div>
                         </div>

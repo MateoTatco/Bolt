@@ -11,6 +11,7 @@ const ClientDetail = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const { clients, loadClients, deleteClient } = useCrmStore()
+    const updateClient = useCrmStore((s) => s.updateClient)
     const loading = useCrmStore((s) => s.loading)
     
     const [activeTab, setActiveTab] = useState('overview')
@@ -22,6 +23,17 @@ const ClientDetail = () => {
         dateFrom: null,
         dateTo: null,
         status: null
+    })
+    const [isInfoEditing, setIsInfoEditing] = useState(false)
+    const [infoForm, setInfoForm] = useState({
+        clientName: '',
+        clientNumber: '',
+        clientType: '',
+        address: '',
+        city: '',
+        state: '',
+        zip: '',
+        tags: ''
     })
 
     const client = clients.find(c => c.id === parseInt(clientId))
@@ -76,6 +88,16 @@ const ClientDetail = () => {
             const content = client.notes || defaultContent
             setEditedContent(content)
             setOriginalContent(content)
+            setInfoForm({
+                clientName: client.clientName || '',
+                clientNumber: client.clientNumber || '',
+                clientType: client.clientType || '',
+                address: client.address || '',
+                city: client.city || '',
+                state: client.state || '',
+                zip: client.zip || '',
+                tags: client.tags || ''
+            })
         }
     }, [client])
 
@@ -258,111 +280,132 @@ const ClientDetail = () => {
                                 </Card>
                             </div>
 
-                            {/* Client Information & Schedule */}
-                            <div className="space-y-4">
-                                {/* Client Information */}
-                                <Card className="p-4">
-                                    <h3 className="text-lg font-semibold mb-3">Client Information</h3>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Company</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.clientName}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Client Number</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.clientNumber}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Type</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.clientType || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Address</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.address || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">City</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.city || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">State</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.state || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">ZIP</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.zip || 'N/A'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-sm font-medium text-gray-500">Tags</label>
-                                            <p className="text-gray-900 dark:text-white text-sm">{client.tags || 'N/A'}</p>
-                                        </div>
+                    {/* Client Information (editable) */}
+                    <div className="space-y-4">
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-lg font-semibold">Client Information</h3>
+                                {!isInfoEditing ? (
+                                    <Button size="sm" variant="twoTone" onClick={() => setIsInfoEditing(true)}>Edit</Button>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <Button size="sm" variant="plain" onClick={() => {
+                                            setIsInfoEditing(false)
+                                            setInfoForm({
+                                                clientName: client.clientName || '',
+                                                clientNumber: client.clientNumber || '',
+                                                clientType: client.clientType || '',
+                                                address: client.address || '',
+                                                city: client.city || '',
+                                                state: client.state || '',
+                                                zip: client.zip || '',
+                                                tags: client.tags || ''
+                                            })
+                                        }}>Cancel</Button>
+                                        <Button size="sm" variant="solid" onClick={async () => {
+                                            try {
+                                                const payload = {
+                                                    ...client,
+                                                    clientName: infoForm.clientName,
+                                                    clientNumber: infoForm.clientNumber,
+                                                    clientType: infoForm.clientType,
+                                                    address: infoForm.address,
+                                                    city: infoForm.city,
+                                                    state: infoForm.state,
+                                                    zip: infoForm.zip,
+                                                    tags: infoForm.tags,
+                                                }
+                                                await updateClient(client.id, payload)
+                                                setIsInfoEditing(false)
+                                                setShowAlert(true)
+                                            } catch (e) {}
+                                        }}>Save</Button>
                                     </div>
-                                </Card>
-
-                                {/* Schedule */}
-                                <Card className="p-4">
-                                    <h3 className="text-lg font-semibold mb-3">Schedule</h3>
-                                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Date Range
-                                            </label>
-                                            <DatePicker.DatePickerRange
-                                                placeholder={['From', 'To']}
-                                                value={filters.dateFrom && filters.dateTo ? [filters.dateFrom, filters.dateTo] : null}
-                                                onChange={(vals) => {
-                                                    const [from, to] = vals || []
-                                                    setFilters({ ...filters, dateFrom: from, dateTo: to })
-                                                }}
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Status Filter
-                                            </label>
-                                            <Select
-                                                placeholder="All Statuses"
-                                                isClearable
-                                                options={[
-                                                    { value: 'active', label: 'Active' },
-                                                    { value: 'inactive', label: 'Inactive' },
-                                                    { value: 'prospect', label: 'Prospect' }
-                                                ]}
-                                                value={filters.status}
-                                                onChange={(opt) => setFilters({ ...filters, status: opt })}
-                                            />
-                                        </div>
-
-                                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                                            <h4 className="font-medium text-gray-900 dark:text-white mb-2 text-sm">Upcoming Events</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Client Review</p>
-                                                        <p className="text-xs text-gray-500">Tomorrow, 2:00 PM</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Contract Renewal</p>
-                                                        <p className="text-xs text-gray-500">Friday, 10:00 AM</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-gray-900 dark:text-white">Strategy Meeting</p>
-                                                        <p className="text-xs text-gray-500">Next Monday, 3:00 PM</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Card>
+                                )}
                             </div>
+
+                            {!isInfoEditing ? (
+                                <div className="space-y-2 max-h-64 overflow-y-auto">
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Company</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.clientName}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Client Number</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.clientNumber}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Type</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.clientType || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Address</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.address || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">City</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.city || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">State</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.state || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">ZIP</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.zip || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-500">Tags</label>
+                                        <p className="text-gray-900 dark:text-white text-sm">{client.tags || 'N/A'}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div>
+                                        <label className="text-sm font-medium">Company</label>
+                                        <Input value={infoForm.clientName} onChange={(e)=>setInfoForm({...infoForm, clientName: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Client Number</label>
+                                        <Input value={infoForm.clientNumber} onChange={(e)=>setInfoForm({...infoForm, clientNumber: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Type</label>
+                                        <Select
+                                            value={infoForm.clientType ? { value: infoForm.clientType, label: infoForm.clientType } : null}
+                                            options={[
+                                                { value: 'enterprise', label: 'enterprise' },
+                                                { value: 'small_business', label: 'small_business' },
+                                                { value: 'nonprofit', label: 'nonprofit' },
+                                            ]}
+                                            onChange={(opt)=>setInfoForm({...infoForm, clientType: opt?.value || ''})}
+                                            isClearable
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Address</label>
+                                        <Input value={infoForm.address} onChange={(e)=>setInfoForm({...infoForm, address: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">City</label>
+                                        <Input value={infoForm.city} onChange={(e)=>setInfoForm({...infoForm, city: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">State</label>
+                                        <Input value={infoForm.state} onChange={(e)=>setInfoForm({...infoForm, state: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">ZIP</label>
+                                        <Input value={infoForm.zip} onChange={(e)=>setInfoForm({...infoForm, zip: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium">Tags</label>
+                                        <Input value={infoForm.tags} onChange={(e)=>setInfoForm({...infoForm, tags: e.target.value})} />
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    </div>
                         </div>
                     )}
 
