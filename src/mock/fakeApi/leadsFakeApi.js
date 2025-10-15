@@ -4,7 +4,11 @@ import { leadsData } from '../data/leadsData'
 // Store leads in localStorage for persistence
 const getStoredLeads = () => {
     const stored = localStorage.getItem('crm_leads')
-    return stored ? JSON.parse(stored) : leadsData
+    if (stored) {
+        return JSON.parse(stored)
+    }
+    // Only use showcase data if no data exists in localStorage
+    return leadsData
 }
 
 const saveLeads = (leads) => {
@@ -124,6 +128,16 @@ mock.onDelete(/\/api\/leads\/\d+/).reply((config) => {
             saveLeads(updatedLeads)
             
             resolve([200, { message: 'Lead deleted successfully' }])
+        }, 300)
+    })
+})
+
+// POST /api/leads/reset - Reset to showcase data
+mock.onPost('/api/leads/reset').reply(() => {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            localStorage.removeItem('crm_leads')
+            resolve([200, { message: 'Leads reset to showcase data' }])
         }, 300)
     })
 })

@@ -4,7 +4,11 @@ import { clientsData } from '../data/clientsData'
 // Store clients in localStorage for persistence
 const getStoredClients = () => {
     const stored = localStorage.getItem('crm_clients')
-    return stored ? JSON.parse(stored) : clientsData
+    if (stored) {
+        return JSON.parse(stored)
+    }
+    // Only use showcase data if no data exists in localStorage
+    return clientsData
 }
 
 const saveClients = (clients) => {
@@ -125,6 +129,16 @@ mock.onDelete(/\/api\/clients\/\d+/).reply((config) => {
             saveClients(updatedClients)
             
             resolve([200, { message: 'Client deleted successfully' }])
+        }, 300)
+    })
+})
+
+// POST /api/clients/reset - Reset to showcase data
+mock.onPost('/api/clients/reset').reply(() => {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            localStorage.removeItem('crm_clients')
+            resolve([200, { message: 'Clients reset to showcase data' }])
         }, 300)
     })
 })

@@ -270,10 +270,10 @@ const ClientDetail = () => {
                             <div className="lg:col-span-2">
                                 <Card className="p-6">
                                     <h3 className="text-lg font-semibold mb-4">Client Overview</h3>
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 min-h-[400px]">
                                         <div 
                                             key={editedContent} // Force re-render when content changes
-                                            className="prose prose-sm max-w-none dark:prose-invert"
+                                            className="prose prose-sm max-w-none dark:prose-invert min-h-[350px]"
                                             dangerouslySetInnerHTML={{ 
                                                 __html: editedContent || '<p>No description provided for this client.</p>' 
                                             }}
@@ -329,7 +329,7 @@ const ClientDetail = () => {
                             </div>
 
                             {!isInfoEditing ? (
-                                <div className="space-y-2 max-h-64 overflow-y-auto">
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Company</label>
                                         <p className="text-gray-900 dark:text-white text-sm">{client.clientName}</p>
