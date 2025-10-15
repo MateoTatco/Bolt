@@ -856,7 +856,51 @@ const Home = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
                 <div className="flex items-center gap-2">
-                <Button variant="solid" onClick={handleCreateClick}>Create</Button>
+                    <Button variant="solid" onClick={handleCreateClick}>Create</Button>
+                </div>
+            </div>
+
+            {/* Top entity toggle - above the dashboard/table */}
+            <div className="flex items-center justify-start -mt-2">
+                <div className="inline-flex items-center rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/60 backdrop-blur px-1 shadow-sm">
+                    <Button
+                        size="sm"
+                        variant={(filters.type?.value || 'lead') === 'lead' ? 'solid' : 'twoTone'}
+                        className={`rounded-l-full rounded-r-none !px-3 !py-1.5 transition-all duration-150 ${
+                            (filters.type?.value || 'lead') === 'lead'
+                                ? 'shadow-sm ring-1 ring-primary/30'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        aria-pressed={(filters.type?.value || 'lead') === 'lead'}
+                        onClick={() => {
+                            setPageIndex(1)
+                            setFilters({ type: { value: 'lead', label: '👤 Lead' } })
+                        }}
+                    >
+                        <span className="inline-flex items-center gap-2">
+                            <span>👤</span>
+                            <span className="font-medium">Leads</span>
+                        </span>
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant={filters.type?.value === 'client' ? 'solid' : 'twoTone'}
+                        className={`rounded-r-full rounded-l-none !px-3 !py-1.5 transition-all duration-150 border-l border-gray-200 dark:border-gray-700 ${
+                            filters.type?.value === 'client'
+                                ? 'shadow-sm ring-1 ring-primary/30'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        aria-pressed={filters.type?.value === 'client'}
+                        onClick={() => {
+                            setPageIndex(1)
+                            setFilters({ type: { value: 'client', label: '🏢 Client' } })
+                        }}
+                    >
+                        <span className="inline-flex items-center gap-2">
+                            <span>🏢</span>
+                            <span className="font-medium">Clients</span>
+                        </span>
+                    </Button>
                 </div>
             </div>
 
@@ -878,19 +922,7 @@ const Home = () => {
                             }, 300)
                         }}
                     />
-                    <Select
-                        placeholder="Type"
-                        isClearable
-                        options={[
-                            { value: 'lead', label: '👤 Lead' },
-                            { value: 'client', label: '🏢 Client' }
-                        ]}
-                        value={filters.type}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ type: opt || null })
-                        }}
-                    />
+                    {/* Type Select removed; replaced by top toggle */}
                     <Select
                         placeholder="Status"
                         isClearable
