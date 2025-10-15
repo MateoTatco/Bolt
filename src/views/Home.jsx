@@ -14,6 +14,7 @@ const Home = () => {
     const filters = useCrmStore((s) => s.filters)
     const loading = useCrmStore((s) => s.loading)
     const setFilters = useCrmStore((s) => s.setFilters)
+    // Favorite: remove old handler, we'll pass entityType explicitly
     const toggleFavorite = useCrmStore((s) => s.toggleFavorite)
     const loadLeads = useCrmStore((s) => s.loadLeads)
     const loadClients = useCrmStore((s) => s.loadClients)
@@ -251,7 +252,7 @@ const Home = () => {
                 return true
             })
             .sort((a, b) => {
-                // Always prioritize favorite items first
+                // Pin to top: prioritize favorites first, then regular ordering
                 if (a.favorite && !b.favorite) return -1
                 if (!a.favorite && b.favorite) return 1
                 
@@ -516,17 +517,12 @@ const Home = () => {
                                     onClick={() => navigate(editPath)} 
                                 />
                         </Tooltip>
-                            <Tooltip title={item.favorite ? "Remove from favorites" : "Add to favorites"}>
+                        <Tooltip title={item.favorite ? "Remove from favorites" : "Add to favorites"}>
                                 <Button 
                                     size="sm" 
                                     variant={item.favorite ? "solid" : "twoTone"} 
                                     icon={<HiOutlineStar />} 
-                                    onClick={() => {
-                                        console.log('[Home] Favorite button clicked for item:', item)
-                                        console.log('[Home] Current favorite state:', item.favorite)
-                                        console.log('[Home] Item ID:', item.id)
-                                        toggleFavorite(item.id)
-                                    }}
+                                    onClick={() => toggleFavorite(item.id, item.entityType)}
                                     className={item.favorite ? "text-yellow-500" : ""}
                                 />
                         </Tooltip>

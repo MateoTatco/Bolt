@@ -33,7 +33,11 @@ export const useCrmStore = create((set, get) => ({
         set({ loading: true, error: null })
         try {
             const response = await CrmService.getLeads()
-            set({ leads: response.data.data, loading: false })
+            const normalized = (response.data?.data || []).map((l) => ({
+                ...l,
+                favorite: false,
+            }))
+            set({ leads: normalized, loading: false })
         } catch (error) {
             set({ error: error.message, loading: false })
             // Show a proper Notification component to satisfy toast wrapper expectations
@@ -52,7 +56,11 @@ export const useCrmStore = create((set, get) => ({
         set({ loading: true, error: null })
         try {
             const response = await CrmService.getClients()
-            set({ clients: response.data.data, loading: false })
+            const normalized = (response.data?.data || []).map((c) => ({
+                ...c,
+                favorite: false,
+            }))
+            set({ clients: normalized, loading: false })
         } catch (error) {
             set({ error: error.message, loading: false })
             toast.push(
@@ -162,29 +170,18 @@ export const useCrmStore = create((set, get) => ({
         }
     },
 
-    // Toggle favorite (local state only for now)
-    toggleFavorite: (id) => set((state) => {
-        console.log('[Store] toggleFavorite called with id:', id)
-        
-        // Check if it's a lead or client
-        const lead = state.leads.find(l => l.id === id)
-        const client = state.clients.find(c => c.id === id)
-        
-        console.log('[Store] Found lead:', lead)
-        console.log('[Store] Found client:', client)
-        
-        if (lead) {
-            console.log('[Store] Toggling lead favorite from', lead.favorite, 'to', !lead.favorite)
+    // Toggle favorite (entity-aware: avoids ID collision between leads and clients)
+    toggleFavorite: (id, entityType) => set((state) => {
+        if (entityType === 'lead') {
             return {
                 leads: state.leads.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
             }
-        } else if (client) {
-            console.log('[Store] Toggling client favorite from', client.favorite, 'to', !client.favorite)
+        }
+        if (entityType === 'client') {
             return {
                 clients: state.clients.map((c) => (c.id === id ? { ...c, favorite: !c.favorite } : c)),
             }
         }
-        console.log('[Store] No matching lead or client found for id:', id)
         return state
     }),
 
