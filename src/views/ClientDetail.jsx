@@ -424,7 +424,7 @@ const ClientDetail = () => {
                                             className="text-sm px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
                                             onClick={() => navigate(`/leads/${id}`)}
                                         >
-                                            {lead.leadName}
+                                            {lead.companyName}
                                         </button>
                                     )
                                 })}

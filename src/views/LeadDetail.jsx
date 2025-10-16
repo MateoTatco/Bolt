@@ -23,7 +23,7 @@ const LeadDetail = () => {
     const updateLead = useCrmStore((s) => s.updateLead)
     const [isInfoEditing, setIsInfoEditing] = useState(false)
     const [infoForm, setInfoForm] = useState({
-        leadName: '',
+        companyName: '',
         leadContact: '',
         title: '',
         email: '',
@@ -96,7 +96,7 @@ const LeadDetail = () => {
             setEditedContent(content)
             setOriginalContent(content)
             setInfoForm({
-                leadName: lead.leadName || '',
+                companyName: lead.companyName || '',
                 leadContact: lead.leadContact || '',
                 title: lead.title || '',
                 email: lead.email || '',
@@ -166,10 +166,12 @@ const LeadDetail = () => {
     }
 
     const getInitials = (name) => {
+        if (!name) return '??'
         return name.split(' ').map(n => n[0]).join('').toUpperCase()
     }
 
     const getAvatarColor = (name) => {
+        if (!name) return 'bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-100'
         const colors = [
             'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-100',
             'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-100',
@@ -205,14 +207,14 @@ const LeadDetail = () => {
                     </Button>
                     <div className="flex items-center space-x-3">
                         <Avatar 
-                            className={getAvatarColor(lead.leadName)}
+                            className={getAvatarColor(lead.companyName)}
                             size="lg"
                         >
-                            {getInitials(lead.leadName)}
+                            {getInitials(lead.companyName)}
                         </Avatar>
                         <div>
                             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                {lead.leadName}
+                                {lead.companyName}
                             </h2>
                             <p className="text-sm text-gray-500">{lead.title}</p>
                         </div>
@@ -244,7 +246,7 @@ const LeadDetail = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {lead.leadName}
+                                {lead.companyName}
                             </h1>
                             <p className="text-gray-600 dark:text-gray-400">
                                 {lead.leadContact} • {lead.email}
@@ -303,7 +305,7 @@ const LeadDetail = () => {
                                                 <Button size="sm" variant="plain" onClick={() => {
                                                     setIsInfoEditing(false)
                                                     setInfoForm({
-                                                        leadName: lead.leadName || '',
+                                                        companyName: lead.companyName || '',
                     leadContact: lead.leadContact || '',
                     title: lead.title || '',
                     email: lead.email || '',
@@ -318,7 +320,7 @@ const LeadDetail = () => {
                                                 <Button size="sm" variant="solid" onClick={async () => {
                                                     const payload = {
                                                         ...lead,
-                                                        leadName: infoForm.leadName,
+                                                        companyName: infoForm.companyName,
                                                         leadContact: infoForm.leadContact,
                                                         title: infoForm.title,
                                                         email: infoForm.email,
@@ -340,7 +342,7 @@ const LeadDetail = () => {
                                         <div className="space-y-2 max-h-96 overflow-y-auto">
                                             <div>
                                                 <label className="text-sm font-medium text-gray-500">Company</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.leadName}</p>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.companyName}</p>
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium text-gray-500">Contact Person</label>
@@ -385,7 +387,7 @@ const LeadDetail = () => {
                                         <div className="grid grid-cols-1 gap-3">
                                             <div>
                                                 <label className="text-sm font-medium">Company</label>
-                                                <Input value={infoForm.leadName} onChange={(e)=>setInfoForm({...infoForm, leadName: e.target.value})} />
+                                                <Input value={infoForm.companyName} onChange={(e)=>setInfoForm({...infoForm, companyName: e.target.value})} />
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium">Contact Person</label>

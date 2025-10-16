@@ -43,7 +43,7 @@ const Home = () => {
 
     // Column visibility & order persistence (per entity type)
     const defaultLeadKeys = [
-        'leadName',
+        'companyName',
         'leadContact',
         'email',
         'phone',
@@ -74,7 +74,11 @@ const Home = () => {
             const raw = localStorage.getItem(`crmColumnOrder_${storageSuffix}`)
             const parsed = raw ? JSON.parse(raw) : null
             const def = getDefaultKeys()
-            return Array.isArray(parsed) && parsed.length ? parsed : def
+            if (Array.isArray(parsed) && parsed.length) {
+                // Migration: replace leadName with companyName in column order
+                return parsed.map(key => key === 'leadName' ? 'companyName' : key)
+            }
+            return def
         } catch {
             return getDefaultKeys()
         }
@@ -83,7 +87,14 @@ const Home = () => {
         try {
             const raw = localStorage.getItem(`crmVisibleColumns_${storageSuffix}`)
             const parsed = raw ? JSON.parse(raw) : null
-            if (parsed && typeof parsed === 'object') return parsed
+            if (parsed && typeof parsed === 'object') {
+                // Migration: if leadName exists, rename it to companyName
+                if (parsed.leadName !== undefined) {
+                    parsed.companyName = parsed.leadName
+                    delete parsed.leadName
+                }
+                return parsed
+            }
         } catch {}
         return getDefaultKeys().reduce((acc, key) => ({ ...acc, [key]: true }), {})
     })
@@ -94,15 +105,26 @@ const Home = () => {
             const rawOrder = localStorage.getItem(`crmColumnOrder_${storageSuffix}`)
             const parsedOrder = rawOrder ? JSON.parse(rawOrder) : null
             const def = getDefaultKeys()
-            setColumnOrder(Array.isArray(parsedOrder) && parsedOrder.length ? parsedOrder : def)
+            if (Array.isArray(parsedOrder) && parsedOrder.length) {
+                // Migration: replace leadName with companyName in column order
+                const migratedOrder = parsedOrder.map(key => key === 'leadName' ? 'companyName' : key)
+                setColumnOrder(migratedOrder)
+            } else {
+                setColumnOrder(def)
+            }
 
             const rawVisible = localStorage.getItem(`crmVisibleColumns_${storageSuffix}`)
             const parsedVisible = rawVisible ? JSON.parse(rawVisible) : null
-            setVisibleColumns(
-                parsedVisible && typeof parsedVisible === 'object'
-                    ? parsedVisible
-                    : def.reduce((acc, key) => ({ ...acc, [key]: true }), {}),
-            )
+            if (parsedVisible && typeof parsedVisible === 'object') {
+                // Migration: if leadName exists, rename it to companyName
+                if (parsedVisible.leadName !== undefined) {
+                    parsedVisible.companyName = parsedVisible.leadName
+                    delete parsedVisible.leadName
+                }
+                setVisibleColumns(parsedVisible)
+            } else {
+                setVisibleColumns(def.reduce((acc, key) => ({ ...acc, [key]: true }), {}))
+            }
         } catch {
             const def = getDefaultKeys()
             setColumnOrder(def)
@@ -255,7 +277,7 @@ const Home = () => {
                     const term = search.toLowerCase()
                     let hay = ''
                     if (item.entityType === 'lead') {
-                        hay = `${item.leadName} ${item.leadContact} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
+                        hay = `${item.companyName} ${item.leadContact} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
                     } else {
                         hay = `${item.clientName} ${item.clientNumber} ${item.address} ${item.city} ${item.state}`.toLowerCase()
                     }
@@ -369,19 +391,19 @@ const Home = () => {
     const leadColumns = useMemo(
         () => [
             {
-                header: 'Lead Name',
-                accessorKey: 'leadName',
+                header: 'Company Name',
+                accessorKey: 'companyName',
                 size: 220,
-                meta: { key: 'leadName' },
+                meta: { key: 'companyName' },
                 cell: (props) => {
                     const item = props.row.original
                     return (
-                        <button
+                    <button 
                             onClick={(e) => handleLeadNameClick(e, item.id)}
-                            className="font-semibold text-left hover:text-primary transition-colors"
-                        >
-                            {item.leadName}
-                        </button>
+                        className="font-semibold text-left hover:text-primary transition-colors"
+                    >
+                            {item.companyName}
+                    </button>
                     )
                 },
             },
@@ -440,20 +462,20 @@ const Home = () => {
                     const detailPath = `/leads/${item.id}`
                     const editPath = `/leads/${item.id}?tab=settings`
                     return (
-                        <div className="flex items-center gap-2">
-                            <Tooltip title="View">
+                    <div className="flex items-center gap-2">
+                        <Tooltip title="View">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
-                            </Tooltip>
-                            <Tooltip title="Edit">
+                        </Tooltip>
+                        <Tooltip title="Edit">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
-                            </Tooltip>
+                        </Tooltip>
                             <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
                                 <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'lead')} className={item.favorite ? 'text-yellow-500' : ''} />
-                            </Tooltip>
-                            <Tooltip title="Delete">
+                        </Tooltip>
+                        <Tooltip title="Delete">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteLead(item.id)} className="text-red-600 hover:text-red-700" />
-                            </Tooltip>
-                        </div>
+                        </Tooltip>
+                    </div>
                     )
                 },
             },
@@ -554,12 +576,11 @@ const Home = () => {
     const [wizardStep, setWizardStep] = useState(1)
     const [wizardData, setWizardData] = useState({
         // Lead fields
-        leadName: '',
+        companyName: '',
         leadContact: '',
         email: '',
         phone: '',
         title: '',
-        company: '',
         status: 'new',
         method: 'email',
         market: 'us',
@@ -644,7 +665,7 @@ const Home = () => {
     }
 
     const [newLead, setNewLead] = useState({
-        leadName: '',
+        companyName: '',
         leadContact: '',
         title: '',
         email: '',
@@ -659,7 +680,7 @@ const Home = () => {
     })
 
     const resetNewLead = () => setNewLead({
-        leadName: '',
+        companyName: '',
         leadContact: '',
         title: '',
         email: '',
@@ -689,7 +710,7 @@ const Home = () => {
     const resetWizard = () => {
         setWizardStep(1)
         setWizardData({
-            leadName: '',
+            companyName: '',
             leadContact: '',
             email: '',
             phone: '',
@@ -730,7 +751,7 @@ const Home = () => {
         try {
             if (createType === 'lead') {
                 const payload = {
-                    leadName: wizardData.leadName,
+                    companyName: wizardData.companyName,
                     leadContact: wizardData.leadContact || '',
                     title: wizardData.title,
                     email: wizardData.email || '',
@@ -771,13 +792,13 @@ const Home = () => {
     }
 
     const handleCreateLead = async () => {
-        if (!newLead.leadName || !newLead.title || !newLead.status) {
+        if (!newLead.companyName || !newLead.title || !newLead.status) {
             return
         }
         
         try {
             const payload = {
-                leadName: newLead.leadName,
+                companyName: newLead.companyName,
                 leadContact: newLead.leadContact || '',
                 title: newLead.title,
                 email: newLead.email || '',
@@ -1216,11 +1237,11 @@ const Home = () => {
                                 {createType === 'lead' ? (
                                     <>
                             <div>
-                                <label className="block text-sm font-medium mb-2">Lead name *</label>
+                                <label className="block text-sm font-medium mb-2">Company Name *</label>
                                 <Input 
-                                                value={wizardData.leadName} 
-                                                onChange={(e) => setWizardData({ ...wizardData, leadName: e.target.value })} 
-                                    placeholder="Enter lead name"
+                                                value={wizardData.companyName} 
+                                                onChange={(e) => setWizardData({ ...wizardData, companyName: e.target.value })} 
+                                    placeholder="Enter company name"
                                 />
                             </div>
                             
@@ -1354,14 +1375,6 @@ const Home = () => {
                                             />
                                         </div>
                                         
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Company</label>
-                                            <Input 
-                                                value={wizardData.company} 
-                                                onChange={(e) => setWizardData({ ...wizardData, company: e.target.value })} 
-                                                placeholder="Enter company name"
-                                            />
-                                        </div>
                                         
                                         <div>
                                             <label className="block text-sm font-medium mb-2">Status</label>
@@ -1483,7 +1496,7 @@ const Home = () => {
                                     onClick={nextWizardStep} 
                                     disabled={
                                         createType === 'lead' 
-                                            ? !wizardData.leadName.trim() 
+                                            ? !wizardData.companyName.trim() 
                                             : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
                                     }
                                 >
@@ -1495,7 +1508,7 @@ const Home = () => {
                                     onClick={handleWizardSubmit} 
                                     disabled={
                                         createType === 'lead' 
-                                            ? !wizardData.leadName.trim() 
+                                            ? !wizardData.companyName.trim() 
                                             : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
                                     }
                                 >

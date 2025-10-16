@@ -42,7 +42,7 @@ export const leadConceptionOptions = [
 export const leadsData = [
     {
         id: 1,
-        leadName: 'Quantum Dynamics Solutions',
+        companyName: 'Quantum Dynamics Solutions',
         leadContact: 'Dr. Sarah Chen',
         title: 'Chief Technology Officer',
         email: 'sarah.chen@quantumdynamics.com',
@@ -63,7 +63,7 @@ export const leadsData = [
     },
     {
         id: 2,
-        leadName: 'MetroHealth Systems',
+        companyName: 'MetroHealth Systems',
         leadContact: 'Dr. Michael Rodriguez',
         title: 'Chief Information Officer',
         email: 'mrodriguez@metrohealth.org',
@@ -84,7 +84,7 @@ export const leadsData = [
     },
     {
         id: 3,
-        leadName: 'GreenTech Innovations',
+        companyName: 'GreenTech Innovations',
         leadContact: 'Emma Thompson',
         title: 'VP of Business Development',
         email: 'emma.thompson@greentech.com',
@@ -105,7 +105,7 @@ export const leadsData = [
     },
     {
         id: 4,
-        leadName: 'Financial Partners Group',
+        companyName: 'Financial Partners Group',
         leadContact: 'James Anderson',
         title: 'Managing Director',
         email: 'janderson@finpartners.com',
@@ -126,7 +126,7 @@ export const leadsData = [
     },
     {
         id: 5,
-        leadName: 'Manufacturing Excellence Corp',
+        companyName: 'Manufacturing Excellence Corp',
         leadContact: 'Robert Kim',
         title: 'Operations Director',
         email: 'rkim@manufexcellence.com',
@@ -147,7 +147,7 @@ export const leadsData = [
     },
     {
         id: 6,
-        leadName: 'EduTech Solutions',
+        companyName: 'EduTech Solutions',
         leadContact: 'Dr. Lisa Park',
         title: 'Chief Academic Officer',
         email: 'lpark@edutechsolutions.edu',
@@ -168,7 +168,7 @@ export const leadsData = [
     },
     {
         id: 7,
-        leadName: 'RetailMax Enterprises',
+        companyName: 'RetailMax Enterprises',
         leadContact: 'Jennifer Walsh',
         title: 'VP of Digital Strategy',
         email: 'jwalsh@retailmax.com',
@@ -189,7 +189,7 @@ export const leadsData = [
     },
     {
         id: 8,
-        leadName: 'LogiFlow Systems',
+        companyName: 'LogiFlow Systems',
         leadContact: 'Mark Thompson',
         title: 'Chief Operations Officer',
         email: 'mthompson@logiflow.com',
@@ -210,7 +210,7 @@ export const leadsData = [
     },
     {
         id: 9,
-        leadName: 'AgriTech Solutions',
+        companyName: 'AgriTech Solutions',
         leadContact: 'Dr. Maria Gonzalez',
         title: 'Research Director',
         email: 'mgonzalez@agritech.com',
@@ -231,7 +231,7 @@ export const leadsData = [
     },
     {
         id: 10,
-        leadName: 'MediaStream Global',
+        companyName: 'MediaStream Global',
         leadContact: 'Kevin Lee',
         title: 'Chief Technology Officer',
         email: 'klee@mediastream.com',

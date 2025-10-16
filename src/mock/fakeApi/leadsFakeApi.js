@@ -5,14 +5,30 @@ import { leadsData } from '../data/leadsData'
 const getStoredLeads = () => {
     const stored = localStorage.getItem('crm_leads')
     if (stored) {
-        return JSON.parse(stored)
+        const parsed = JSON.parse(stored)
+        // Migration: convert leadName to companyName if needed
+        const migrated = parsed.map(lead => {
+            if (lead.leadName && !lead.companyName) {
+                return { ...lead, companyName: lead.leadName }
+            }
+            return lead
+        })
+        return migrated
     }
     // Only use showcase data if no data exists in localStorage
     return leadsData
 }
 
 const saveLeads = (leads) => {
-    localStorage.setItem('crm_leads', JSON.stringify(leads))
+    // Migration: ensure all leads have companyName instead of leadName
+    const migrated = leads.map(lead => {
+        if (lead.leadName && !lead.companyName) {
+            const { leadName, ...rest } = lead
+            return { ...rest, companyName: leadName }
+        }
+        return lead
+    })
+    localStorage.setItem('crm_leads', JSON.stringify(migrated))
 }
 
 // GET /api/leads - Get all leads
@@ -34,7 +50,11 @@ mock.onGet(/\/api\/leads\/\d+/).reply((config) => {
             const lead = leads.find(l => l.id === id)
             
             if (lead) {
-                resolve([200, { data: lead }])
+                // Migration: ensure lead has companyName instead of leadName
+                const migratedLead = lead.leadName && !lead.companyName 
+                    ? { ...lead, companyName: lead.leadName }
+                    : lead
+                resolve([200, { data: migratedLead }])
             } else {
                 resolve([404, { message: 'Lead not found' }])
             }
@@ -138,6 +158,29 @@ mock.onPost('/api/leads/reset').reply(() => {
         setTimeout(() => {
             localStorage.removeItem('crm_leads')
             resolve([200, { message: 'Leads reset to showcase data' }])
+        }, 300)
+    })
+})
+
+// POST /api/leads/migrate - Force migration of leadName to companyName
+mock.onPost('/api/leads/migrate').reply(() => {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            const stored = localStorage.getItem('crm_leads')
+            if (stored) {
+                const parsed = JSON.parse(stored)
+                const migrated = parsed.map(lead => {
+                    if (lead.leadName && !lead.companyName) {
+                        const { leadName, ...rest } = lead
+                        return { ...rest, companyName: leadName }
+                    }
+                    return lead
+                })
+                localStorage.setItem('crm_leads', JSON.stringify(migrated))
+                resolve([200, { message: 'Migration completed successfully', count: migrated.length }])
+            } else {
+                resolve([200, { message: 'No data to migrate' }])
+            }
         }, 300)
     })
 })
