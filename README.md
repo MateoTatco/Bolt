@@ -131,6 +131,356 @@ src/
 - Set up authentication backend
 - Configure CORS and security settings
 
+## Firebase Migration Plan
+
+### Overview
+
+This section outlines the comprehensive plan to migrate the Tatco Construction CRM from mock APIs to Firebase, enabling real-time data synchronization, user authentication, and scalable backend infrastructure.
+
+### Current Architecture Analysis
+
+**Current State:**
+- Mock API system using Axios interceptors
+- Local storage persistence for leads and clients
+- Static data models with predefined relationships
+- Basic CRUD operations for leads and clients
+- No real-time capabilities or user authentication
+
+**Data Models Identified:**
+- **Leads**: 10+ fields including company info, contact details, status tracking
+- **Clients**: 8+ fields including business information, location data
+- **Users**: Authentication system with role-based access
+- **Relationships**: Lead-to-client associations, user ownership
+
+### Migration Strategy
+
+#### Phase 1: Firebase Setup & Authentication (Monday)
+**Objectives:**
+- Set up Firebase project and configure authentication
+- Implement user management system
+- Create Firebase security rules
+
+**Tasks:**
+1. **Firebase Project Configuration**
+   - Create new Firebase project for Tatco Construction CRM
+   - Configure Firebase Authentication with email/password
+   - Set up Firebase Firestore database
+   - Configure Firebase Storage for file attachments
+   - Set up Firebase Hosting for production deployment
+
+2. **Authentication Implementation**
+   - Install Firebase SDK: `npm install firebase`
+   - Create Firebase authentication service
+   - Implement user registration and login flows
+   - Add role-based access control (admin, user, manager)
+   - Create user profile management
+
+3. **Security Rules Setup**
+   - Configure Firestore security rules for data protection
+   - Implement user-based data access controls
+   - Set up data validation rules
+   - Create backup and recovery procedures
+
+**Deliverables:**
+- Firebase project configured and ready
+- User authentication system working
+- Basic security rules implemented
+- User management interface functional
+
+#### Phase 2: Firestore Database Design (Tuesday)
+**Objectives:**
+- Design Firestore collections and document structure
+- Implement data migration from mock APIs
+- Create real-time data synchronization
+
+**Tasks:**
+1. **Database Schema Design**
+   - Design `leads` collection with proper indexing
+   - Design `clients` collection with relationship mapping
+   - Create `users` collection for user management
+   - Design `activities` collection for audit trails
+   - Plan `settings` collection for application configuration
+
+2. **Data Migration Implementation**
+   - Create migration scripts for existing mock data
+   - Implement data validation and transformation
+   - Set up data backup procedures
+   - Create rollback mechanisms
+
+3. **Real-time Synchronization**
+   - Implement Firestore real-time listeners
+   - Create optimistic updates for better UX
+   - Set up conflict resolution strategies
+   - Implement offline data caching
+
+**Deliverables:**
+- Firestore collections designed and created
+- All mock data migrated to Firebase
+- Real-time data synchronization working
+- Offline capabilities implemented
+
+#### Phase 3: Service Layer Migration (Wednesday)
+**Objectives:**
+- Replace mock API services with Firebase services
+- Implement advanced querying and filtering
+- Add data validation and error handling
+
+**Tasks:**
+1. **Firebase Service Implementation**
+   - Create `FirebaseService.js` to replace `CrmService.js`
+   - Implement CRUD operations for leads and clients
+   - Add advanced querying with Firestore
+   - Implement batch operations for bulk actions
+   - Create data export/import functionality
+
+2. **Advanced Features**
+   - Implement full-text search using Algolia or similar
+   - Add data analytics and reporting capabilities
+   - Create automated backup systems
+   - Implement data archiving for old records
+
+3. **Error Handling & Validation**
+   - Add comprehensive error handling
+   - Implement data validation schemas
+   - Create retry mechanisms for failed operations
+   - Add logging and monitoring
+
+**Deliverables:**
+- All API calls migrated to Firebase
+- Advanced querying and filtering working
+- Error handling and validation implemented
+- Performance optimizations in place
+
+#### Phase 4: Real-time Features & Collaboration (Thursday)
+**Objectives:**
+- Implement real-time collaboration features
+- Add notification system
+- Create activity tracking and audit logs
+
+**Tasks:**
+1. **Real-time Collaboration**
+   - Implement real-time lead/client updates
+   - Add user presence indicators
+   - Create collaborative editing features
+   - Implement conflict resolution for simultaneous edits
+
+2. **Notification System**
+   - Set up Firebase Cloud Messaging (FCM)
+   - Create in-app notification system
+   - Add email notifications for important events
+   - Implement push notifications for mobile users
+
+3. **Activity Tracking**
+   - Create comprehensive audit logs
+   - Implement user activity tracking
+   - Add data change history
+   - Create reporting dashboards
+
+**Deliverables:**
+- Real-time collaboration features working
+- Notification system implemented
+- Activity tracking and audit logs functional
+- User experience significantly improved
+
+#### Phase 5: Testing, Deployment & Optimization (Friday)
+**Objectives:**
+- Comprehensive testing of all features
+- Production deployment
+- Performance optimization and monitoring
+
+**Tasks:**
+1. **Testing & Quality Assurance**
+   - Unit testing for all Firebase services
+   - Integration testing for real-time features
+   - Performance testing under load
+   - Security testing and penetration testing
+   - User acceptance testing
+
+2. **Production Deployment**
+   - Deploy to Firebase Hosting
+   - Configure production environment variables
+   - Set up monitoring and alerting
+   - Create backup and disaster recovery procedures
+   - Implement CI/CD pipeline
+
+3. **Performance Optimization**
+   - Optimize Firestore queries and indexes
+   - Implement caching strategies
+   - Add performance monitoring
+   - Create performance dashboards
+   - Optimize bundle size and loading times
+
+**Deliverables:**
+- Production-ready application deployed
+- Comprehensive testing completed
+- Performance optimized and monitored
+- Documentation updated
+
+### Technical Implementation Details
+
+#### Firebase Collections Structure
+
+```javascript
+// Firestore Collections Design
+leads: {
+  [leadId]: {
+    companyName: string,
+    leadContact: string,
+    title: string,
+    email: string,
+    phone: string,
+    methodOfContact: string,
+    dateLastContacted: timestamp,
+    projectMarket: string,
+    status: string,
+    responded: boolean,
+    notes: string,
+    favorite: boolean,
+    owner: string, // userId
+    clientIds: array,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    image: string
+  }
+}
+
+clients: {
+  [clientId]: {
+    clientNumber: string,
+    clientType: string,
+    clientName: string,
+    address: string,
+    city: string,
+    state: string,
+    zip: string,
+    tags: string,
+    notes: string,
+    favorite: boolean,
+    leadIds: array,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    image: string
+  }
+}
+
+users: {
+  [userId]: {
+    email: string,
+    userName: string,
+    authority: array,
+    avatar: string,
+    lastLogin: timestamp,
+    preferences: object
+  }
+}
+
+activities: {
+  [activityId]: {
+    userId: string,
+    action: string,
+    entityType: string, // 'lead' | 'client'
+    entityId: string,
+    changes: object,
+    timestamp: timestamp,
+    ipAddress: string
+  }
+}
+```
+
+#### Environment Variables Required
+
+```bash
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+
+# Optional: Algolia for search
+VITE_ALGOLIA_APP_ID=your_algolia_app_id
+VITE_ALGOLIA_SEARCH_KEY=your_algolia_search_key
+```
+
+#### Security Rules Example
+
+```javascript
+// Firestore Security Rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can only access their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Leads access based on ownership
+    match /leads/{leadId} {
+      allow read, write: if request.auth != null && 
+        (resource.data.owner == request.auth.uid || 
+         request.auth.token.authority in ['admin', 'manager']);
+    }
+    
+    // Clients access for all authenticated users
+    match /clients/{clientId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Activities are read-only for users
+    match /activities/{activityId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        request.auth.token.authority in ['admin', 'manager'];
+    }
+  }
+}
+```
+
+### Migration Benefits
+
+**Immediate Benefits:**
+- Real-time data synchronization across all users
+- Secure user authentication and authorization
+- Scalable cloud infrastructure
+- Automatic backups and data protection
+- Offline capabilities for mobile users
+
+**Long-term Benefits:**
+- Reduced server maintenance costs
+- Built-in security and compliance features
+- Easy integration with other Firebase services
+- Automatic scaling based on usage
+- Advanced analytics and reporting capabilities
+
+### Risk Mitigation
+
+**Data Safety:**
+- Complete backup of existing mock data before migration
+- Rollback procedures in case of issues
+- Gradual migration with parallel systems during transition
+- Comprehensive testing in staging environment
+
+**Performance Considerations:**
+- Implement proper Firestore indexing for optimal query performance
+- Use pagination for large datasets
+- Implement caching strategies for frequently accessed data
+- Monitor and optimize query costs
+
+### Success Metrics
+
+**Technical Metrics:**
+- 99.9% uptime for Firebase services
+- < 200ms average response time for CRUD operations
+- Real-time updates delivered within 1 second
+- Zero data loss during migration
+
+**Business Metrics:**
+- Improved user productivity through real-time collaboration
+- Reduced data entry errors through validation
+- Enhanced security and compliance
+- Scalable infrastructure for future growth
+
 ## Features in Development
 
 The CRM system is designed to support the following construction industry workflows:
