@@ -43,7 +43,7 @@ const LeadDetail = () => {
         status: null
     })
 
-    const lead = leads.find(l => l.id === parseInt(leadId))
+    const lead = leads.find(l => l.id === leadId)
 
     // Load leads if not available (for new tab scenarios)
     useEffect(() => {
@@ -121,7 +121,9 @@ const LeadDetail = () => {
             await updateLead(lead.id, { ...lead, notes: editedContent })
             setOriginalContent(editedContent)
             setShowAlert(true)
-        } catch (e) {}
+        } catch (e) {
+            console.error('Error saving changes:', e)
+        }
     }
 
     const handleCancelEdit = () => {
@@ -318,22 +320,27 @@ const LeadDetail = () => {
                                                     })
                                                 }}>Cancel</Button>
                                                 <Button size="sm" variant="solid" onClick={async () => {
-                                                    const payload = {
-                                                        ...lead,
-                                                        companyName: infoForm.companyName,
-                                                        leadContact: infoForm.leadContact,
-                                                        title: infoForm.title,
-                                                        email: infoForm.email,
-                                                        phone: infoForm.phone,
-                                                        projectMarket: infoForm.projectMarket,
-                                                        status: infoForm.status,
-                                                        responded: infoForm.responded,
-                                                        methodOfContact: infoForm.methodOfContact,
-                                                        dateLastContacted: infoForm.dateLastContacted ? infoForm.dateLastContacted.toISOString().slice(0,10) : null,
+                                                    try {
+                                                        const payload = {
+                                                            ...lead,
+                                                            companyName: infoForm.companyName,
+                                                            leadContact: infoForm.leadContact,
+                                                            title: infoForm.title,
+                                                            email: infoForm.email,
+                                                            phone: infoForm.phone,
+                                                            projectMarket: infoForm.projectMarket,
+                                                            status: infoForm.status,
+                                                            responded: infoForm.responded,
+                                                            methodOfContact: infoForm.methodOfContact,
+                                                            dateLastContacted: infoForm.dateLastContacted ? infoForm.dateLastContacted.toISOString().slice(0,10) : null,
+                                                        }
+                                                        await updateLead(lead.id, payload)
+                                                        setIsInfoEditing(false)
+                                                        setShowAlert(true)
+                                                    } catch (error) {
+                                                        console.error('Error updating lead:', error)
+                                                        setShowAlert(true)
                                                     }
-                                                    await updateLead(lead.id, payload)
-                                                    setIsInfoEditing(false)
-                                                    setShowAlert(true)
                                                 }}>Save</Button>
                                             </div>
                                         )}
@@ -525,8 +532,13 @@ const LeadDetail = () => {
                                     />
                                     <div className="mt-3">
                                         <Button size="sm" variant="twoTone" onClick={async()=>{
-                                            await linkLeadToClients(lead.id, linkedClientIds)
-                                            setShowAlert(true)
+                                            try {
+                                                await linkLeadToClients(lead.id, linkedClientIds)
+                                                setShowAlert(true)
+                                            } catch (error) {
+                                                console.error('Error linking clients:', error)
+                                                // The error notification is already handled in the store
+                                            }
                                         }}>Save Links</Button>
                                     </div>
                                 </div>

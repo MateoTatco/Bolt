@@ -37,7 +37,7 @@ const ClientDetail = () => {
         tags: ''
     })
 
-    const client = clients.find(c => c.id === parseInt(clientId))
+    const client = clients.find(c => c.id === clientId)
 
     // Load clients if not available (for new tab scenarios)
     useEffect(() => {
@@ -113,7 +113,9 @@ const ClientDetail = () => {
             await updateClient(client.id, { ...client, notes: editedContent })
             setOriginalContent(editedContent)
             setShowAlert(true)
-        } catch (e) {}
+        } catch (e) {
+            console.error('Error saving changes:', e)
+        }
     }
 
     const handleCancelEdit = () => {
@@ -322,7 +324,9 @@ const ClientDetail = () => {
                                                 await updateClient(client.id, payload)
                                                 setIsInfoEditing(false)
                                                 setShowAlert(true)
-                                            } catch (e) {}
+                                            } catch (e) {
+                                                console.error('Error updating client:', e)
+                                            }
                                         }}>Save</Button>
                                     </div>
                                 )}

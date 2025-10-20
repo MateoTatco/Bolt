@@ -5,6 +5,7 @@ import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
 import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
+import FirebaseTest from '@/components/FirebaseTest'
 
 const Home = () => {
     const navigate = useNavigate()
@@ -788,6 +789,8 @@ const Home = () => {
             resetWizard()
         } catch (error) {
             console.error('Error creating:', error)
+            // Show error message to user
+            alert('Error creating ' + createType + ': ' + error.message)
         }
     }
 
@@ -874,6 +877,9 @@ const Home = () => {
 
     return (
         <div className="space-y-6">
+            {/* Firebase Test Component - Remove this after testing */}
+            <FirebaseTest />
+            
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
                 <div className="flex items-center gap-2">

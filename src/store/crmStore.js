@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import React from 'react'
-import { CrmService } from '@/services/CrmService'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 
@@ -28,19 +28,22 @@ export const useCrmStore = create((set, get) => ({
         filters: { ...state.filters, ...partial },
     })),
 
-    // Load leads from API
+    // Load leads from Firebase
     loadLeads: async () => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.getLeads()
-            const normalized = (response.data?.data || []).map((l) => ({
-                ...l,
-                favorite: false,
-            }))
-            set({ leads: normalized, loading: false })
+            const response = await FirebaseDbService.leads.getAll()
+            if (response.success) {
+                const normalized = response.data.map((l) => ({
+                    ...l,
+                    favorite: l.favorite || false,
+                }))
+                set({ leads: normalized, loading: false })
+            } else {
+                throw new Error(response.error)
+            }
         } catch (error) {
             set({ error: error.message, loading: false })
-            // Show a proper Notification component to satisfy toast wrapper expectations
             toast.push(
                 React.createElement(
                     Notification,
@@ -51,16 +54,20 @@ export const useCrmStore = create((set, get) => ({
         }
     },
 
-    // Load clients from API
+    // Load clients from Firebase
     loadClients: async () => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.getClients()
-            const normalized = (response.data?.data || []).map((c) => ({
-                ...c,
-                favorite: false,
-            }))
-            set({ clients: normalized, loading: false })
+            const response = await FirebaseDbService.clients.getAll()
+            if (response.success) {
+                const normalized = response.data.map((c) => ({
+                    ...c,
+                    favorite: c.favorite || false,
+                }))
+                set({ clients: normalized, loading: false })
+            } else {
+                throw new Error(response.error)
+            }
         } catch (error) {
             set({ error: error.message, loading: false })
             toast.push(
@@ -77,22 +84,26 @@ export const useCrmStore = create((set, get) => ({
     addLead: async (leadData) => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.createLead(leadData)
-            const newLead = response.data.data
-            
-            set((state) => ({
-                leads: [...state.leads, newLead],
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Lead created successfully!',
-                ),
-            )
-            return newLead
+            const response = await FirebaseDbService.leads.create(leadData)
+            if (response.success) {
+                const newLead = response.data
+                
+                set((state) => ({
+                    leads: [...state.leads, newLead],
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Lead created successfully!',
+                    ),
+                )
+                return newLead
+            } else {
+                throw new Error(response.error)
+            }
         } catch (error) {
             set({ error: error.message, loading: false })
             toast.push(
@@ -110,29 +121,38 @@ export const useCrmStore = create((set, get) => ({
     updateLead: async (id, leadData) => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.updateLead(id, leadData)
-            const updatedLead = response.data.data
+            console.log('Updating lead:', id, leadData)
+            const response = await FirebaseDbService.leads.update(id, leadData)
+            console.log('Update response:', response)
             
-            set((state) => ({
-                leads: state.leads.map((l) => (l.id === id ? updatedLead : l)),
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Lead updated successfully!',
-                ),
-            )
-            return updatedLead
+            if (response.success) {
+                const updatedLead = response.data
+                
+                set((state) => ({
+                    leads: state.leads.map((l) => (l.id === id ? updatedLead : l)),
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Lead updated successfully!',
+                    ),
+                )
+                return updatedLead
+            } else {
+                console.error('Update failed:', response.error)
+                throw new Error(response.error)
+            }
         } catch (error) {
+            console.error('Update error:', error)
             set({ error: error.message, loading: false })
             toast.push(
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    'Failed to update lead',
+                    `Failed to update lead: ${error.message}`,
                 ),
             )
             throw error
@@ -141,58 +161,93 @@ export const useCrmStore = create((set, get) => ({
 
     // Link lead to clients (replace full set)
     linkLeadToClients: async (leadId, clientIds) => {
-        const prevClientIds = (get().leads.find((l) => l.id === leadId)?.clientIds) || []
-        // Update lead clientIds and sync client leadIds locally
-        set((state) => {
-            const leads = state.leads.map((l) => (l.id === leadId ? { ...l, clientIds: [...clientIds] } : l))
-            const clients = state.clients.map((c) => {
-                const hasLink = (clientIds || []).includes(c.id)
-                const nextLeadIds = new Set(c.leadIds || [])
-                if (hasLink) nextLeadIds.add(leadId)
-                else nextLeadIds.delete(leadId)
-                return { ...c, leadIds: Array.from(nextLeadIds) }
-            })
-            return { leads, clients }
-        })
-        // Persist lead and affected clients
+        set({ loading: true, error: null })
         try {
+            const prevClientIds = (get().leads.find((l) => l.id === leadId)?.clientIds) || []
+            
+            // Update lead clientIds and sync client leadIds locally
+            set((state) => {
+                const leads = state.leads.map((l) => (l.id === leadId ? { ...l, clientIds: [...clientIds] } : l))
+                const clients = state.clients.map((c) => {
+                    const hasLink = (clientIds || []).includes(c.id)
+                    const nextLeadIds = new Set(c.leadIds || [])
+                    if (hasLink) nextLeadIds.add(leadId)
+                    else nextLeadIds.delete(leadId)
+                    return { ...c, leadIds: Array.from(nextLeadIds) }
+                })
+                return { leads, clients }
+            })
+            
+            // Persist lead and affected clients to Firebase
             const targetLead = get().leads.find((l) => l.id === leadId)
-            await CrmService.updateLead(leadId, targetLead)
+            if (targetLead) {
+                await FirebaseDbService.leads.update(leadId, targetLead)
+            }
+            
             const affectedIds = Array.from(new Set([...(prevClientIds || []), ...(clientIds || [])]))
             for (const cid of affectedIds) {
                 const client = get().clients.find((c) => c.id === cid)
                 if (client) {
-                    await CrmService.updateClient(cid, client)
+                    await FirebaseDbService.clients.update(cid, client)
                 }
             }
-        } catch {}
+            
+            set({ loading: false })
+            
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 2000, title: 'Success' },
+                    'Client links updated successfully!',
+                ),
+            )
+        } catch (error) {
+            console.error('Link error:', error)
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Failed to update client links: ${error.message}`,
+                ),
+            )
+            throw error
+        }
     },
 
     // Delete lead
     deleteLead: async (id) => {
         set({ loading: true, error: null })
         try {
-            await CrmService.deleteLead(id)
+            console.log('Deleting lead:', id)
+            const response = await FirebaseDbService.leads.delete(id)
+            console.log('Delete response:', response)
             
-            set((state) => ({
-                leads: state.leads.filter((l) => l.id !== id),
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Lead deleted successfully!',
-                ),
-            )
+            if (response.success) {
+                set((state) => ({
+                    leads: state.leads.filter((l) => l.id !== id),
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Lead deleted successfully!',
+                    ),
+                )
+            } else {
+                console.error('Delete failed:', response.error)
+                throw new Error(response.error)
+            }
         } catch (error) {
+            console.error('Delete error:', error)
             set({ error: error.message, loading: false })
             toast.push(
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    'Failed to delete lead',
+                    `Failed to delete lead: ${error.message}`,
                 ),
             )
             throw error
@@ -218,22 +273,26 @@ export const useCrmStore = create((set, get) => ({
     addClient: async (clientData) => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.createClient(clientData)
-            const newClient = response.data.data
-            
-            set((state) => ({
-                clients: [...state.clients, newClient],
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Client created successfully!',
-                ),
-            )
-            return newClient
+            const response = await FirebaseDbService.clients.create(clientData)
+            if (response.success) {
+                const newClient = response.data
+                
+                set((state) => ({
+                    clients: [...state.clients, newClient],
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Client created successfully!',
+                    ),
+                )
+                return newClient
+            } else {
+                throw new Error(response.error)
+            }
         } catch (error) {
             set({ error: error.message, loading: false })
             toast.push(
@@ -251,29 +310,38 @@ export const useCrmStore = create((set, get) => ({
     updateClient: async (id, clientData) => {
         set({ loading: true, error: null })
         try {
-            const response = await CrmService.updateClient(id, clientData)
-            const updatedClient = response.data.data
+            console.log('Updating client:', id, clientData)
+            const response = await FirebaseDbService.clients.update(id, clientData)
+            console.log('Update response:', response)
             
-            set((state) => ({
-                clients: state.clients.map((c) => (c.id === id ? updatedClient : c)),
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Client updated successfully!',
-                ),
-            )
-            return updatedClient
+            if (response.success) {
+                const updatedClient = response.data
+                
+                set((state) => ({
+                    clients: state.clients.map((c) => (c.id === id ? updatedClient : c)),
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Client updated successfully!',
+                    ),
+                )
+                return updatedClient
+            } else {
+                console.error('Update failed:', response.error)
+                throw new Error(response.error)
+            }
         } catch (error) {
+            console.error('Update error:', error)
             set({ error: error.message, loading: false })
             toast.push(
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    'Failed to update client',
+                    `Failed to update client: ${error.message}`,
                 ),
             )
             throw error
@@ -284,20 +352,23 @@ export const useCrmStore = create((set, get) => ({
     deleteClient: async (id) => {
         set({ loading: true, error: null })
         try {
-            await CrmService.deleteClient(id)
-            
-            set((state) => ({
-                clients: state.clients.filter((c) => c.id !== id),
-                loading: false
-            }))
-            
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'success', duration: 2000, title: 'Success' },
-                    'Client deleted successfully!',
-                ),
-            )
+            const response = await FirebaseDbService.clients.delete(id)
+            if (response.success) {
+                set((state) => ({
+                    clients: state.clients.filter((c) => c.id !== id),
+                    loading: false
+                }))
+                
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        'Client deleted successfully!',
+                    ),
+                )
+            } else {
+                throw new Error(response.error)
+            }
         } catch (error) {
             set({ error: error.message, loading: false })
             toast.push(
