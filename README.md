@@ -94,7 +94,7 @@ src/
 └── views/              # Page components
 ```
 
-## Customization
+## Customization and small changes
 
 ### Branding
 - Update logo files in `public/img/logo/`
