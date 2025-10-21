@@ -15,13 +15,12 @@ const navigationConfig = [
         authority: [],
         subMenu: [],
     },
-    /** Example purpose only, please remove */
     {
-        key: 'singleMenuItem',
-        path: '/single-menu-view',
-        title: 'Single menu item',
-        translateKey: 'nav.singleMenuItem',
-        icon: 'singleMenu',
+        key: 'advancedFeatures',
+        path: '/advanced-features',
+        title: 'Advanced Features Dashboard',
+        translateKey: 'nav.advancedFeatures',
+        icon: 'advancedFeatures',
         type: NAV_ITEM_TYPE_ITEM,
         authority: [],
         subMenu: [],

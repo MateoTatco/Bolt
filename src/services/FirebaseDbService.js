@@ -65,20 +65,57 @@ export const FirebaseDbService = {
             }
         },
 
-        // Update lead
-        update: async (id, leadData) => {
+        // Update lead with conflict detection
+        update: async (id, leadData, expectedVersion = null) => {
             try {
                 // Ensure ID is a string
                 const stringId = String(id)
                 const leadRef = doc(db, 'leads', stringId)
+                
+                // Get current document for conflict detection
+                const currentDoc = await getDoc(leadRef)
+                if (!currentDoc.exists()) {
+                    return { success: false, error: 'Lead not found' }
+                }
+                
+                const currentData = currentDoc.data()
+                
+                // Check for conflicts if version is provided
+                if (expectedVersion && currentData.version !== expectedVersion) {
+                    return { 
+                        success: false, 
+                        error: 'Conflict detected - document was modified by another user',
+                        conflict: {
+                            localVersion: expectedVersion,
+                            serverVersion: currentData.version,
+                            serverData: currentData
+                        }
+                    }
+                }
+                
                 const updateData = { ...leadData }
                 // Remove the id from updateData to avoid conflicts
                 delete updateData.id
+                
+                // Increment version for conflict detection
+                const newVersion = (currentData.version || 0) + 1
+                
                 await updateDoc(leadRef, {
                     ...updateData,
-                    updatedAt: serverTimestamp()
+                    updatedAt: serverTimestamp(),
+                    version: newVersion,
+                    lastModifiedBy: 'current-user' // This should be the actual user ID
                 })
-                return { success: true, data: { id: stringId, ...leadData } }
+                
+                return { 
+                    success: true, 
+                    data: { 
+                        id: stringId, 
+                        ...leadData, 
+                        version: newVersion,
+                        updatedAt: new Date().toISOString()
+                    } 
+                }
             } catch (error) {
                 console.error('Firebase update error:', error)
                 return { success: false, error: error.message }

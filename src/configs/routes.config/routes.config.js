@@ -23,11 +23,10 @@ export const protectedRoutes = [
         component: lazy(() => import('@/views/ClientDetail')),
         authority: [],
     },
-    /** Example purpose only, please remove */
     {
-        key: 'singleMenuItem',
-        path: '/single-menu-view',
-        component: lazy(() => import('@/views/demo/SingleMenuView')),
+        key: 'advancedFeatures',
+        path: '/advanced-features',
+        component: lazy(() => import('@/views/AdvancedFeatures')),
         authority: [],
     },
     {
