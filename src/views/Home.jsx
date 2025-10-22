@@ -4,8 +4,10 @@ import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, Fo
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
-import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
+import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload } from 'react-icons/hi'
 import FirebaseTest from '@/components/FirebaseTest'
+import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
+import BulkDataManager from '@/components/BulkDataManager'
 
 const Home = () => {
     const navigate = useNavigate()
@@ -572,6 +574,7 @@ const Home = () => {
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false)
     const [createType, setCreateType] = useState('') // 'lead' or 'client'
+    const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
     
     // Multi-step wizard state
     const [wizardStep, setWizardStep] = useState(1)
@@ -880,9 +883,20 @@ const Home = () => {
             {/* Firebase Test Component - Remove this after testing */}
             <FirebaseTest />
             
+            {/* Firebase Advanced Test Component - Remove this after testing */}
+            <FirebaseAdvancedTest />
+            
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
                 <div className="flex items-center gap-2">
+                    <Button 
+                        variant="outline" 
+                        onClick={() => setIsBulkManagerOpen(true)}
+                        className="flex items-center gap-2"
+                    >
+                        <HiOutlineUpload className="w-4 h-4" />
+                        Bulk Import/Export
+                    </Button>
                     <Button variant="solid" onClick={handleCreateClick}>Create</Button>
                 </div>
             </div>
@@ -1178,13 +1192,19 @@ const Home = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="twoTone" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
-                            {/* In a future iteration, we can wire this to an import workflow */}
-                            <Button>Import CSV</Button>
+                            <Button onClick={() => setIsBulkManagerOpen(true)}>Import Data</Button>
                         </div>
                     </div>
                 </Card>
             )}
 
+
+            {/* Bulk Data Manager */}
+            <BulkDataManager 
+                isOpen={isBulkManagerOpen}
+                onClose={() => setIsBulkManagerOpen(false)}
+                entityType={filters.type?.value || 'leads'}
+            />
 
             {/* Type Selector Dialog */}
             <Dialog isOpen={isTypeSelectorOpen} onClose={() => setIsTypeSelectorOpen(false)} width={500}>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import React from 'react'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { EnhancedFirebaseService } from '@/services/EnhancedFirebaseService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import { db } from '@/configs/firebase.config'
@@ -755,6 +756,306 @@ export const useCrmStore = create((set, get) => ({
                 )
                 // Trigger sync logic here
             }
+        }
+    },
+
+    // ===== ENHANCED FIREBASE FEATURES =====
+
+    // Advanced search
+    advancedSearch: async (searchParams) => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.advancedSearch(searchParams)
+            if (result.success) {
+                set({ loading: false })
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Search failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Full-text search
+    fullTextSearch: async (searchTerm, entityType = 'leads') => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.fullTextSearch(searchTerm, entityType)
+            if (result.success) {
+                set({ loading: false })
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Search failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Bulk operations
+    bulkCreate: async (data, entityType = 'leads') => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.bulkCreate(data, entityType)
+            if (result.success) {
+                // Refresh data after bulk create
+                if (entityType === 'leads') {
+                    get().loadLeads()
+                } else {
+                    get().loadClients()
+                }
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Bulk created ${data.length} ${entityType} successfully!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Bulk create failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    bulkUpdate: async (updates, entityType = 'leads') => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.bulkUpdate(updates, entityType)
+            if (result.success) {
+                // Refresh data after bulk update
+                if (entityType === 'leads') {
+                    get().loadLeads()
+                } else {
+                    get().loadClients()
+                }
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Bulk updated ${updates.length} ${entityType} successfully!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Bulk update failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    bulkDelete: async (ids, entityType = 'leads') => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.bulkDelete(ids, entityType)
+            if (result.success) {
+                // Refresh data after bulk delete
+                if (entityType === 'leads') {
+                    get().loadLeads()
+                } else {
+                    get().loadClients()
+                }
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Bulk deleted ${ids.length} ${entityType} successfully!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Bulk delete failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Data export
+    exportData: async (entityType = 'leads', format = 'json', options = {}) => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.exportData(entityType, format, options)
+            if (result.success) {
+                // Download the file
+                EnhancedFirebaseService.downloadFile(
+                    result.data,
+                    result.filename,
+                    result.mimeType
+                )
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Data exported successfully as ${format.toUpperCase()}!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Export failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Data import
+    importData: async (data, entityType = 'leads', options = {}) => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.importData(data, entityType, options)
+            if (result.success) {
+                // Refresh data after import
+                if (entityType === 'leads') {
+                    get().loadLeads()
+                } else {
+                    get().loadClients()
+                }
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Imported ${result.importedCount} ${entityType} successfully!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Import failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Analytics
+    getAnalytics: async (entityType = 'leads', dateRange = null) => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.getAnalytics(entityType, dateRange)
+            if (result.success) {
+                set({ loading: false })
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Analytics failed: ${error.message}`,
+                ),
+            )
+            throw error
+        }
+    },
+
+    // Archive old records
+    archiveOldRecords: async (entityType = 'leads', daysOld = 365) => {
+        set({ loading: true, error: null })
+        try {
+            const result = await EnhancedFirebaseService.archiveOldRecords(entityType, daysOld)
+            if (result.success) {
+                // Refresh data after archiving
+                if (entityType === 'leads') {
+                    get().loadLeads()
+                } else {
+                    get().loadClients()
+                }
+                
+                set({ loading: false })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'success', duration: 2000, title: 'Success' },
+                        `Archived ${result.archivedCount} old ${entityType} successfully!`,
+                    ),
+                )
+                return result
+            } else {
+                throw new Error(result.error)
+            }
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Archive failed: ${error.message}`,
+                ),
+            )
+            throw error
         }
     },
 }))
