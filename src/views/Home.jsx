@@ -1183,20 +1183,6 @@ const Home = () => {
                 className="card"
             />
 
-            {!loading && pageTotal === 0 && (
-                <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h5 className="font-semibold mb-1">No leads found</h5>
-                            <p className="text-sm text-gray-600">Try adjusting filters or create your first lead.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="twoTone" onClick={() => setIsCreateOpen(true)}>Create lead</Button>
-                            <Button onClick={() => setIsBulkManagerOpen(true)}>Import Data</Button>
-                        </div>
-                    </div>
-                </Card>
-            )}
 
 
             {/* Bulk Data Manager */}

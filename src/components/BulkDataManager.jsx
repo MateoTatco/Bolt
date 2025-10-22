@@ -51,17 +51,48 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
             if (importOptions.format === 'json') {
                 data = JSON.parse(text)
             } else if (importOptions.format === 'csv') {
-                // Simple CSV parsing (you might want to use a proper CSV library)
-                const lines = text.split('\n')
-                const headers = lines[0].split(',')
+                // Enhanced CSV parsing with proper field handling
+                const lines = text.split('\n').filter(line => line.trim())
+                if (lines.length < 2) {
+                    throw new Error('CSV file must have at least a header row and one data row')
+                }
+                
+                const headers = lines[0].split(',').map(h => h.trim())
                 data = lines.slice(1).map(line => {
-                    const values = line.split(',')
+                    // Handle quoted values properly
+                    const values = []
+                    let current = ''
+                    let inQuotes = false
+                    
+                    for (let i = 0; i < line.length; i++) {
+                        const char = line[i]
+                        if (char === '"') {
+                            inQuotes = !inQuotes
+                        } else if (char === ',' && !inQuotes) {
+                            values.push(current.trim())
+                            current = ''
+                        } else {
+                            current += char
+                        }
+                    }
+                    values.push(current.trim())
+                    
                     const obj = {}
                     headers.forEach((header, index) => {
-                        obj[header.trim()] = values[index]?.trim() || ''
+                        let value = values[index] || ''
+                        // Remove quotes if present
+                        if (value.startsWith('"') && value.endsWith('"')) {
+                            value = value.slice(1, -1)
+                        }
+                        
+                        // Convert boolean strings
+                        if (value === 'true') value = true
+                        if (value === 'false') value = false
+                        
+                        obj[header] = value
                     })
                     return obj
-                }).filter(row => Object.values(row).some(value => value))
+                }).filter(row => Object.values(row).some(value => value !== ''))
             }
 
             setProgress(50)
@@ -140,38 +171,69 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
     }
 
     const downloadTemplate = () => {
-        const template = entityType === 'leads' ? [
-            {
-                companyName: 'Example Company',
-                leadContact: 'John Doe',
-                email: 'john@example.com',
-                phone: '123-456-7890',
-                status: 'new',
-                methodOfContact: 'email',
-                projectMarket: 'us'
-            }
-        ] : [
-            {
-                clientName: 'Example Client',
-                clientNumber: 'CLI-001',
-                clientType: 'Individual',
-                address: '123 Main St',
-                city: 'New York',
-                state: 'NY',
-                zip: '10001'
-            }
-        ]
+        if (importOptions.format === 'json') {
+            const template = entityType === 'leads' ? [
+                {
+                    companyName: 'Example Company',
+                    leadContact: 'John Doe',
+                    title: 'CEO',
+                    email: 'john@example.com',
+                    phone: '123-456-7890',
+                    methodOfContact: 'email',
+                    projectMarket: 'us',
+                    leadConception: 'referral',
+                    status: 'new',
+                    responded: false,
+                    dateLastContacted: '2025-01-15',
+                    notes: 'Example notes about the lead',
+                    favorite: false
+                }
+            ] : [
+                {
+                    clientNumber: 'CL-001',
+                    clientType: 'enterprise',
+                    clientName: 'Example Client Corp',
+                    address: '123 Business St',
+                    city: 'New York',
+                    state: 'NY',
+                    zip: '10001',
+                    tags: 'enterprise, technology',
+                    notes: 'Example notes about the client',
+                    favorite: false
+                }
+            ]
 
-        const dataStr = JSON.stringify(template, null, 2)
-        const dataBlob = new Blob([dataStr], { type: 'application/json' })
-        const url = URL.createObjectURL(dataBlob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = `${entityType}_template.json`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
+            const dataStr = JSON.stringify(template, null, 2)
+            const dataBlob = new Blob([dataStr], { type: 'application/json' })
+            const url = URL.createObjectURL(dataBlob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `${entityType}_template.json`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(url)
+        } else {
+            // CSV Template
+            const csvTemplate = entityType === 'leads' ? 
+                'companyName,leadContact,title,email,phone,methodOfContact,projectMarket,leadConception,status,responded,dateLastContacted,notes,favorite\n' +
+                'Example Company,John Doe,CEO,john@example.com,123-456-7890,email,us,referral,new,false,2025-01-15,"Example notes about the lead",false\n' +
+                'Another Company,Jane Smith,CTO,jane@another.com,987-654-3210,phone,eu,website,qualified,true,2025-01-16,"Another example lead",false'
+                :
+                'clientNumber,clientType,clientName,address,city,state,zip,tags,notes,favorite\n' +
+                'CL-001,enterprise,Example Client Corp,123 Business St,New York,NY,10001,"enterprise, technology","Example notes about the client",false\n' +
+                'CL-002,individual,Another Client LLC,456 Main Ave,Los Angeles,CA,90210,"small business, local","Another example client",false'
+
+            const dataBlob = new Blob([csvTemplate], { type: 'text/csv' })
+            const url = URL.createObjectURL(dataBlob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `${entityType}_template.csv`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(url)
+        }
     }
 
     return (
@@ -214,6 +276,11 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                                 <strong>Import {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</strong>
                                 <p className="text-sm mt-1">
                                     Upload a JSON or CSV file to import {entityType}. Download a template first to see the required format.
+                                    {importOptions.format === 'csv' && (
+                                        <span className="block mt-1 text-blue-600">
+                                            💡 CSV is perfect for your team - just like Excel! Download the CSV template to get started.
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                         </Alert>
@@ -262,7 +329,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                                 className="flex items-center gap-2"
                             >
                                 <HiOutlineDownload className="w-4 h-4" />
-                                Download Template
+                                Download {importOptions.format.toUpperCase()} Template
                             </Button>
                             <Button
                                 variant="outline"
