@@ -576,6 +576,7 @@ const Home = () => {
     const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false)
     const [createType, setCreateType] = useState('') // 'lead' or 'client'
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
+    const [showDevTools, setShowDevTools] = useState(false)
     
     // Multi-step wizard state
     const [wizardStep, setWizardStep] = useState(1)
@@ -881,42 +882,59 @@ const Home = () => {
 
     return (
         <div className="space-y-6">
-            {/* Firebase Test Component - Remove this after testing */}
-            <FirebaseTest />
-            
-            {/* Market Options Migration */}
-            <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-4">Market Options Migration</h3>
-                <div className="flex gap-2">
-                    <Button 
-                        onClick={async () => {
-                            const result = await migrateMarketOptions()
-                            console.log('Migration result:', result)
-                            alert(`Migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
-                        }}
-                        variant="twoTone"
-                        size="sm"
-                    >
-                        Migrate Existing Leads
-                    </Button>
-                    <Button 
-                        onClick={async () => {
-                            if (confirm('This will delete all existing leads and re-import with new market options. Continue?')) {
-                                const result = await resetAndMigrateLeads()
-                                console.log('Reset and migration result:', result)
-                                alert(`Reset and migration completed! Imported: ${result.imported} leads`)
-                            }
-                        }}
-                        variant="twoTone"
-                        size="sm"
-                    >
-                        Reset & Re-import Leads
-                    </Button>
-                </div>
-            </Card>
-            
-            {/* Firebase Advanced Test Component - Remove this after testing */}
-            <FirebaseAdvancedTest />
+            {/* Dev Only Toggle Button */}
+            <div className="flex justify-end">
+                <Button 
+                    onClick={() => setShowDevTools(!showDevTools)}
+                    variant="twoTone"
+                    size="sm"
+                    className="text-xs"
+                >
+                    {showDevTools ? 'Hide Dev Tools' : 'Dev Only'}
+                </Button>
+            </div>
+
+            {/* Development Tools - Hidden by default */}
+            {showDevTools && (
+                <>
+                    {/* Firebase Test Component - Remove this after testing */}
+                    <FirebaseTest />
+                    
+                    {/* Market Options Migration */}
+                    <Card className="p-4">
+                        <h3 className="text-lg font-semibold mb-4">Market Options Migration</h3>
+                        <div className="flex gap-2">
+                            <Button 
+                                onClick={async () => {
+                                    const result = await migrateMarketOptions()
+                                    console.log('Migration result:', result)
+                                    alert(`Migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
+                                }}
+                                variant="twoTone"
+                                size="sm"
+                            >
+                                Migrate Existing Leads
+                            </Button>
+                            <Button 
+                                onClick={async () => {
+                                    if (confirm('This will delete all existing leads and re-import with new market options. Continue?')) {
+                                        const result = await resetAndMigrateLeads()
+                                        console.log('Reset and migration result:', result)
+                                        alert(`Reset and migration completed! Imported: ${result.imported} leads`)
+                                    }
+                                }}
+                                variant="twoTone"
+                                size="sm"
+                            >
+                                Reset & Re-import Leads
+                            </Button>
+                        </div>
+                    </Card>
+                    
+                    {/* Firebase Advanced Test Component - Remove this after testing */}
+                    <FirebaseAdvancedTest />
+                </>
+            )}
             
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-semibold">CRM</h1>
