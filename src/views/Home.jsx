@@ -8,6 +8,7 @@ import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutline
 import FirebaseTest from '@/components/FirebaseTest'
 import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
+import { migrateMarketOptions, resetAndMigrateLeads } from '@/utils/migrateMarketOptions'
 
 const Home = () => {
     const navigate = useNavigate()
@@ -882,6 +883,37 @@ const Home = () => {
         <div className="space-y-6">
             {/* Firebase Test Component - Remove this after testing */}
             <FirebaseTest />
+            
+            {/* Market Options Migration */}
+            <Card className="p-4">
+                <h3 className="text-lg font-semibold mb-4">Market Options Migration</h3>
+                <div className="flex gap-2">
+                    <Button 
+                        onClick={async () => {
+                            const result = await migrateMarketOptions()
+                            console.log('Migration result:', result)
+                            alert(`Migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
+                        }}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        Migrate Existing Leads
+                    </Button>
+                    <Button 
+                        onClick={async () => {
+                            if (confirm('This will delete all existing leads and re-import with new market options. Continue?')) {
+                                const result = await resetAndMigrateLeads()
+                                console.log('Reset and migration result:', result)
+                                alert(`Reset and migration completed! Imported: ${result.imported} leads`)
+                            }
+                        }}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        Reset & Re-import Leads
+                    </Button>
+                </div>
+            </Card>
             
             {/* Firebase Advanced Test Component - Remove this after testing */}
             <FirebaseAdvancedTest />

@@ -180,7 +180,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                     email: 'john@example.com',
                     phone: '123-456-7890',
                     methodOfContact: 'email',
-                    projectMarket: 'us',
+                    projectMarket: 'okc',
                     leadConception: 'referral',
                     status: 'new',
                     responded: false,
@@ -217,8 +217,8 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
             // CSV Template
             const csvTemplate = entityType === 'leads' ? 
                 'companyName,leadContact,title,email,phone,methodOfContact,projectMarket,leadConception,status,responded,dateLastContacted,notes,favorite\n' +
-                'Example Company,John Doe,CEO,john@example.com,123-456-7890,email,us,referral,new,false,2025-01-15,"Example notes about the lead",false\n' +
-                'Another Company,Jane Smith,CTO,jane@another.com,987-654-3210,phone,eu,website,qualified,true,2025-01-16,"Another example lead",false'
+                'Example Company,John Doe,CEO,john@example.com,123-456-7890,email,okc,referral,new,false,2025-01-15,"Example notes about the lead",false\n' +
+                'Another Company,Jane Smith,CTO,jane@another.com,987-654-3210,phone,dfw,website,qualified,true,2025-01-16,"Another example lead",false'
                 :
                 'clientNumber,clientType,clientName,address,city,state,zip,tags,notes,favorite\n' +
                 'CL-001,enterprise,Example Client Corp,123 Business St,New York,NY,10001,"enterprise, technology","Example notes about the client",false\n' +
