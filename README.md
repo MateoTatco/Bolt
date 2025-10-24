@@ -346,7 +346,6 @@ leads: {
 
 clients: {
   [clientId]: {
-    clientNumber: string,
     clientType: string,
     clientName: string,
     address: string,

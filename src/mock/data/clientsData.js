@@ -1,7 +1,6 @@
 export const clientsData = [
     {
         id: 1,
-        clientNumber: 'CL-001',
         clientType: 'enterprise',
         clientName: 'GlobalTech Industries',
         address: '500 Technology Plaza',
@@ -18,7 +17,6 @@ export const clientsData = [
     },
     {
         id: 2,
-        clientNumber: 'CL-002',
         clientType: 'small_business',
         clientName: 'InnovateLab Solutions',
         address: '1234 Startup Boulevard',
@@ -35,7 +33,6 @@ export const clientsData = [
     },
     {
         id: 3,
-        clientNumber: 'CL-003',
         clientType: 'nonprofit',
         clientName: 'Healthcare for All Foundation',
         address: '789 Medical Center Drive',
@@ -52,7 +49,6 @@ export const clientsData = [
     },
     {
         id: 4,
-        clientNumber: 'CL-004',
         clientType: 'enterprise',
         clientName: 'Manufacturing Dynamics Corp',
         address: '2500 Industrial Parkway',
@@ -69,7 +65,6 @@ export const clientsData = [
     },
     {
         id: 5,
-        clientNumber: 'CL-005',
         clientType: 'small_business',
         clientName: 'EcoFriendly Retail Co',
         address: '456 Green Street',
@@ -86,7 +81,6 @@ export const clientsData = [
     },
     {
         id: 6,
-        clientNumber: 'CL-006',
         clientType: 'enterprise',
         clientName: 'Financial Services Group',
         address: '100 Wall Street',
@@ -103,7 +97,6 @@ export const clientsData = [
     },
     {
         id: 7,
-        clientNumber: 'CL-007',
         clientType: 'small_business',
         clientName: 'Creative Design Studio',
         address: '789 Art District',
@@ -120,7 +113,6 @@ export const clientsData = [
     },
     {
         id: 8,
-        clientNumber: 'CL-008',
         clientType: 'enterprise',
         clientName: 'Logistics Solutions Inc',
         address: '1500 Distribution Center Blvd',
@@ -137,7 +129,6 @@ export const clientsData = [
     },
     {
         id: 9,
-        clientNumber: 'CL-009',
         clientType: 'nonprofit',
         clientName: 'Education First Initiative',
         address: '321 Learning Lane',
@@ -154,7 +145,6 @@ export const clientsData = [
     },
     {
         id: 10,
-        clientNumber: 'CL-010',
         clientType: 'enterprise',
         clientName: 'Media Production Group',
         address: '2000 Entertainment Boulevard',

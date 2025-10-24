@@ -190,7 +190,6 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                 }
             ] : [
                 {
-                    clientNumber: 'CL-001',
                     clientType: 'enterprise',
                     clientName: 'Example Client Corp',
                     address: '123 Business St',
@@ -220,9 +219,9 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                 'Example Company,John Doe,CEO,john@example.com,123-456-7890,email,okc,referral,new,false,2025-01-15,"Example notes about the lead",false\n' +
                 'Another Company,Jane Smith,CTO,jane@another.com,987-654-3210,phone,dfw,website,qualified,true,2025-01-16,"Another example lead",false'
                 :
-                'clientNumber,clientType,clientName,address,city,state,zip,tags,notes,favorite\n' +
-                'CL-001,enterprise,Example Client Corp,123 Business St,New York,NY,10001,"enterprise, technology","Example notes about the client",false\n' +
-                'CL-002,individual,Another Client LLC,456 Main Ave,Los Angeles,CA,90210,"small business, local","Another example client",false'
+                'clientType,clientName,address,city,state,zip,tags,notes,favorite\n' +
+                'enterprise,Example Client Corp,123 Business St,New York,NY,10001,"enterprise, technology","Example notes about the client",false\n' +
+                'individual,Another Client LLC,456 Main Ave,Los Angeles,CA,90210,"small business, local","Another example client",false'
 
             const dataBlob = new Blob([csvTemplate], { type: 'text/csv' })
             const url = URL.createObjectURL(dataBlob)

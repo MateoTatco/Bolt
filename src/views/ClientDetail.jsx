@@ -28,7 +28,6 @@ const ClientDetail = () => {
     const [isInfoEditing, setIsInfoEditing] = useState(false)
     const [infoForm, setInfoForm] = useState({
         clientName: '',
-        clientNumber: '',
         clientType: '',
         address: '',
         city: '',
@@ -76,7 +75,7 @@ const ClientDetail = () => {
 </ul>
 
 <h3>Key Metrics</h3>
-<p><strong>${client.clientNumber}</strong> - Client ID</p>
+<p><strong>${client.id}</strong> - Client ID</p>
 <p><strong>${client.clientType || 'N/A'}</strong> - Business Type</p>
 
 <h3>Next Steps</h3>
@@ -91,7 +90,6 @@ const ClientDetail = () => {
             setOriginalContent(content)
             setInfoForm({
                 clientName: client.clientName || '',
-                clientNumber: client.clientNumber || '',
                 clientType: client.clientType || '',
                 address: client.address || '',
                 city: client.city || '',
@@ -207,7 +205,6 @@ const ClientDetail = () => {
                             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 {client.clientName}
                             </h2>
-                            <p className="text-sm text-gray-500">Client #{client.clientNumber}</p>
                         </div>
                     </div>
                 </div>
@@ -240,7 +237,7 @@ const ClientDetail = () => {
                                 {client.clientName}
                             </h1>
                             <p className="text-gray-600 dark:text-gray-400">
-                                {client.clientNumber} • {client.clientType || 'Business'}
+                                {client.clientType || 'Business'}
                             </p>
                         </div>
                         <div className="flex items-center space-x-3">
@@ -297,7 +294,6 @@ const ClientDetail = () => {
                                             setIsInfoEditing(false)
                                             setInfoForm({
                                                 clientName: client.clientName || '',
-                                                clientNumber: client.clientNumber || '',
                                                 clientType: client.clientType || '',
                                                 address: client.address || '',
                                                 city: client.city || '',
@@ -311,7 +307,6 @@ const ClientDetail = () => {
                                                 const payload = {
                                                     ...client,
                                                     clientName: infoForm.clientName,
-                                                    clientNumber: infoForm.clientNumber,
                                                     clientType: infoForm.clientType,
                                                     address: infoForm.address,
                                                     city: infoForm.city,
@@ -337,10 +332,6 @@ const ClientDetail = () => {
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Company</label>
                                         <p className="text-gray-900 dark:text-white text-sm">{client.clientName}</p>
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium text-gray-500">Client Number</label>
-                                        <p className="text-gray-900 dark:text-white text-sm">{client.clientNumber}</p>
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Type</label>
@@ -372,10 +363,6 @@ const ClientDetail = () => {
                                     <div>
                                         <label className="text-sm font-medium">Company</label>
                                         <Input value={infoForm.clientName} onChange={(e)=>setInfoForm({...infoForm, clientName: e.target.value})} />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium">Client Number</label>
-                                        <Input value={infoForm.clientNumber} onChange={(e)=>setInfoForm({...infoForm, clientNumber: e.target.value})} />
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium">Type</label>

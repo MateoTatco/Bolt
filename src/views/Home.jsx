@@ -9,6 +9,7 @@ import FirebaseTest from '@/components/FirebaseTest'
 import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
 import { migrateMarketOptions, resetAndMigrateLeads } from '@/utils/migrateMarketOptions'
+import { removeClientNumberFromClients, resetAndMigrateClients } from '@/utils/removeClientNumber'
 
 const Home = () => {
     const navigate = useNavigate()
@@ -60,7 +61,6 @@ const Home = () => {
     ]
     const defaultClientKeys = [
         'clientName',
-        'clientNumber',
         'address',
         'city',
         'state',
@@ -283,7 +283,7 @@ const Home = () => {
                     if (item.entityType === 'lead') {
                         hay = `${item.companyName} ${item.leadContact} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
                     } else {
-                        hay = `${item.clientName} ${item.clientNumber} ${item.address} ${item.city} ${item.state}`.toLowerCase()
+                        hay = `${item.clientName} ${item.address} ${item.city} ${item.state}`.toLowerCase()
                     }
                     if (!hay.includes(term)) return false
                 }
@@ -506,7 +506,6 @@ const Home = () => {
                     )
                 },
             },
-            { header: 'Client #', accessorKey: 'clientNumber', size: 140, meta: { key: 'clientNumber' } },
             { header: 'Address', accessorKey: 'address', size: 220, meta: { key: 'address' } },
             { header: 'City', accessorKey: 'city', size: 140, meta: { key: 'city' } },
             { header: 'State', accessorKey: 'state', size: 100, meta: { key: 'state' } },
@@ -596,7 +595,6 @@ const Home = () => {
         source: '',
         priority: 'medium',
         // Client fields
-        clientNumber: '',
         clientType: '',
         clientName: '',
         address: '',
@@ -777,7 +775,6 @@ const Home = () => {
                 await addLead(payload)
             } else if (createType === 'client') {
                 const payload = {
-                    clientNumber: wizardData.clientNumber,
                     clientType: wizardData.clientType,
                     clientName: wizardData.clientName,
                     address: wizardData.address,
@@ -933,6 +930,37 @@ const Home = () => {
                     
                     {/* Firebase Advanced Test Component - Remove this after testing */}
                     <FirebaseAdvancedTest />
+                    
+                    {/* Client Number Removal Migration */}
+                    <Card className="p-4">
+                        <h3 className="text-lg font-semibold mb-4">Remove Client Number Field</h3>
+                        <div className="flex gap-2">
+                            <Button 
+                                onClick={async () => {
+                                    const result = await removeClientNumberFromClients()
+                                    console.log('Client number removal result:', result)
+                                    alert(`Client number removal completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
+                                }}
+                                variant="twoTone"
+                                size="sm"
+                            >
+                                Remove Client Number from Existing Clients
+                            </Button>
+                            <Button 
+                                onClick={async () => {
+                                    if (confirm('This will delete all existing clients and re-import without clientNumber field. Continue?')) {
+                                        const result = await resetAndMigrateClients()
+                                        console.log('Reset and migration result:', result)
+                                        alert(`Reset and migration completed! Imported: ${result.imported} clients`)
+                                    }
+                                }}
+                                variant="twoTone"
+                                size="sm"
+                            >
+                                Reset & Re-import Clients (No Client Number)
+                            </Button>
+                        </div>
+                    </Card>
                 </>
             )}
             
@@ -1336,14 +1364,6 @@ const Home = () => {
                                     </>
                                 ) : (
                                     <>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Client # *</label>
-                                            <Input 
-                                                value={wizardData.clientNumber} 
-                                                onChange={(e) => setWizardData({ ...wizardData, clientNumber: e.target.value })} 
-                                                placeholder="Enter client number"
-                                />
-            </div>
 
             <div>
                                             <label className="block text-sm font-medium mb-2">Client Type</label>
@@ -1559,7 +1579,7 @@ const Home = () => {
                                     disabled={
                                         createType === 'lead' 
                                             ? !wizardData.companyName.trim() 
-                                            : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
+                                            : !wizardData.clientName.trim()
                                     }
                                 >
                                     Next →
@@ -1571,7 +1591,7 @@ const Home = () => {
                                     disabled={
                                         createType === 'lead' 
                                             ? !wizardData.companyName.trim() 
-                                            : !wizardData.clientName.trim() || !wizardData.clientNumber.trim()
+                                            : !wizardData.clientName.trim()
                                     }
                                 >
                                     Create {createType === 'lead' ? 'Lead' : 'Client'}
