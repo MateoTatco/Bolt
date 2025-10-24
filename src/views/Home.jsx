@@ -34,6 +34,48 @@ const Home = () => {
         loadClients()
     }, [loadLeads, loadClients])
 
+    // Force tatcoContact column to be visible and in order on first load
+    useEffect(() => {
+        const currentType = (filters.type && filters.type.value) || 'lead'
+        const storageSuffix = currentType === 'client' ? 'client' : 'lead'
+        
+        if (currentType === 'lead') {
+            // Ensure tatcoContact is visible
+            setVisibleColumns(prev => {
+                if (prev.tatcoContact === undefined || prev.tatcoContact === false) {
+                    const updated = { ...prev, tatcoContact: true }
+                    // Persist the change
+                    try {
+                        localStorage.setItem(`crmVisibleColumns_${storageSuffix}`, JSON.stringify(updated))
+                    } catch {}
+                    return updated
+                }
+                return prev
+            })
+            
+            // Ensure tatcoContact is in the column order
+            setColumnOrder(prev => {
+                if (!prev.includes('tatcoContact')) {
+                    // Insert tatcoContact after leadContact
+                    const newOrder = [...prev]
+                    const leadContactIndex = newOrder.indexOf('leadContact')
+                    if (leadContactIndex !== -1) {
+                        newOrder.splice(leadContactIndex + 1, 0, 'tatcoContact')
+                    } else {
+                        // If leadContact not found, add at the beginning
+                        newOrder.unshift('tatcoContact')
+                    }
+                    // Persist the change
+                    try {
+                        localStorage.setItem(`crmColumnOrder_${storageSuffix}`, JSON.stringify(newOrder))
+                    } catch {}
+                    return newOrder
+                }
+                return prev
+            })
+        }
+    }, [filters.type])
+
     const [pageIndex, setPageIndex] = useState(1)
     const [pageSize, setPageSize] = useState(10)
     const [sort, setSort] = useState({ key: '', order: '' })
@@ -50,6 +92,7 @@ const Home = () => {
     const defaultLeadKeys = [
         'companyName',
         'leadContact',
+        'tatcoContact',
         'email',
         'phone',
         'methodOfContact',
@@ -97,6 +140,10 @@ const Home = () => {
                     parsed.companyName = parsed.leadName
                     delete parsed.leadName
                 }
+                // Ensure tatcoContact is visible by default
+                if (parsed.tatcoContact === undefined) {
+                    parsed.tatcoContact = true
+                }
                 return parsed
             }
         } catch {}
@@ -124,6 +171,10 @@ const Home = () => {
                 if (parsedVisible.leadName !== undefined) {
                     parsedVisible.companyName = parsedVisible.leadName
                     delete parsedVisible.leadName
+                }
+                // Ensure tatcoContact is visible by default
+                if (parsedVisible.tatcoContact === undefined) {
+                    parsedVisible.tatcoContact = true
                 }
                 setVisibleColumns(parsedVisible)
             } else {
@@ -281,7 +332,7 @@ const Home = () => {
                     const term = search.toLowerCase()
                     let hay = ''
                     if (item.entityType === 'lead') {
-                        hay = `${item.companyName} ${item.leadContact} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
+                        hay = `${item.companyName} ${item.leadContact} ${item.tatcoContact || ''} ${item.title} ${item.email} ${item.phone}`.toLowerCase()
                     } else {
                         hay = `${item.clientName} ${item.address} ${item.city} ${item.state}`.toLowerCase()
                     }
@@ -416,6 +467,16 @@ const Home = () => {
                 accessorKey: 'leadContact',
                 size: 180,
                 meta: { key: 'leadContact' },
+            },
+            {
+                header: 'Tatco Contact',
+                accessorKey: 'tatcoContact',
+                size: 180,
+                meta: { key: 'tatcoContact' },
+                cell: (props) => {
+                    const value = props.row.original.tatcoContact
+                    return <span>{value || '-'}</span>
+                },
             },
             { header: 'Email', accessorKey: 'email', size: 220, meta: { key: 'email' } },
             { header: 'Phone', accessorKey: 'phone', size: 160, meta: { key: 'phone' } },
@@ -555,7 +616,12 @@ const Home = () => {
             .filter(Boolean)
         const finalCols = ordered.filter((c) => {
             const key = c.meta?.key || c.accessorKey || c.id
-            return visibleColumns[key] !== false
+            const isVisible = visibleColumns[key] !== false
+            // Debug log for tatcoContact column
+            if (key === 'tatcoContact') {
+                console.log('Tatco Contact column visibility:', { key, isVisible, visibleColumns: visibleColumns[key] })
+            }
+            return isVisible
         })
         return finalCols
     }, [allColumns, columnOrder, visibleColumns])
@@ -583,6 +649,7 @@ const Home = () => {
         // Lead fields
         companyName: '',
         leadContact: '',
+        tatcoContact: '',
         email: '',
         phone: '',
         title: '',
@@ -716,6 +783,7 @@ const Home = () => {
         setWizardData({
             companyName: '',
             leadContact: '',
+            tatcoContact: '',
             email: '',
             phone: '',
             title: '',
@@ -757,6 +825,7 @@ const Home = () => {
                 const payload = {
                     companyName: wizardData.companyName,
                     leadContact: wizardData.leadContact || '',
+                    tatcoContact: wizardData.tatcoContact || '',
                     title: wizardData.title,
                     email: wizardData.email || '',
                     phone: wizardData.phone || '',
@@ -880,7 +949,7 @@ const Home = () => {
     return (
         <div className="space-y-6">
             {/* Dev Only Toggle Button */}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
                 <Button 
                     onClick={() => setShowDevTools(!showDevTools)}
                     variant="twoTone"
@@ -889,11 +958,90 @@ const Home = () => {
                 >
                     {showDevTools ? 'Hide Dev Tools' : 'Dev Only'}
                 </Button>
+                <Button 
+                    onClick={() => {
+                        // Force visibility
+                        setVisibleColumns(prev => ({ ...prev, tatcoContact: true }))
+                        
+                        // Force column order
+                        setColumnOrder(prev => {
+                            if (!prev.includes('tatcoContact')) {
+                                const newOrder = [...prev]
+                                const leadContactIndex = newOrder.indexOf('leadContact')
+                                if (leadContactIndex !== -1) {
+                                    newOrder.splice(leadContactIndex + 1, 0, 'tatcoContact')
+                                } else {
+                                    newOrder.unshift('tatcoContact')
+                                }
+                                return newOrder
+                            }
+                            return prev
+                        })
+                        
+                        console.log('Forced Tatco Contact column to be visible and in order')
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                >
+                    Show Tatco Contact
+                </Button>
             </div>
 
             {/* Development Tools - Hidden by default */}
             {showDevTools && (
                 <>
+                    {/* Column Debug Info */}
+                    <Card className="p-4">
+                        <h3 className="text-lg font-semibold mb-4">Column Debug Info</h3>
+                        <div className="space-y-2">
+                            <p><strong>Current Type:</strong> {(filters.type && filters.type.value) || 'lead'}</p>
+                            <p><strong>Column Order:</strong> {JSON.stringify(columnOrder)}</p>
+                            <p><strong>Visible Columns:</strong> {JSON.stringify(visibleColumns)}</p>
+                            <p><strong>Tatco Contact Visible:</strong> {String(visibleColumns.tatcoContact !== false)}</p>
+                            <p><strong>Total Columns:</strong> {orderedAndVisibleColumns.length}</p>
+                        </div>
+                        <div className="mt-4">
+                            <Button 
+                                onClick={() => {
+                                    // Clear localStorage and reset to defaults
+                                    const currentType = (filters.type && filters.type.value) || 'lead'
+                                    const storageSuffix = currentType === 'client' ? 'client' : 'lead'
+                                    
+                                    localStorage.removeItem(`crmColumnOrder_${storageSuffix}`)
+                                    localStorage.removeItem(`crmVisibleColumns_${storageSuffix}`)
+                                    
+                                    // Reset to default order with tatcoContact
+                                    const defaultOrder = [
+                                        'companyName',
+                                        'leadContact',
+                                        'tatcoContact',
+                                        'email',
+                                        'phone',
+                                        'methodOfContact',
+                                        'projectMarket',
+                                        'dateLastContacted',
+                                        'status',
+                                        'responded',
+                                        'actions',
+                                    ]
+                                    setColumnOrder(defaultOrder)
+                                    
+                                    // Reset visibility
+                                    const defaultVisible = defaultOrder.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+                                    setVisibleColumns(defaultVisible)
+                                    
+                                    console.log('Reset column order and visibility to defaults')
+                                }}
+                                variant="solid"
+                                size="sm"
+                                className="bg-red-600 hover:bg-red-700"
+                            >
+                                Reset Column Order
+                            </Button>
+                        </div>
+                    </Card>
+                    
                     {/* Firebase Test Component - Remove this after testing */}
                     <FirebaseTest />
                     
@@ -1341,6 +1489,15 @@ const Home = () => {
                                                 value={wizardData.leadContact} 
                                                 onChange={(e) => setWizardData({ ...wizardData, leadContact: e.target.value })} 
                                                 placeholder="Enter contact name"
+                                />
+        </div>
+                            
+                            <div>
+                                            <label className="block text-sm font-medium mb-2">Tatco Contact</label>
+                                <Input 
+                                                value={wizardData.tatcoContact} 
+                                                onChange={(e) => setWizardData({ ...wizardData, tatcoContact: e.target.value })} 
+                                                placeholder="Enter Tatco contact name"
                                 />
         </div>
                             

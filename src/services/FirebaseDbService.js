@@ -243,15 +243,16 @@ export const FirebaseDbService = {
 
                 const searchLower = searchTerm.toLowerCase()
                 const filteredLeads = allLeads.data.filter(lead => {
-                    const searchableFields = [
-                        lead.companyName,
-                        lead.leadContact,
-                        lead.email,
-                        lead.phone,
-                        lead.status,
-                        lead.methodOfContact,
-                        lead.projectMarket
-                    ].filter(Boolean).join(' ').toLowerCase()
+                const searchableFields = [
+                    lead.companyName,
+                    lead.leadContact,
+                    lead.tatcoContact,
+                    lead.email,
+                    lead.phone,
+                    lead.status,
+                    lead.methodOfContact,
+                    lead.projectMarket
+                ].filter(Boolean).join(' ').toLowerCase()
 
                     return searchableFields.includes(searchLower)
                 })
@@ -841,6 +842,11 @@ const validateLeadsData = (data) => {
         // Validate phone format (basic)
         if (lead.phone && !/^[\d\s\-\+\(\)]+$/.test(lead.phone)) {
             errors.push(`Lead ${index + 1}: Invalid phone format`)
+        }
+        
+        // Validate tatcoContact is a string if provided
+        if (lead.tatcoContact && typeof lead.tatcoContact !== 'string') {
+            errors.push(`Lead ${index + 1}: Tatco Contact must be a string`)
         }
     })
     

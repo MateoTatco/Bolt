@@ -25,6 +25,7 @@ const LeadDetail = () => {
     const [infoForm, setInfoForm] = useState({
         companyName: '',
         leadContact: '',
+        tatcoContact: '',
         title: '',
         email: '',
         phone: '',
@@ -98,6 +99,7 @@ const LeadDetail = () => {
             setInfoForm({
                 companyName: lead.companyName || '',
                 leadContact: lead.leadContact || '',
+                tatcoContact: lead.tatcoContact || '',
                 title: lead.title || '',
                 email: lead.email || '',
                 phone: lead.phone || '',
@@ -309,6 +311,7 @@ const LeadDetail = () => {
                                                     setInfoForm({
                                                         companyName: lead.companyName || '',
                     leadContact: lead.leadContact || '',
+                    tatcoContact: lead.tatcoContact || '',
                     title: lead.title || '',
                     email: lead.email || '',
                     phone: lead.phone || '',
@@ -325,6 +328,7 @@ const LeadDetail = () => {
                                                             ...lead,
                                                             companyName: infoForm.companyName,
                                                             leadContact: infoForm.leadContact,
+                                                            tatcoContact: infoForm.tatcoContact,
                                                             title: infoForm.title,
                                                             email: infoForm.email,
                                                             phone: infoForm.phone,
@@ -354,6 +358,10 @@ const LeadDetail = () => {
                                             <div>
                                                 <label className="text-sm font-medium text-gray-500">Contact Person</label>
                                                 <p className="text-gray-900 dark:text-white text-sm">{lead.leadContact || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Tatco Contact</label>
+                                                <p className="text-gray-900 dark:text-white text-sm">{lead.tatcoContact || 'N/A'}</p>
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium text-gray-500">Title</label>
@@ -399,6 +407,10 @@ const LeadDetail = () => {
                                             <div>
                                                 <label className="text-sm font-medium">Contact Person</label>
                                                 <Input value={infoForm.leadContact} onChange={(e)=>setInfoForm({...infoForm, leadContact: e.target.value})} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium">Tatco Contact</label>
+                                                <Input value={infoForm.tatcoContact} onChange={(e)=>setInfoForm({...infoForm, tatcoContact: e.target.value})} />
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium">Title</label>

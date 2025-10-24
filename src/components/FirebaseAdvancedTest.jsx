@@ -71,6 +71,7 @@ const FirebaseAdvancedTest = () => {
             {
                 companyName: 'Test Company 1',
                 leadContact: 'John Doe',
+                tatcoContact: 'Jane Smith',
                 email: 'john@testcompany1.com',
                 phone: '123-456-7890',
                 status: 'active',
@@ -79,6 +80,7 @@ const FirebaseAdvancedTest = () => {
             {
                 companyName: 'Test Company 2',
                 leadContact: 'Jane Smith',
+                tatcoContact: 'Bob Johnson',
                 email: 'jane@testcompany2.com',
                 phone: '098-765-4321',
                 status: 'active',
@@ -144,6 +146,7 @@ const FirebaseAdvancedTest = () => {
             {
                 companyName: 'Imported Company 1',
                 leadContact: 'Import User 1',
+                tatcoContact: 'Tatco User 1',
                 email: 'import1@test.com',
                 phone: '111-222-3333',
                 status: 'active',
