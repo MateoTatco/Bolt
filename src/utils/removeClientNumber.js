@@ -116,3 +116,4 @@ if (typeof window !== 'undefined') {
     window.removeClientNumberFromClients = removeClientNumberFromClients
     window.resetAndMigrateClients = resetAndMigrateClients
 }
+
