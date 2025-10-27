@@ -197,47 +197,35 @@ const LeadDetail = () => {
     ]
 
     return (
-        <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
-            {/* Left Sidebar */}
-            <div className="w-64 bg-white dark:bg-gray-800 shadow-sm border-r border-gray-200 dark:border-gray-700">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex min-h-screen bg-white dark:bg-gray-900">
+            {/* Left Sidebar - Seamless */}
+            <div className="hidden lg:block w-64 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm">
+                <div className="p-6">
                     <Button 
                         variant="plain" 
                         icon={<HiOutlineArrowLeft />} 
                         onClick={() => navigate('/home')}
-                        className="mb-4"
+                        className="mb-8 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors duration-200"
                     >
                         Back to CRM
                     </Button>
-                    <div className="flex items-center space-x-3">
-                        <Avatar 
-                            className={getAvatarColor(lead.companyName)}
-                            size="lg"
-                        >
-                            {getInitials(lead.companyName)}
-                        </Avatar>
-                        <div>
-                            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                {lead.companyName}
-                            </h2>
-                            <p className="text-sm text-gray-500">{lead.title}</p>
-                        </div>
-                    </div>
                 </div>
 
-                <div className="p-2 space-y-1">
+                <div className="px-4 space-y-1">
                     {sidebarItems.map((item) => (
                         <button
                             key={item.key}
                             onClick={() => setActiveTab(item.key)}
-                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-300 group ${
                                 activeTab === item.key 
-                                    ? 'bg-primary text-white' 
-                                    : 'text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    ? 'bg-gradient-to-r from-primary to-primary/90 text-white shadow-lg transform scale-[1.02]' 
+                                    : 'text-gray-600 hover:bg-white/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/80 dark:hover:text-gray-100 hover:shadow-md hover:transform hover:scale-[1.01]'
                             }`}
                         >
-                            {item.icon}
-                            <span>{item.label}</span>
+                            <span className={`transition-transform duration-200 ${activeTab === item.key ? 'scale-110' : 'group-hover:scale-105'}`}>
+                                {item.icon}
+                            </span>
+                            <span className="font-medium tracking-wide">{item.label}</span>
                         </button>
                     ))}
                 </div>
@@ -245,84 +233,171 @@ const LeadDetail = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
-                {/* Header */}
-                <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {lead.companyName}
-                            </h1>
-                            <p className="text-gray-600 dark:text-gray-400">
-                                {lead.leadContact} • {lead.email}
-                            </p>
+                {/* Seamless Header */}
+                <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
+                    <div className="px-4 lg:px-8 py-6 lg:py-8">
+                        {/* Mobile Navigation */}
+                        <div className="lg:hidden mb-6">
+                            <Button 
+                                variant="plain" 
+                                icon={<HiOutlineArrowLeft />} 
+                                onClick={() => navigate('/home')}
+                                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors duration-200"
+                            >
+                                Back to CRM
+                            </Button>
                         </div>
-                        <div className="flex items-center space-x-3">
-                            <Tag className={statusColor(lead.status)}>
-                                {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
-                            </Tag>
-                            <Button variant="solid" onClick={handleEditLead}>Edit Lead</Button>
+                        
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-6 lg:space-y-0">
+                            <div className="flex items-center space-x-5">
+                                <div className="relative">
+                                    <Avatar 
+                                        className={`${getAvatarColor(lead.companyName)} ring-4 ring-white/50 dark:ring-gray-800/50 shadow-lg`}
+                                        size="lg"
+                                    >
+                                        {getInitials(lead.companyName)}
+                                    </Avatar>
+                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white dark:border-gray-900"></div>
+                                </div>
+                                <div>
+                                    <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                        {lead.companyName}
+                                    </h1>
+                                    <p className="text-lg text-gray-600 dark:text-gray-400 mt-2 font-medium">
+                                        {lead.leadContact} • {lead.email}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+                                <Tag className={`${statusColor(lead.status)} px-5 py-2.5 text-sm font-semibold rounded-full shadow-sm`}>
+                                    {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
+                                </Tag>
+                                <Button 
+                                    variant="solid" 
+                                    onClick={handleEditLead}
+                                    className="px-8 py-3 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                >
+                                    Edit Lead
+                                </Button>
+                            </div>
+                        </div>
+                        
+                        {/* Mobile Navigation Tabs */}
+                        <div className="lg:hidden mt-6">
+                            <div className="flex space-x-2 overflow-x-auto pb-2">
+                                {sidebarItems.map((item) => (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => setActiveTab(item.key)}
+                                        className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
+                                            activeTab === item.key 
+                                                ? 'bg-gradient-to-r from-primary to-primary/90 text-white shadow-lg' 
+                                                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 hover:shadow-md'
+                                        }`}
+                                    >
+                                        {item.icon}
+                                        <span>{item.label}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Content Area */}
-                <div className="flex-1 p-6">
+                {/* Content Area - Seamless */}
+                <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
                     {showAlert && (
                         <Alert
                             type="success"
                             showIcon
                             closable
                             onClose={() => setShowAlert(false)}
-                            className="mb-4"
+                            className="mb-8 rounded-xl shadow-sm border-0"
                         >
                             Changes saved successfully!
                         </Alert>
                     )}
                     
                     {activeTab === 'overview' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Project Overview */}
-                            <div className="lg:col-span-2">
-                                <Card className="p-6">
-                                    <h3 className="text-lg font-semibold mb-4">Lead Overview</h3>
-                                    <div className="space-y-4 min-h-[400px]">
-                                        <div 
-                                            key={editedContent} // Force re-render when content changes
-                                            className="prose prose-sm max-w-none dark:prose-invert min-h-[350px]"
-                                            dangerouslySetInnerHTML={{ 
-                                                __html: editedContent || '<p>No description provided for this project.</p>' 
-                                            }}
-                                        />
-                                    </div>
-                                </Card>
+                        <div className="space-y-12">
+                            {/* Lead Overview - Seamless */}
+                            <div className="space-y-6">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                        Lead Overview
+                                    </h2>
+                                </div>
+                                <div className="prose prose-lg max-w-none dark:prose-invert leading-relaxed text-gray-700 dark:text-gray-300">
+                                    <div 
+                                        key={editedContent}
+                                        className="min-h-[400px] p-6 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm"
+                                        dangerouslySetInnerHTML={{ 
+                                            __html: editedContent || '<p class="text-gray-500 italic text-center py-12">No description provided for this project.</p>' 
+                                        }}
+                                    />
+                                </div>
                             </div>
 
-                            {/* Client Information (editable) */}
-                            <div className="space-y-4">
-                                <Card className="p-4">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="text-lg font-semibold">Client Information</h3>
-                                        {!isInfoEditing ? (
-                                            <Button size="sm" variant="twoTone" onClick={() => setIsInfoEditing(true)}>Edit</Button>
-                                        ) : (
-                                            <div className="flex items-center gap-2">
-                                                <Button size="sm" variant="plain" onClick={() => {
+                            {/* Subtle Separator */}
+                            <div className="relative">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-gray-200 dark:border-gray-700/50"></div>
+                                </div>
+                                <div className="relative flex justify-center">
+                                    <div className="bg-white dark:bg-gray-900 px-4">
+                                        <div className="w-2 h-2 bg-primary/20 rounded-full"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Lead Information - Seamless */}
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                            Lead Information
+                                        </h2>
+                                    </div>
+                                    {!isInfoEditing ? (
+                                        <Button 
+                                            size="sm" 
+                                            variant="twoTone" 
+                                            onClick={() => setIsInfoEditing(true)}
+                                            className="px-6 py-2.5 rounded-xl font-medium shadow-sm hover:shadow-md transition-all duration-200"
+                                        >
+                                            Edit Information
+                                        </Button>
+                                    ) : (
+                                        <div className="flex items-center gap-3">
+                                            <Button 
+                                                size="sm" 
+                                                variant="plain" 
+                                                onClick={() => {
                                                     setIsInfoEditing(false)
                                                     setInfoForm({
                                                         companyName: lead.companyName || '',
-                    leadContact: lead.leadContact || '',
-                    tatcoContact: lead.tatcoContact || '',
-                    title: lead.title || '',
-                    email: lead.email || '',
-                    phone: lead.phone || '',
-                    projectMarket: lead.projectMarket || '',
-                    status: lead.status || '',
-                    responded: Boolean(lead.responded),
-                    methodOfContact: lead.methodOfContact || '',
-                    dateLastContacted: lead.dateLastContacted ? new Date(lead.dateLastContacted) : null,
+                                                        leadContact: lead.leadContact || '',
+                                                        tatcoContact: lead.tatcoContact || '',
+                                                        title: lead.title || '',
+                                                        email: lead.email || '',
+                                                        phone: lead.phone || '',
+                                                        projectMarket: lead.projectMarket || '',
+                                                        status: lead.status || '',
+                                                        responded: Boolean(lead.responded),
+                                                        methodOfContact: lead.methodOfContact || '',
+                                                        dateLastContacted: lead.dateLastContacted ? new Date(lead.dateLastContacted) : null,
                                                     })
-                                                }}>Cancel</Button>
-                                                <Button size="sm" variant="solid" onClick={async () => {
+                                                }}
+                                                className="px-6 py-2.5 rounded-xl font-medium"
+                                            >
+                                                Cancel
+                                            </Button>
+                                            <Button 
+                                                size="sm" 
+                                                variant="solid" 
+                                                onClick={async () => {
                                                     try {
                                                         const payload = {
                                                             ...lead,
@@ -345,226 +420,284 @@ const LeadDetail = () => {
                                                         console.error('Error updating lead:', error)
                                                         setShowAlert(true)
                                                     }
-                                                }}>Save</Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    {!isInfoEditing ? (
-                                        <div className="space-y-2 max-h-96 overflow-y-auto">
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Company</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.companyName}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Contact Person</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.leadContact || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Tatco Contact</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.tatcoContact || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Title</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.title || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Email</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.email || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Phone</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.phone || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Market</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{projectMarketOptions.find(opt => opt.value === lead.projectMarket)?.label || lead.projectMarket || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Status</label>
-                                                <Tag className={statusColor(lead.status)}>
-                                                    {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
-                                                </Tag>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Responded</label>
-                                                <p className={`font-medium text-sm ${lead.responded ? 'text-green-600' : 'text-gray-500'}`}>{lead.responded ? 'Yes' : 'No'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Method</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{methodOfContactOptions.find(o=>o.value===lead.methodOfContact)?.label || lead.methodOfContact || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium text-gray-500">Last Contacted</label>
-                                                <p className="text-gray-900 dark:text-white text-sm">{lead.dateLastContacted || 'N/A'}</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 gap-3">
-                                            <div>
-                                                <label className="text-sm font-medium">Company</label>
-                                                <Input value={infoForm.companyName} onChange={(e)=>setInfoForm({...infoForm, companyName: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Contact Person</label>
-                                                <Input value={infoForm.leadContact} onChange={(e)=>setInfoForm({...infoForm, leadContact: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Tatco Contact</label>
-                                                <Input value={infoForm.tatcoContact} onChange={(e)=>setInfoForm({...infoForm, tatcoContact: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Title</label>
-                                                <Input value={infoForm.title} onChange={(e)=>setInfoForm({...infoForm, title: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Email</label>
-                                                <Input value={infoForm.email} onChange={(e)=>setInfoForm({...infoForm, email: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Phone</label>
-                                                <Input value={infoForm.phone} onChange={(e)=>setInfoForm({...infoForm, phone: e.target.value})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Market</label>
-                                                <Select value={infoForm.projectMarket ? {value: infoForm.projectMarket, label: projectMarketOptions.find(o=>o.value===infoForm.projectMarket)?.label || infoForm.projectMarket } : null}
-                                                    options={projectMarketOptions}
-                                                    onChange={(opt)=>setInfoForm({...infoForm, projectMarket: opt?.value || ''})}
-                                                    isClearable
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Status</label>
-                                                <Select value={infoForm.status ? {value: infoForm.status, label: leadStatusOptions.find(o=>o.value===infoForm.status)?.label || infoForm.status } : null}
-                                                    options={leadStatusOptions}
-                                                    onChange={(opt)=>setInfoForm({...infoForm, status: opt?.value || ''})}
-                                                    isClearable
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Responded</label>
-                                                <Switcher checked={infoForm.responded} onChange={(val)=>setInfoForm({...infoForm, responded: Boolean(val)})} />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Method</label>
-                                                <Select value={infoForm.methodOfContact ? {value: infoForm.methodOfContact, label: methodOfContactOptions.find(o=>o.value===infoForm.methodOfContact)?.label || infoForm.methodOfContact } : null}
-                                                    options={methodOfContactOptions}
-                                                    onChange={(opt)=>setInfoForm({...infoForm, methodOfContact: opt?.value || ''})}
-                                                    isClearable
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-sm font-medium">Last Contacted</label>
-                                                <DatePicker
-                                                    value={infoForm.dateLastContacted}
-                                                    onChange={(d)=>setInfoForm({...infoForm, dateLastContacted: d || null})}
-                                                    placeholder="Select date"
-                                                />
-                                            </div>
+                                                }}
+                                                className="px-6 py-2.5 rounded-xl font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
+                                            >
+                                                Save Changes
+                                            </Button>
                                         </div>
                                     )}
-                                </Card>
+                                </div>
+                                
+                                {!isInfoEditing ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Company</label>
+                                            <p className="text-xl text-gray-900 dark:text-white font-semibold group-hover:text-primary transition-colors duration-200">{lead.companyName}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Contact Person</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.leadContact || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Tatco Contact</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.tatcoContact || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Title</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.title || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Email</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.email || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Phone</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.phone || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Market</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{projectMarketOptions.find(opt => opt.value === lead.projectMarket)?.label || lead.projectMarket || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                                            <Tag className={`${statusColor(lead.status)} px-4 py-2 text-sm font-semibold rounded-full shadow-sm`}>
+                                                {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
+                                            </Tag>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Responded</label>
+                                            <p className={`text-xl font-semibold ${lead.responded ? 'text-green-600' : 'text-gray-500'}`}>
+                                                {lead.responded ? 'Yes' : 'No'}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Method</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{methodOfContactOptions.find(o=>o.value===lead.methodOfContact)?.label || lead.methodOfContact || 'N/A'}</p>
+                                        </div>
+                                        <div className="space-y-2 group">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Last Contacted</label>
+                                            <p className="text-xl text-gray-900 dark:text-white group-hover:text-primary transition-colors duration-200">{lead.dateLastContacted || 'N/A'}</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Company</label>
+                                            <Input value={infoForm.companyName} onChange={(e)=>setInfoForm({...infoForm, companyName: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Contact Person</label>
+                                            <Input value={infoForm.leadContact} onChange={(e)=>setInfoForm({...infoForm, leadContact: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Tatco Contact</label>
+                                            <Input value={infoForm.tatcoContact} onChange={(e)=>setInfoForm({...infoForm, tatcoContact: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Title</label>
+                                            <Input value={infoForm.title} onChange={(e)=>setInfoForm({...infoForm, title: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Email</label>
+                                            <Input value={infoForm.email} onChange={(e)=>setInfoForm({...infoForm, email: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Phone</label>
+                                            <Input value={infoForm.phone} onChange={(e)=>setInfoForm({...infoForm, phone: e.target.value})} className="rounded-xl border-gray-200 focus:border-primary focus:ring-primary/20" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Market</label>
+                                            <Select value={infoForm.projectMarket ? {value: infoForm.projectMarket, label: projectMarketOptions.find(o=>o.value===infoForm.projectMarket)?.label || infoForm.projectMarket } : null}
+                                                options={projectMarketOptions}
+                                                onChange={(opt)=>setInfoForm({...infoForm, projectMarket: opt?.value || ''})}
+                                                isClearable
+                                                className="rounded-xl"
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                                            <Select value={infoForm.status ? {value: infoForm.status, label: leadStatusOptions.find(o=>o.value===infoForm.status)?.label || infoForm.status } : null}
+                                                options={leadStatusOptions}
+                                                onChange={(opt)=>setInfoForm({...infoForm, status: opt?.value || ''})}
+                                                isClearable
+                                                className="rounded-xl"
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Responded</label>
+                                            <div className="flex items-center space-x-3">
+                                                <Switcher checked={infoForm.responded} onChange={(val)=>setInfoForm({...infoForm, responded: Boolean(val)})} />
+                                                <span className="text-lg font-medium text-gray-600 dark:text-gray-400">
+                                                    {infoForm.responded ? 'Yes' : 'No'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Method</label>
+                                            <Select value={infoForm.methodOfContact ? {value: infoForm.methodOfContact, label: methodOfContactOptions.find(o=>o.value===infoForm.methodOfContact)?.label || infoForm.methodOfContact } : null}
+                                                options={methodOfContactOptions}
+                                                onChange={(opt)=>setInfoForm({...infoForm, methodOfContact: opt?.value || ''})}
+                                                isClearable
+                                                className="rounded-xl"
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Last Contacted</label>
+                                            <DatePicker
+                                                value={infoForm.dateLastContacted}
+                                                onChange={(d)=>setInfoForm({...infoForm, dateLastContacted: d || null})}
+                                                placeholder="Select date"
+                                                className="rounded-xl"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'tasks' && (
-                        <Card className="p-6">
-                            <h3 className="text-lg font-semibold mb-4">Tasks</h3>
-                            <p className="text-gray-600 dark:text-gray-400">Task management will be implemented here.</p>
-                        </Card>
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Tasks</h2>
+                            </div>
+                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
+                                <div className="text-gray-400 mb-6">
+                                    <HiOutlineClipboardList size={64} />
+                                </div>
+                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Task Management</h3>
+                                <p className="text-lg text-gray-500 dark:text-gray-500">Task management will be implemented here.</p>
+                            </div>
+                        </div>
                     )}
 
                     {activeTab === 'attachments' && (
-                        <Card className="p-6">
-                            <h3 className="text-lg font-semibold mb-4">Attachments</h3>
-                            <p className="text-gray-600 dark:text-gray-400">File attachments will be managed here.</p>
-                        </Card>
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Attachments</h2>
+                            </div>
+                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
+                                <div className="text-gray-400 mb-6">
+                                    <HiOutlinePaperClip size={64} />
+                                </div>
+                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">File Attachments</h3>
+                                <p className="text-lg text-gray-500 dark:text-gray-500">File attachments will be managed here.</p>
+                            </div>
+                        </div>
                     )}
 
                     {activeTab === 'activities' && (
-                        <Card className="p-6">
-                            <h3 className="text-lg font-semibold mb-4">Activities</h3>
-                            <p className="text-gray-600 dark:text-gray-400">Activity timeline will be displayed here.</p>
-                        </Card>
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Activities</h2>
+                            </div>
+                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
+                                <div className="text-gray-400 mb-6">
+                                    <HiOutlineClock size={64} />
+                                </div>
+                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Activity Timeline</h3>
+                                <p className="text-lg text-gray-500 dark:text-gray-500">Activity timeline will be displayed here.</p>
+                            </div>
+                        </div>
                     )}
 
                     {activeTab === 'settings' && (
-                        <Card className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-semibold">Settings</h3>
-                                <div className="flex items-center space-x-2">
+                        <div className="space-y-8">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h2>
+                                </div>
+                                <div className="flex items-center space-x-3">
                                     <Button 
                                         variant="plain" 
                                         onClick={handleCancelEdit}
+                                        className="px-6 py-2.5 rounded-xl font-medium"
                                     >
                                         Cancel
                                     </Button>
                                     <Button 
                                         variant="solid" 
                                         onClick={handleSaveChanges}
+                                        className="px-6 py-2.5 rounded-xl font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
                                     >
                                         Save Changes
                                     </Button>
                                 </div>
                             </div>
                             
-                            <div className="space-y-6">
+                            <div className="space-y-12">
                                 <div>
-                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
                                         Project Overview
-                                    </h4>
-                                    <RichTextEditor
-                                        content={editedContent}
-                                        onChange={(content) => {
-                                            if (typeof content === 'string') {
-                                                setEditedContent(content)
-                                            } else if (content && content.html) {
-                                                setEditedContent(content.html)
-                                            }
-                                        }}
-                                        editorContentClass="min-h-[300px]"
-                                    />
+                                    </h3>
+                                    <div className="rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-6">
+                                        <RichTextEditor
+                                            content={editedContent}
+                                            onChange={(content) => {
+                                                if (typeof content === 'string') {
+                                                    setEditedContent(content)
+                                                } else if (content && content.html) {
+                                                    setEditedContent(content.html)
+                                                }
+                                            }}
+                                            editorContentClass="min-h-[400px]"
+                                        />
+                                    </div>
                                 </div>
                                 <div>
-                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
                                         Linked Clients
-                                    </h4>
-                                    <Select
-                                        isMulti
-                                        placeholder="Select clients"
-                                        options={clients.map((c)=>({ value: c.id, label: c.clientName }))}
-                                        value={linkedClientIds.map((id)=>{
-                                            const c = clients.find((x)=>x.id===id)
-                                            return c ? { value: c.id, label: c.clientName } : null
-                                        }).filter(Boolean)}
-                                        onChange={(opts)=>{
-                                            const ids = Array.isArray(opts) ? opts.map((o)=>o.value) : []
-                                            setLinkedClientIds(ids)
-                                        }}
-                                    />
-                                    <div className="mt-3">
-                                        <Button size="sm" variant="twoTone" onClick={async()=>{
-                                            try {
-                                                await linkLeadToClients(lead.id, linkedClientIds)
-                                                setShowAlert(true)
-                                            } catch (error) {
-                                                console.error('Error linking clients:', error)
-                                                // The error notification is already handled in the store
-                                            }
-                                        }}>Save Links</Button>
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <Select
+                                            isMulti
+                                            placeholder="Select clients to link with this lead"
+                                            options={clients.map((c)=>({ value: c.id, label: c.clientName }))}
+                                            value={linkedClientIds.map((id)=>{
+                                                const c = clients.find((x)=>x.id===id)
+                                                return c ? { value: c.id, label: c.clientName } : null
+                                            }).filter(Boolean)}
+                                            onChange={(opts)=>{
+                                                const ids = Array.isArray(opts) ? opts.map((o)=>o.value) : []
+                                                setLinkedClientIds(ids)
+                                            }}
+                                            className="rounded-xl"
+                                        />
+                                        <Button 
+                                            size="sm" 
+                                            variant="twoTone" 
+                                            onClick={async()=>{
+                                                try {
+                                                    await linkLeadToClients(lead.id, linkedClientIds)
+                                                    setShowAlert(true)
+                                                } catch (error) {
+                                                    console.error('Error linking clients:', error)
+                                                }
+                                            }}
+                                            className="px-6 py-2.5 rounded-xl font-medium shadow-sm hover:shadow-md transition-all duration-200"
+                                        >
+                                            Save Client Links
+                                        </Button>
                                     </div>
                                 </div>
                                 
                                 <div>
-                                    <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
                                         Lead Information
-                                    </h4>
-                                    <p className="text-gray-600 dark:text-gray-400">
-                                        Additional lead settings and preferences will be managed here.
-                                    </p>
+                                    </h3>
+                                    <div className="rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-6">
+                                        <p className="text-gray-600 dark:text-gray-400 text-lg">
+                                            Additional lead settings and preferences will be managed here.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                        </Card>
+                        </div>
                     )}
                 </div>
             </div>
