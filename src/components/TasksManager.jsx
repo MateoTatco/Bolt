@@ -18,6 +18,7 @@ import {
     HiOutlineUserAdd, 
     HiOutlineMenu,
     HiOutlineTrash,
+    HiOutlinePencil,
     HiOutlineSearch
 } from 'react-icons/hi'
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot } from 'firebase/firestore'
@@ -29,7 +30,9 @@ const TasksManager = ({ entityType, entityId }) => {
     const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false)
     const [isAddMembersOpen, setIsAddMembersOpen] = useState(false)
     const [isCreateSectionOpen, setIsCreateSectionOpen] = useState(false)
+    const [isEditTaskOpen, setIsEditTaskOpen] = useState(false)
     const [selectedSection, setSelectedSection] = useState(null)
+    const [selectedTask, setSelectedTask] = useState(null)
     const [members, setMembers] = useState([])
     const [searchTerm, setSearchTerm] = useState('')
     const [newSectionName, setNewSectionName] = useState('')
@@ -252,13 +255,45 @@ const TasksManager = ({ entityType, entityId }) => {
         }
     }
 
-    // Delete task
-    const handleDeleteTask = async (taskId) => {
+    // Edit task
+    const handleEditTask = async () => {
+        if (!taskForm.name.trim() || !selectedTask) return
+
         try {
-            await deleteDoc(doc(db, `${entityType}s`, entityId, 'tasks', taskId))
+            await updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', selectedTask.id), {
+                name: taskForm.name,
+                status: taskForm.status,
+                priority: taskForm.priority,
+                dueDate: taskForm.dueDate ? taskForm.dueDate.toISOString() : null,
+                assignee: taskForm.assignee,
+                updatedAt: new Date()
+            })
+            
+            setTaskForm({
+                name: '',
+                status: 'pending',
+                priority: 'medium',
+                dueDate: null,
+                assignee: null
+            })
+            setSelectedTask(null)
+            setIsEditTaskOpen(false)
         } catch (error) {
-            console.error('Error deleting task:', error)
+            console.error('Error updating task:', error)
         }
+    }
+
+    // Open edit task dialog
+    const openEditTask = (task) => {
+        setSelectedTask(task)
+        setTaskForm({
+            name: task.name,
+            status: task.status,
+            priority: task.priority,
+            dueDate: task.dueDate ? new Date(task.dueDate) : null,
+            assignee: task.assignee
+        })
+        setIsEditTaskOpen(true)
     }
 
     // Get status color
@@ -454,6 +489,13 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                                         <Button
                                                                                             size="sm"
                                                                                             variant="plain"
+                                                                                            icon={<HiOutlinePencil />}
+                                                                                            onClick={() => openEditTask(task)}
+                                                                                            className="text-blue-600 hover:text-blue-700"
+                                                                                        />
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="plain"
                                                                                             icon={<HiOutlineTrash />}
                                                                                             onClick={() => handleDeleteTask(task.id)}
                                                                                             className="text-red-600 hover:text-red-700"
@@ -575,6 +617,86 @@ const TasksManager = ({ entityType, entityId }) => {
                                 disabled={!taskForm.name.trim()}
                             >
                                 Create Task
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Edit Task Dialog */}
+            <Dialog isOpen={isEditTaskOpen} onClose={() => setIsEditTaskOpen(false)} width={500}>
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Edit Task</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Task Name *</label>
+                            <Input
+                                value={taskForm.name}
+                                onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
+                                placeholder="Enter task name"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Status</label>
+                                <Select
+                                    options={statusOptions}
+                                    value={statusOptions.find(opt => opt.value === taskForm.status)}
+                                    onChange={(opt) => setTaskForm({ ...taskForm, status: opt?.value || 'pending' })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Priority</label>
+                                <Select
+                                    options={priorityOptions}
+                                    value={priorityOptions.find(opt => opt.value === taskForm.priority)}
+                                    onChange={(opt) => setTaskForm({ ...taskForm, priority: opt?.value || 'medium' })}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Due Date</label>
+                                <DatePicker
+                                    value={taskForm.dueDate}
+                                    onChange={(date) => setTaskForm({ ...taskForm, dueDate: date })}
+                                    placeholder="Select due date"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Assignee</label>
+                                <Select
+                                    options={assigneeOptions}
+                                    value={assigneeOptions.find(opt => opt.value === taskForm.assignee)}
+                                    onChange={(opt) => setTaskForm({ ...taskForm, assignee: opt?.value || null })}
+                                    isClearable
+                                    placeholder="Select assignee"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                            <Button
+                                variant="twoTone"
+                                onClick={() => {
+                                    setIsEditTaskOpen(false)
+                                    setSelectedTask(null)
+                                    setTaskForm({
+                                        name: '',
+                                        status: 'pending',
+                                        priority: 'medium',
+                                        dueDate: null,
+                                        assignee: null
+                                    })
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="solid"
+                                onClick={handleEditTask}
+                                disabled={!taskForm.name.trim()}
+                            >
+                                Update Task
                             </Button>
                         </div>
                     </div>

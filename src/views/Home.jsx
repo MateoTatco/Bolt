@@ -10,6 +10,7 @@ import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
 import { migrateMarketOptions, resetAndMigrateLeads } from '@/utils/migrateMarketOptions'
 import { removeClientNumberFromClients, resetAndMigrateClients } from '@/utils/removeClientNumber'
+import { migrateTasksMockData, resetAndMigrateTasks, clearTasksData } from '@/utils/migrateTasksMockData'
 
 const Home = () => {
     const navigate = useNavigate()
