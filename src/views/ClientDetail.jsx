@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router'
 import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert } from '@/components/ui'
 import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
+import TasksManager from '@/components/TasksManager'
 import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog } from 'react-icons/hi'
 import { APP_NAME } from '@/constants/app.constant'
 
@@ -219,7 +220,8 @@ const ClientDetail = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
                 {/* Seamless Header */}
-                <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
+                {activeTab !== 'tasks' && (
+                    <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
                     <div className="px-4 lg:px-8 py-6 lg:py-8">
                         {/* Mobile Navigation */}
                         <div className="lg:hidden mb-6">
@@ -288,6 +290,7 @@ const ClientDetail = () => {
                         </div>
                     </div>
                 </div>
+                )}
 
                 {/* Content Area - Seamless */}
                 <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
@@ -532,19 +535,7 @@ const ClientDetail = () => {
                     )}
 
                     {activeTab === 'tasks' && (
-                        <div className="space-y-6">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Tasks</h2>
-                            </div>
-                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
-                                <div className="text-gray-400 mb-6">
-                                    <HiOutlineClipboardList size={64} />
-                                </div>
-                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Task Management</h3>
-                                <p className="text-lg text-gray-500 dark:text-gray-500">Task management will be implemented here.</p>
-                            </div>
-                        </div>
+                        <TasksManager entityType="client" entityId={clientId} />
                     )}
 
                     {activeTab === 'attachments' && (

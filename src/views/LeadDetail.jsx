@@ -4,6 +4,7 @@ import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert, Switcher }
 import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
+import TasksManager from '@/components/TasksManager'
 import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog } from 'react-icons/hi'
 import { APP_NAME } from '@/constants/app.constant'
 
@@ -234,75 +235,77 @@ const LeadDetail = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
                 {/* Seamless Header */}
-                <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
-                    <div className="px-4 lg:px-8 py-6 lg:py-8">
-                        {/* Mobile Navigation */}
-                        <div className="lg:hidden mb-6">
-                            <Button 
-                                variant="plain" 
-                                icon={<HiOutlineArrowLeft />} 
-                                onClick={() => navigate('/home')}
-                                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors duration-200"
-                            >
-                                Back to CRM
-                            </Button>
-                        </div>
-                        
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-6 lg:space-y-0">
-                            <div className="flex items-center space-x-5">
-                                <div className="relative">
-                                    <Avatar 
-                                        className={`${getAvatarColor(lead.companyName)} ring-4 ring-white/50 dark:ring-gray-800/50 shadow-lg`}
-                                        size="lg"
-                                    >
-                                        {getInitials(lead.companyName)}
-                                    </Avatar>
-                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white dark:border-gray-900"></div>
-                                </div>
-                                <div>
-                                    <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">
-                                        {lead.companyName}
-                                    </h1>
-                                    <p className="text-lg text-gray-600 dark:text-gray-400 mt-2 font-medium">
-                                        {lead.leadContact} • {lead.email}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-                                <Tag className={`${statusColor(lead.status)} px-5 py-2.5 text-sm font-semibold rounded-full shadow-sm`}>
-                                    {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
-                                </Tag>
+                {activeTab !== 'tasks' && (
+                    <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
+                        <div className="px-4 lg:px-8 py-6 lg:py-8">
+                            {/* Mobile Navigation */}
+                            <div className="lg:hidden mb-6">
                                 <Button 
-                                    variant="solid" 
-                                    onClick={handleEditLead}
-                                    className="px-8 py-3 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                    variant="plain" 
+                                    icon={<HiOutlineArrowLeft />} 
+                                    onClick={() => navigate('/home')}
+                                    className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors duration-200"
                                 >
-                                    Edit Lead
+                                    Back to CRM
                                 </Button>
                             </div>
-                        </div>
-                        
-                        {/* Mobile Navigation Tabs */}
-                        <div className="lg:hidden mt-6">
-                            <div className="flex space-x-2 overflow-x-auto pb-2">
-                                {sidebarItems.map((item) => (
-                                    <button
-                                        key={item.key}
-                                        onClick={() => setActiveTab(item.key)}
-                                        className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
-                                            activeTab === item.key 
-                                                ? 'bg-gradient-to-r from-primary to-primary/90 text-white shadow-lg' 
-                                                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 hover:shadow-md'
-                                        }`}
+                            
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-6 lg:space-y-0">
+                                <div className="flex items-center space-x-5">
+                                    <div className="relative">
+                                        <Avatar 
+                                            className={`${getAvatarColor(lead.companyName)} ring-4 ring-white/50 dark:ring-gray-800/50 shadow-lg`}
+                                            size="lg"
+                                        >
+                                            {getInitials(lead.companyName)}
+                                        </Avatar>
+                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white dark:border-gray-900"></div>
+                                    </div>
+                                    <div>
+                                        <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                            {lead.companyName}
+                                        </h1>
+                                        <p className="text-lg text-gray-600 dark:text-gray-400 mt-2 font-medium">
+                                            {lead.leadContact} • {lead.email}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+                                    <Tag className={`${statusColor(lead.status)} px-5 py-2.5 text-sm font-semibold rounded-full shadow-sm`}>
+                                        {leadStatusOptions.find(opt => opt.value === lead.status)?.label || lead.status}
+                                    </Tag>
+                                    <Button 
+                                        variant="solid" 
+                                        onClick={handleEditLead}
+                                        className="px-8 py-3 w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
                                     >
-                                        {item.icon}
-                                        <span>{item.label}</span>
-                                    </button>
-                                ))}
+                                        Edit Lead
+                                    </Button>
+                                </div>
+                            </div>
+                            
+                            {/* Mobile Navigation Tabs */}
+                            <div className="lg:hidden mt-6">
+                                <div className="flex space-x-2 overflow-x-auto pb-2">
+                                    {sidebarItems.map((item) => (
+                                        <button
+                                            key={item.key}
+                                            onClick={() => setActiveTab(item.key)}
+                                            className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
+                                                activeTab === item.key 
+                                                    ? 'bg-gradient-to-r from-primary to-primary/90 text-white shadow-lg' 
+                                                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 hover:shadow-md'
+                                            }`}
+                                        >
+                                            {item.icon}
+                                            <span>{item.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                )}
 
                 {/* Content Area - Seamless */}
                 <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
@@ -558,19 +561,7 @@ const LeadDetail = () => {
                     )}
 
                     {activeTab === 'tasks' && (
-                        <div className="space-y-6">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Tasks</h2>
-                            </div>
-                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
-                                <div className="text-gray-400 mb-6">
-                                    <HiOutlineClipboardList size={64} />
-                                </div>
-                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Task Management</h3>
-                                <p className="text-lg text-gray-500 dark:text-gray-500">Task management will be implemented here.</p>
-                            </div>
-                        </div>
+                        <TasksManager entityType="lead" entityId={leadId} />
                     )}
 
                     {activeTab === 'attachments' && (
