@@ -178,7 +178,7 @@ export const migrateTasksMockData = async () => {
         console.log(`📊 Found ${leads.length} leads and ${clients.length} clients`)
         
         // Process leads
-        for (const lead of leads.slice(0, 3)) { // Only add to first 3 leads
+        for (const lead of leads) { // Process ALL leads, not just first 3
             console.log(`📝 Adding tasks to lead: ${lead.companyName}`)
             
             // Create sections for this lead
@@ -201,7 +201,7 @@ export const migrateTasksMockData = async () => {
         }
         
         // Process clients
-        for (const client of clients.slice(0, 2)) { // Only add to first 2 clients
+        for (const client of clients) { // Process ALL clients, not just first 2
             console.log(`📝 Adding tasks to client: ${client.clientName}`)
             
             // Create sections for this client

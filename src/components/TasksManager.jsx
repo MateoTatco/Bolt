@@ -296,6 +296,15 @@ const TasksManager = ({ entityType, entityId }) => {
         setIsEditTaskOpen(true)
     }
 
+    // Delete task
+    const handleDeleteTask = async (taskId) => {
+        try {
+            await deleteDoc(doc(db, `${entityType}s`, entityId, 'tasks', taskId))
+        } catch (error) {
+            console.error('Error deleting task:', error)
+        }
+    }
+
     // Get status color
     const getStatusColor = (status) => {
         switch (status) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router'
-import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert } from '@/components/ui'
+import { Card, Button, Input, Select, DatePicker, Tag, Avatar, Alert, Dialog } from '@/components/ui'
 import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
 import TasksManager from '@/components/TasksManager'
@@ -36,6 +36,8 @@ const ClientDetail = () => {
         zip: '',
         tags: ''
     })
+    const [showCancelDialog, setShowCancelDialog] = useState(false)
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
     const client = clients.find(c => c.id === clientId)
 
@@ -118,8 +120,42 @@ const ClientDetail = () => {
     }
 
     const handleCancelEdit = () => {
+        // Check if there are unsaved changes
+        const hasContentChanges = editedContent !== originalContent
+        const hasInfoChanges = isInfoEditing && JSON.stringify(infoForm) !== JSON.stringify({
+            clientName: client.clientName || '',
+            clientType: client.clientType || '',
+            address: client.address || '',
+            city: client.city || '',
+            state: client.state || '',
+            zip: client.zip || '',
+            tags: client.tags || ''
+        })
+        
+        if (hasContentChanges || hasInfoChanges) {
+            setShowCancelDialog(true)
+        } else {
+            // No changes, cancel immediately
+            setIsEditing(false)
+            setIsInfoEditing(false)
+            setActiveTab('overview')
+        }
+    }
+
+    const handleConfirmCancel = () => {
         setIsEditing(false)
+        setIsInfoEditing(false)
         setEditedContent(originalContent)
+        setShowCancelDialog(false)
+        setActiveTab('overview')
+        
+        // Show alert after cancellation
+        setShowAlert(true)
+        setTimeout(() => setShowAlert(false), 3000) // Auto-hide after 3 seconds
+    }
+
+    const handleCancelDialogClose = () => {
+        setShowCancelDialog(false)
     }
 
     const handleDelete = async () => {
@@ -220,7 +256,7 @@ const ClientDetail = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
                 {/* Seamless Header */}
-                {activeTab !== 'tasks' && (
+                {activeTab !== 'tasks' && activeTab !== 'settings' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
                     <div className="px-4 lg:px-8 py-6 lg:py-8">
                         {/* Mobile Navigation */}
@@ -296,13 +332,13 @@ const ClientDetail = () => {
                 <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
                     {showAlert && (
                         <Alert
-                            type="success"
+                            type="info"
                             showIcon
                             closable
                             onClose={() => setShowAlert(false)}
                             className="mb-8 rounded-xl shadow-sm border-0"
                         >
-                            Changes saved successfully!
+                            Changes have been cancelled and discarded.
                         </Alert>
                     )}
                     
@@ -630,6 +666,36 @@ const ClientDetail = () => {
                     )}
                 </div>
             </div>
+
+            {/* Cancel Confirmation Dialog */}
+            <Dialog isOpen={showCancelDialog} onClose={handleCancelDialogClose} width={400}>
+                <div className="p-6">
+                    <div className="mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                            Unsaved Changes
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400">
+                            You have unsaved changes. Are you sure you want to cancel and lose these changes?
+                        </p>
+                    </div>
+                    
+                    <div className="flex justify-end space-x-3">
+                        <Button
+                            variant="twoTone"
+                            onClick={handleCancelDialogClose}
+                        >
+                            Keep Editing
+                        </Button>
+                        <Button
+                            variant="solid"
+                            onClick={handleConfirmCancel}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Cancel Changes
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
         </div>
     )
 }
