@@ -465,8 +465,16 @@ const Home = () => {
             {
                 header: 'Contact',
                 accessorKey: 'leadContact',
-                size: 180,
+                size: 200,
                 meta: { key: 'leadContact' },
+                cell: (props) => {
+                    const value = props.row.original.leadContact || '-'
+                    return (
+                        <Tooltip title={value}>
+                            <span className="block max-w-[220px] truncate">{value}</span>
+                        </Tooltip>
+                    )
+                },
             },
             {
                 header: 'Tatco Contact',
@@ -478,8 +486,34 @@ const Home = () => {
                     return <span>{value || '-'}</span>
                 },
             },
-            { header: 'Email', accessorKey: 'email', size: 220, meta: { key: 'email' } },
-            { header: 'Phone', accessorKey: 'phone', size: 160, meta: { key: 'phone' } },
+            { 
+                header: 'Email', accessorKey: 'email', size: 260, meta: { key: 'email' },
+                cell: (props) => {
+                    const value = props.row.original.email || '-'
+                    return (
+                        <Tooltip title={value}>
+                            <span className="block max-w-[280px] truncate">{value}</span>
+                        </Tooltip>
+                    )
+                }
+            },
+            { 
+                header: 'Phone', accessorKey: 'phone', size: 200, meta: { key: 'phone' },
+                cell: (props) => {
+                    const raw = (props.row.original.phone || '').toString().trim()
+                    const digits = raw.replace(/\D/g, '')
+                    let formatted = raw
+                    if (digits.length === 10) {
+                        formatted = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`
+                    }
+                    if (!formatted) formatted = '-'
+                    return (
+                        <Tooltip title={raw || '-'}>
+                            <span className="whitespace-nowrap">{formatted}</span>
+                        </Tooltip>
+                    )
+                }
+            },
             {
                 header: 'Method', accessorKey: 'methodOfContact', size: 140, meta: { key: 'methodOfContact' },
                 cell: (props) => {
@@ -567,11 +601,31 @@ const Home = () => {
                     )
                 },
             },
-            { header: 'Address', accessorKey: 'address', size: 220, meta: { key: 'address' } },
-            { header: 'City', accessorKey: 'city', size: 140, meta: { key: 'city' } },
-            { header: 'State', accessorKey: 'state', size: 100, meta: { key: 'state' } },
-            { header: 'ZIP', accessorKey: 'zip', size: 100, meta: { key: 'zip' } },
-            { header: 'Tags', accessorKey: 'tags', size: 180, meta: { key: 'tags' } },
+            { 
+                header: 'Address', accessorKey: 'address', size: 280, meta: { key: 'address' },
+                cell: (props) => {
+                    const value = props.row.original.address || '-'
+                    return (
+                        <Tooltip title={value}>
+                            <span className="block max-w-[320px] truncate">{value}</span>
+                        </Tooltip>
+                    )
+                }
+            },
+            { header: 'City', accessorKey: 'city', size: 160, meta: { key: 'city' } },
+            { header: 'State', accessorKey: 'state', size: 120, meta: { key: 'state' } },
+            { header: 'ZIP', accessorKey: 'zip', size: 120, meta: { key: 'zip' } },
+            { 
+                header: 'Tags', accessorKey: 'tags', size: 200, meta: { key: 'tags' },
+                cell: (props) => {
+                    const value = props.row.original.tags || '-'
+                    return (
+                        <Tooltip title={value}>
+                            <span className="block max-w-[220px] truncate">{value}</span>
+                        </Tooltip>
+                    )
+                }
+            },
             {
                 header: 'Actions', id: 'actions', size: 200, meta: { key: 'actions' },
                 cell: (props) => {
