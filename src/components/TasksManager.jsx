@@ -10,7 +10,8 @@ import {
     Tooltip, 
     Dialog, 
     Avatar,
-    Checkbox
+    Checkbox,
+    Alert
 } from '@/components/ui'
 import { StrictModeDroppable, UsersAvatarGroup } from '@/components/shared'
 import { 
@@ -21,7 +22,7 @@ import {
     HiOutlinePencil,
     HiOutlineSearch
 } from 'react-icons/hi'
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot } from 'firebase/firestore'
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
 
 const TasksManager = ({ entityType, entityId }) => {
@@ -31,8 +32,10 @@ const TasksManager = ({ entityType, entityId }) => {
     const [isAddMembersOpen, setIsAddMembersOpen] = useState(false)
     const [isCreateSectionOpen, setIsCreateSectionOpen] = useState(false)
     const [isEditTaskOpen, setIsEditTaskOpen] = useState(false)
+    const [isDeleteSectionOpen, setIsDeleteSectionOpen] = useState(false)
     const [selectedSection, setSelectedSection] = useState(null)
     const [selectedTask, setSelectedTask] = useState(null)
+    const [sectionToDelete, setSectionToDelete] = useState(null)
     const [members, setMembers] = useState([])
     const [searchTerm, setSearchTerm] = useState('')
     const [newSectionName, setNewSectionName] = useState('')
@@ -105,9 +108,9 @@ const TasksManager = ({ entityType, entityId }) => {
         }
     }, [entityType, entityId])
 
-    // Handle drag and drop - completely rewritten for stability
+    // Handle drag and drop
     const handleDragEnd = async (result) => {
-        const { destination, source, draggableId, type } = result
+        const { destination, source, type } = result
 
         if (!destination) return
 
@@ -128,63 +131,36 @@ const TasksManager = ({ entityType, entityId }) => {
             })
             
             await Promise.all(updatePromises)
-        } else {
-            // Handle task reordering
-            const sourceSectionId = source.droppableId
-            const destSectionId = destination.droppableId
-            const sourceIndex = source.index
-            const destIndex = destination.index
+        }
+    }
 
-            if (sourceSectionId === destSectionId) {
-                // Reorder within same section
-                const sectionTasks = tasks
-                    .filter(task => task.sectionId === sourceSectionId)
-                    .sort((a, b) => (a.order || 0) - (b.order || 0))
-                
-                const newTasks = Array.from(sectionTasks)
-                const [reorderedTask] = newTasks.splice(sourceIndex, 1)
-                newTasks.splice(destIndex, 0, reorderedTask)
+    // Open delete section confirmation dialog
+    const handleDeleteSection = (sectionId) => {
+        const section = sections.find(s => s.id === sectionId)
+        setSectionToDelete(section)
+        setIsDeleteSectionOpen(true)
+    }
 
-                // Update task order in Firebase
-                const updatePromises = newTasks.map((task, index) => {
-                    if (task.order !== index) {
-                        return updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', task.id), {
-                            order: index
-                        })
-                    }
-                    return Promise.resolve()
-                })
-                
-                await Promise.all(updatePromises)
-            } else {
-                // Move task to different section
-                const task = tasks.find(t => t.id === draggableId)
-                if (task) {
-                    // Get tasks in destination section to calculate new order
-                    const destSectionTasks = tasks
-                        .filter(t => t.sectionId === destSectionId)
-                        .sort((a, b) => (a.order || 0) - (b.order || 0))
-                    
-                    // Update the moved task
-                    await updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', task.id), {
-                        sectionId: destSectionId,
-                        order: destIndex
-                    })
+    // Confirm and delete section (and all tasks within it)
+    const confirmDeleteSection = async () => {
+        if (!sectionToDelete) return
 
-                    // Update order of other tasks in destination section if needed
-                    const updatePromises = destSectionTasks.map((t, index) => {
-                        const newOrder = index >= destIndex ? index + 1 : index
-                        if (t.order !== newOrder) {
-                            return updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', t.id), {
-                                order: newOrder
-                            })
-                        }
-                        return Promise.resolve()
-                    })
-                    
-                    await Promise.all(updatePromises)
-                }
-            }
+        try {
+            // Delete all tasks assigned to this section
+            const tasksRef = collection(db, `${entityType}s`, entityId, 'tasks')
+            const tasksInSectionQuery = query(tasksRef, where('sectionId', '==', sectionToDelete.id))
+            const snapshot = await getDocs(tasksInSectionQuery)
+            const deleteTasksPromises = snapshot.docs.map((d) => deleteDoc(doc(db, `${entityType}s`, entityId, 'tasks', d.id)))
+            await Promise.all(deleteTasksPromises)
+
+            // Delete the section document
+            await deleteDoc(doc(db, `${entityType}s`, entityId, 'sections', sectionToDelete.id))
+            
+            // Close dialog and reset
+            setIsDeleteSectionOpen(false)
+            setSectionToDelete(null)
+        } catch (error) {
+            console.error('Error deleting section:', error)
         }
     }
 
@@ -418,107 +394,92 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                 {sectionTasks.length} tasks
                                                             </span>
                                                         </div>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="twoTone"
-                                                            icon={<HiOutlinePlus />}
-                                                            onClick={() => {
-                                                                setSelectedSection(section)
-                                                                setIsCreateTaskOpen(true)
-                                                            }}
-                                                        >
-                                                            Add task
-                                                        </Button>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="twoTone"
+                                                                icon={<HiOutlinePlus />}
+                                                                onClick={() => {
+                                                                    setSelectedSection(section)
+                                                                    setIsCreateTaskOpen(true)
+                                                                }}
+                                                            >
+                                                                Add task
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="plain"
+                                                                icon={<HiOutlineTrash />}
+                                                                onClick={() => handleDeleteSection(section.id)}
+                                                                className="text-red-600 hover:text-red-700"
+                                                            />
+                                                        </div>
                                                     </div>
 
-                                                    {/* Tasks */}
-                                                    <StrictModeDroppable droppableId={section.id} type="task">
-                                                        {(provided, snapshot) => (
-                                                            <div
-                                                                {...provided.droppableProps}
-                                                                ref={provided.innerRef}
-                                                                className={`min-h-[100px] space-y-2 transition-colors duration-200 ${
-                                                                    snapshot.isDraggingOver ? 'bg-blue-50 dark:bg-blue-900/20 rounded-lg' : ''
-                                                                }`}
-                                                            >
-                                                                {sectionTasks.length === 0 ? (
-                                                                    <div className="text-center py-8 text-gray-500">
-                                                                        No tasks in this section
-                                                                    </div>
-                                                                ) : (
-                                                                    sectionTasks.map((task, taskIndex) => (
-                                                                        <Draggable key={task.id} draggableId={task.id} index={taskIndex}>
-                                                                            {(provided, snapshot) => (
-                                                                                <div
-                                                                                    ref={provided.innerRef}
-                                                                                    {...provided.draggableProps}
-                                                                                    className={`flex items-center space-x-3 p-3 bg-white dark:bg-gray-700 rounded-lg border transition-all duration-200 ${
-                                                                                        snapshot.isDragging 
-                                                                                            ? 'shadow-2xl rotate-1 scale-105 border-primary/50' 
-                                                                                            : 'shadow-sm hover:shadow-md'
-                                                                                    } ${task.status === 'completed' ? 'opacity-60' : ''}`}
-                                                                                >
-                                                                                    <div
-                                                                                        {...provided.dragHandleProps}
-                                                                                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200"
-                                                                                    >
-                                                                                        <HiOutlineMenu size={16} />
-                                                                                    </div>
-                                                                                    
-                                                                                    <Checkbox
-                                                                                        checked={task.status === 'completed'}
-                                                                                        onChange={() => handleToggleTask(task.id, task.status)}
-                                                                                    />
-                                                                                    
-                                                                                    <div className="flex-1 min-w-0">
-                                                                                        <p className={`font-medium ${
-                                                                                            task.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'
-                                                                                        }`}>
-                                                                                            {task.name}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                    
-                                                                                    <div className="flex items-center space-x-2">
-                                                                                        <Tag className={getStatusColor(task.status)}>
-                                                                                            {statusOptions.find(opt => opt.value === task.status)?.label}
-                                                                                        </Tag>
-                                                                                        <Tag className={getPriorityColor(task.priority)}>
-                                                                                            {priorityOptions.find(opt => opt.value === task.priority)?.label}
-                                                                                        </Tag>
-                                                                                        <span className="text-sm text-gray-500">
-                                                                                            {formatDate(task.dueDate)}
-                                                                                        </span>
-                                                                                        {task.assignee && (
-                                                                                            <Tooltip title={getUserById(task.assignee)?.name || 'Unknown'}>
-                                                                                                <Avatar size={24}>
-                                                                                                    {getUserById(task.assignee)?.name?.charAt(0) || '?'}
-                                                                                                </Avatar>
-                                                                                            </Tooltip>
-                                                                                        )}
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="plain"
-                                                                                            icon={<HiOutlinePencil />}
-                                                                                            onClick={() => openEditTask(task)}
-                                                                                            className="text-blue-600 hover:text-blue-700"
-                                                                                        />
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="plain"
-                                                                                            icon={<HiOutlineTrash />}
-                                                                                            onClick={() => handleDeleteTask(task.id)}
-                                                                                            className="text-red-600 hover:text-red-700"
-                                                                                        />
-                                                                                    </div>
-                                                                                </div>
-                                                                            )}
-                                                                        </Draggable>
-                                                                    ))
-                                                                )}
-                                                                {provided.placeholder}
+                                                    {/* Tasks (no drag-and-drop) */}
+                                                    <div className="min-h-[100px] space-y-2">
+                                                        {sectionTasks.length === 0 ? (
+                                                            <div className="text-center py-8 text-gray-500">
+                                                                No tasks in this section
                                                             </div>
+                                                        ) : (
+                                                            sectionTasks.map((task) => (
+                                                                <div
+                                                                    key={task.id}
+                                                                    className={`bg-white dark:bg-gray-700 rounded-lg border shadow-sm hover:shadow-md ${
+                                                                        task.status === 'completed' ? 'opacity-60' : ''
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center p-3">
+                                                                        <Checkbox
+                                                                            checked={task.status === 'completed'}
+                                                                            onChange={() => handleToggleTask(task.id, task.status)}
+                                                                            className="mr-3"
+                                                                        />
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className={`font-medium ${
+                                                                                task.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'
+                                                                            }`}>
+                                                                                {task.name}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="flex items-center space-x-2">
+                                                                            <Tag className={getStatusColor(task.status)}>
+                                                                                {statusOptions.find(opt => opt.value === task.status)?.label}
+                                                                            </Tag>
+                                                                            <Tag className={getPriorityColor(task.priority)}>
+                                                                                {priorityOptions.find(opt => opt.value === task.priority)?.label}
+                                                                            </Tag>
+                                                                            <span className="text-sm text-gray-500">
+                                                                                {formatDate(task.dueDate)}
+                                                                            </span>
+                                                                            {task.assignee && (
+                                                                                <Tooltip title={getUserById(task.assignee)?.name || 'Unknown'}>
+                                                                                    <Avatar size={24}>
+                                                                                        {getUserById(task.assignee)?.name?.charAt(0) || '?'}
+                                                                                    </Avatar>
+                                                                                </Tooltip>
+                                                                            )}
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlinePencil />}
+                                                                                onClick={() => openEditTask(task)}
+                                                                                className="text-blue-600 hover:text-blue-700"
+                                                                            />
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlineTrash />}
+                                                                                onClick={() => handleDeleteTask(task.id)}
+                                                                                className="text-red-600 hover:text-red-700"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
                                                         )}
-                                                    </StrictModeDroppable>
+                                                    </div>
                                                 </div>
                                             )}
                                         </Draggable>
@@ -781,6 +742,46 @@ const TasksManager = ({ entityType, entityId }) => {
                                 Done
                             </Button>
                         </div>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Delete Section Confirmation Dialog */}
+            <Dialog 
+                isOpen={isDeleteSectionOpen} 
+                onClose={() => {
+                    setIsDeleteSectionOpen(false)
+                    setSectionToDelete(null)
+                }} 
+                width={500}
+            >
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Delete Section</h3>
+                    <Alert 
+                        type="danger" 
+                        showIcon 
+                        title="Warning: This action cannot be undone"
+                        className="mb-4"
+                    >
+                        Are you sure you want to delete <strong>"{sectionToDelete?.name}"</strong>? This will permanently delete the section and all tasks within it.
+                    </Alert>
+                    <div className="flex justify-end space-x-2">
+                        <Button
+                            variant="twoTone"
+                            onClick={() => {
+                                setIsDeleteSectionOpen(false)
+                                setSectionToDelete(null)
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="solid"
+                            onClick={confirmDeleteSection}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            Delete Section
+                        </Button>
                     </div>
                 </div>
             </Dialog>
