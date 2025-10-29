@@ -257,7 +257,7 @@ const ClientDetail = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
                 {/* Seamless Header */}
-                {activeTab !== 'tasks' && activeTab !== 'settings' && (
+                {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
                     <div className="px-4 lg:px-8 py-6 lg:py-8">
                         {/* Mobile Navigation */}
