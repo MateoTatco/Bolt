@@ -5,6 +5,7 @@ import { RichTextEditor } from '@/components/shared'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
 import TasksManager from '@/components/TasksManager'
+import AttachmentsManager from '@/components/Attachments/AttachmentsManager'
 import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog } from 'react-icons/hi'
 import { APP_NAME } from '@/constants/app.constant'
 
@@ -605,19 +606,7 @@ const LeadDetail = () => {
                     )}
 
                     {activeTab === 'attachments' && (
-                        <div className="space-y-6">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Attachments</h2>
-                            </div>
-                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
-                                <div className="text-gray-400 mb-6">
-                                    <HiOutlinePaperClip size={64} />
-                                </div>
-                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">File Attachments</h3>
-                                <p className="text-lg text-gray-500 dark:text-gray-500">File attachments will be managed here.</p>
-                            </div>
-                        </div>
+                        <AttachmentsManager entityType="lead" entityId={leadId} />
                     )}
 
                     {activeTab === 'activities' && (

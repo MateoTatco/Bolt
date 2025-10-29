@@ -1,0 +1,474 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { Button, Dialog, Input, Select, Tag, Tooltip, Avatar, Alert, Dropdown } from '@/components/ui'
+import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft } from 'react-icons/hi'
+import { db, storage } from '@/configs/firebase.config'
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore'
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
+
+// Mock data to visualize v1
+const mockRoot = {
+    id: 'root',
+    name: 'Root',
+    depth: 0,
+}
+
+const mockFolders = [
+    { id: 'f1', name: 'Project_Files', size: 22800000, createdAt: '2025-10-20', updatedAt: '2025-10-25', parentId: 'root', depth: 0 },
+    { id: 'f2', name: 'Documents', size: 10500000, createdAt: '2025-10-12', updatedAt: '2025-10-22', parentId: 'root', depth: 0 },
+    { id: 'f3', name: 'Team_Resources', size: 783100, createdAt: '2025-10-10', updatedAt: '2025-10-18', parentId: 'root', depth: 0 },
+    { id: 'f4', name: 'Client_Data', size: 5400000, createdAt: '2025-10-05', updatedAt: '2025-10-26', parentId: 'root', depth: 0 },
+    { id: 'f5', name: 'Backup_Files', size: 2500000, createdAt: '2025-10-01', updatedAt: '2025-10-15', parentId: 'root', depth: 0 },
+    { id: 'f6', name: 'Designs', size: 3200000, createdAt: '2025-10-11', updatedAt: '2025-10-23', parentId: 'f1', depth: 1 },
+]
+
+const mockFiles = [
+    { id: 'fl1', name: 'Tech design.pdf', size: 2200000, type: 'pdf', createdAt: '2025-10-24', updatedAt: '2025-10-25', parentId: 'root' },
+    { id: 'fl2', name: 'Network_Diagram.vsdx', size: 123500, type: 'vsdx', createdAt: '2025-10-20', updatedAt: '2025-10-23', parentId: 'root' },
+    { id: 'fl3', name: 'Project_Summary.docx', size: 987700, type: 'docx', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
+    { id: 'fl4', name: 'Modern_Laputa.jpg', size: 139200, type: 'jpg', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
+    { id: 'fl5', name: 'Budget_Report.pdf', size: 1700000, type: 'pdf', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
+    { id: 'fl6', name: 'Create responsive dashboard layout.txt', size: 40500, type: 'txt', createdAt: '2025-10-19', updatedAt: '2025-10-21', parentId: 'f6' },
+]
+
+const bytesToHuman = (bytes) => {
+    if (bytes === 0 || !bytes) return '0 B'
+    const k = 1024
+    const sizes = ['B','KB','MB','GB','TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${(bytes / Math.pow(k,i)).toFixed(1)} ${sizes[i]}`
+}
+
+const MAX_DEPTH = 5
+const MAX_FILE_MB = 50
+
+const AttachmentsManager = ({ entityType, entityId }) => {
+    const [view, setView] = useState('grid') // 'grid' | 'list'
+    const [uploadOpen, setUploadOpen] = useState(false)
+    const [currentFolderId, setCurrentFolderId] = useState('root')
+    const [breadcrumb, setBreadcrumb] = useState([mockRoot])
+    const [folders, setFolders] = useState(mockFolders)
+    const [files, setFiles] = useState(mockFiles)
+    const [error, setError] = useState(null)
+    const [renameTarget, setRenameTarget] = useState(null)
+    const [renameValue, setRenameValue] = useState('')
+    const [confirmDelete, setConfirmDelete] = useState(null)
+    const [pendingUploads, setPendingUploads] = useState([]) // File list
+
+    const inFolder = useMemo(() => ({
+        folders: folders.filter(f => f.parentId === currentFolderId),
+        files: files.filter(f => f.parentId === currentFolderId)
+    }), [folders, files, currentFolderId])
+
+    // Live Firestore listeners (folders/files)
+    useEffect(() => {
+        if (!entityId) return
+        // folders
+        const foldersCol = collection(db, `${entityType}s`, entityId, 'folders')
+        const filesCol = collection(db, `${entityType}s`, entityId, 'files')
+        const unsubFolders = onSnapshot(foldersCol, (snap) => {
+            const fs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            // If nothing in Firestore, keep mock folders so stakeholders see content
+            if (fs && fs.length > 0) {
+                setFolders(fs)
+            }
+        }, () => {})
+        const unsubFiles = onSnapshot(filesCol, (snap) => {
+            const fl = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            if (fl && fl.length > 0) {
+                setFiles(prev => {
+                    // Replace mock when Firestore has data
+                    return fl
+                })
+            }
+        }, () => {})
+        return () => {
+            unsubFolders()
+            unsubFiles()
+        }
+    }, [entityType, entityId])
+
+    const openFolder = (folder) => {
+        setCurrentFolderId(folder.id)
+        setBreadcrumb(prev => [...prev, { id: folder.id, name: folder.name, depth: folder.depth }])
+    }
+
+    const goBack = () => {
+        if (breadcrumb.length <= 1) return
+        const next = [...breadcrumb]
+        next.pop()
+        setBreadcrumb(next)
+        setCurrentFolderId(next[next.length - 1].id)
+    }
+
+    const onChooseFiles = (fileList) => {
+        const arr = Array.from(fileList || [])
+        const filtered = arr.filter(f => f.size <= MAX_FILE_MB * 1024 * 1024)
+        setPendingUploads(prev => [...prev, ...filtered])
+    }
+
+    const commitMockUpload = async () => {
+        // Upload files to Firebase Storage and create metadata in Firestore; fall back to mock if Storage fails
+        const uploaded = []
+        for (let i = 0; i < pendingUploads.length; i++) {
+            const f = pendingUploads[i]
+            try {
+                const path = `${entityType}s/${entityId}/${currentFolderId}/${f.name}`
+                const sRef = storageRef(storage, path)
+                await new Promise((resolve, reject)=>{
+                    const task = uploadBytesResumable(sRef, f)
+                    task.on('state_changed', () => {}, reject, resolve)
+                })
+                const url = await getDownloadURL(sRef)
+                const meta = {
+                    name: f.name,
+                    size: f.size,
+                    type: (f.name.split('.').pop() || '').toLowerCase(),
+                    parentId: currentFolderId,
+                    path,
+                    downloadURL: url,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                }
+                // Store in Firestore under subcollection 'files'
+                await addDoc(collection(db, `${entityType}s`, entityId, 'files'), meta)
+                uploaded.push({ ...meta, id: `local_${Date.now()}_${i}` })
+            } catch (e) {
+                console.error('Upload failed, using mock fallback:', e)
+                uploaded.push({
+                    id: `mock_${Date.now()}_${i}`,
+                    name: f.name,
+                    size: f.size,
+                    type: (f.name.split('.').pop() || '').toLowerCase(),
+                    parentId: currentFolderId,
+                    createdAt: new Date().toISOString().slice(0,10),
+                    updatedAt: new Date().toISOString().slice(0,10),
+                })
+            }
+        }
+        setFiles(prev => [...uploaded, ...prev])
+        setPendingUploads([])
+        setUploadOpen(false)
+    }
+
+    const startRename = (item, kind) => {
+        setRenameTarget({ kind, id: item.id })
+        setRenameValue(item.name)
+    }
+
+    const applyRename = () => {
+        if (!renameTarget) return
+        if (renameTarget.kind === 'folder') {
+            setFolders(prev => prev.map(f => f.id === renameTarget.id ? { ...f, name: renameValue } : f))
+        } else {
+            setFiles(prev => prev.map(f => f.id === renameTarget.id ? { ...f, name: renameValue } : f))
+        }
+        setRenameTarget(null)
+        setRenameValue('')
+    }
+
+    const onDelete = (item, kind) => {
+        setConfirmDelete({ kind, id: item.id, name: item.name })
+    }
+
+    const confirmDeleteAction = () => {
+        if (!confirmDelete) return
+        if (confirmDelete.kind === 'folder') {
+            // Remove folder and its immediate children in mock
+            setFolders(prev => prev.filter(f => f.id !== confirmDelete.id && f.parentId !== confirmDelete.id))
+            setFiles(prev => prev.filter(f => f.parentId !== confirmDelete.id))
+        } else {
+            // Attempt to delete from Firebase Storage if path exists
+            const file = files.find(f => f.id === confirmDelete.id)
+            if (file?.path) {
+                const sRef = storageRef(storage, file.path)
+                deleteObject(sRef).catch(()=>{})
+            }
+            // Remove Firestore metadata if it exists
+            if (file?.id && !String(file.id).startsWith('mock_') && !String(file.id).startsWith('local_')) {
+                deleteDoc(doc(db, `${entityType}s`, entityId, 'files', file.id)).catch(()=>{})
+            }
+            setFiles(prev => prev.filter(f => f.id !== confirmDelete.id))
+        }
+        setConfirmDelete(null)
+    }
+
+    const handleDownloadFile = async (file) => {
+        try {
+            // Prefer explicit downloadURL if present
+            let url = file?.downloadURL
+            if (!url && file?.path) {
+                const sRef = storageRef(storage, file.path)
+                url = await getDownloadURL(sRef)
+            }
+            if (!url) {
+                setError('File is not downloadable (no storage path). Upload a new version to enable download.')
+                return
+            }
+            const res = await fetch(url)
+            const blob = await res.blob()
+            saveAs(blob, file.name)
+        } catch (e) {
+            console.error('Download failed:', e)
+            setError('Download failed. Please try again.')
+        }
+    }
+
+    const collectDescendantFiles = (folderId) => {
+        const result = []
+        const stack = [folderId]
+        while (stack.length) {
+            const fid = stack.pop()
+            const childrenFolders = folders.filter(f => f.parentId === fid)
+            childrenFolders.forEach(cf => stack.push(cf.id))
+            const childrenFiles = files.filter(fl => fl.parentId === fid)
+            result.push(...childrenFiles)
+        }
+        return result
+    }
+
+    const handleDownloadFolder = async (folder) => {
+        try {
+            const zip = new JSZip()
+            const allFiles = collectDescendantFiles(folder.id)
+            for (let i = 0; i < allFiles.length; i++) {
+                const f = allFiles[i]
+                if (!f?.path) continue
+                try {
+                    const sRef = storageRef(storage, f.path)
+                    const url = await getDownloadURL(sRef)
+                    const res = await fetch(url)
+                    const blob = await res.blob()
+                    zip.file(f.name, blob)
+                } catch {}
+            }
+            const content = await zip.generateAsync({ type: 'blob' })
+            saveAs(content, `${folder.name || 'folder'}.zip`)
+        } catch (e) {
+            console.error('Folder download failed:', e)
+        }
+    }
+
+    const HeaderActions = (
+        <div className="flex items-center gap-2">
+            <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')}>Grid</Button>
+            <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')}>List</Button>
+            <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)}>Upload</Button>
+        </div>
+    )
+
+    const renderFolderRow = (folder) => (
+        <div key={folder.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg border shadow-sm hover:shadow-md">
+            <div className="flex items-center gap-3 min-w-0">
+                <HiOutlineFolder className="text-amber-500" />
+                <div className="min-w-0">
+                    <div className="font-medium truncate">{folder.name}</div>
+                    <div className="text-xs text-gray-500">{bytesToHuman(folder.size)} • Updated {folder.updatedAt}</div>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <Button size="sm" variant="twoTone" onClick={()=>openFolder(folder)}>Open</Button>
+                <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFolder(folder)} />
+                <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(folder,'folder')} />
+                <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600" onClick={()=>onDelete(folder,'folder')} />
+            </div>
+        </div>
+    )
+
+    const renderFileRow = (file) => (
+        <div key={file.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded-lg border shadow-sm hover:shadow-md">
+            <div className="flex items-center gap-3 min-w-0">
+                <HiOutlineDocument className="text-emerald-500" />
+                <div className="min-w-0">
+                    <div className="font-medium truncate">{file.name}</div>
+                    <div className="text-xs text-gray-500">{file.type?.toUpperCase()} • {bytesToHuman(file.size)} • Updated {file.updatedAt}</div>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} />
+                <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} />
+                <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600" onClick={()=>onDelete(file,'file')} />
+            </div>
+        </div>
+    )
+
+    const renderFolderCard = (folder) => (
+        <div key={folder.id} className="p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md cursor-pointer" onDoubleClick={()=>openFolder(folder)}>
+            <div className="flex items-start justify-between">
+                <HiOutlineFolder className="text-amber-500" />
+                <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
+                    <Dropdown.Item onClick={()=>openFolder(folder)}>Open</Dropdown.Item>
+                    <Dropdown.Item onClick={()=>handleDownloadFolder(folder)}>Download</Dropdown.Item>
+                    <Dropdown.Item onClick={()=>startRename(folder,'folder')}>Rename</Dropdown.Item>
+                    <Dropdown.Item onClick={()=>onDelete(folder,'folder')}>Delete</Dropdown.Item>
+                </Dropdown>
+            </div>
+            <div className="mt-3 font-medium truncate">{folder.name}</div>
+            <div className="text-xs text-gray-500 mt-1">{bytesToHuman(folder.size)}</div>
+            <div className="mt-3">
+                <Button size="sm" variant="twoTone" onClick={()=>openFolder(folder)}>Open</Button>
+            </div>
+        </div>
+    )
+
+    const renderFileCard = (file) => (
+        <div key={file.id} className="p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md">
+            <div className="flex items-start justify-between">
+                <HiOutlineDocument className="text-emerald-500" />
+                <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
+                    <Dropdown.Item onClick={()=>handleDownloadFile(file)} disabled={!file.path && !file.downloadURL}>Download</Dropdown.Item>
+                    <Dropdown.Item onClick={()=>startRename(file,'file')}>Rename</Dropdown.Item>
+                    <Dropdown.Item onClick={()=>onDelete(file,'file')}>Delete</Dropdown.Item>
+                </Dropdown>
+            </div>
+            <div className="mt-3 font-medium truncate">{file.name}</div>
+            <div className="text-xs text-gray-500 mt-1">{file.type?.toUpperCase()} • {bytesToHuman(file.size)}</div>
+            <div className="mt-3 flex gap-2">
+                <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} />
+                <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} />
+                <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600" onClick={()=>onDelete(file,'file')} />
+            </div>
+        </div>
+    )
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Attachments</h2>
+                </div>
+                {HeaderActions}
+            </div>
+
+            {/* Breadcrumb / Navigation */}
+            {breadcrumb.length > 1 && (
+                <div className="flex items-center justify-between bg-gray-50/60 dark:bg-gray-800/30 rounded-xl px-4 py-2">
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        {breadcrumb.map((b, idx) => (
+                            <React.Fragment key={b.id}>
+                                <button
+                                    className={`font-medium ${idx === breadcrumb.length-1 ? 'text-gray-900 dark:text-white' : 'hover:text-primary'}`}
+                                    onClick={() => {
+                                        const targetIndex = idx
+                                        const next = breadcrumb.slice(0, targetIndex + 1)
+                                        setBreadcrumb(next)
+                                        setCurrentFolderId(next[next.length - 1].id)
+                                    }}
+                                >
+                                    {b.name}
+                                </button>
+                                {idx < breadcrumb.length-1 && <HiOutlineChevronRight />}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button size="sm" variant="twoTone" icon={<HiOutlineChevronLeft />} onClick={goBack}>
+                            Back
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Sections */}
+            <div className="space-y-8">
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Folders</h3>
+                    {view === 'list' ? (
+                        <div className="space-y-2">
+                            {inFolder.folders.map(renderFolderRow)}
+                            {inFolder.folders.length === 0 && (
+                                <div className="text-sm text-gray-500">No folders</div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {inFolder.folders.map(renderFolderCard)}
+                            {inFolder.folders.length === 0 && (
+                                <div className="text-sm text-gray-500">No folders</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Files</h3>
+                    {view === 'list' ? (
+                        <div className="space-y-2">
+                            {inFolder.files.map(renderFileRow)}
+                            {inFolder.files.length === 0 && (
+                                <div className="text-sm text-gray-500">No files</div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {inFolder.files.map(renderFileCard)}
+                            {inFolder.files.length === 0 && (
+                                <div className="text-sm text-gray-500">No files</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {error && (
+                <Alert type="danger" className="mb-2" onClose={() => setError(null)}>
+                    {error}
+                </Alert>
+            )}
+
+            {/* Upload Dialog */}
+            <Dialog isOpen={uploadOpen} onClose={()=>setUploadOpen(false)} width={600}>
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Upload Files</h3>
+                    <div className="border-2 border-dashed rounded-xl p-8 text-center mb-4 transition hover:border-primary hover:bg-primary/5"
+                        onDragOver={(e)=>{e.preventDefault();}}
+                        onDrop={(e)=>{e.preventDefault(); onChooseFiles(e.dataTransfer.files)}}
+                    >
+                        <p className="text-gray-600 mb-2">Drop your files here, or <span className="text-primary">browse</span></p>
+                        <input type="file" multiple onChange={(e)=>onChooseFiles(e.target.files)} />
+                        <div className="text-xs text-gray-500 mt-2">Max {MAX_FILE_MB}MB per file</div>
+                    </div>
+                    {pendingUploads.length > 0 && (
+                        <div className="mb-4 text-sm text-gray-600">{pendingUploads.length} file(s) ready</div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                        <Button variant="twoTone" onClick={()=>setUploadOpen(false)}>Cancel</Button>
+                        <Button variant="solid" onClick={commitMockUpload} disabled={pendingUploads.length===0}>Upload</Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Removed folder modal: navigation is inline via breadcrumb */}
+
+            {/* Rename Dialog */}
+            <Dialog isOpen={Boolean(renameTarget)} onClose={()=>{setRenameTarget(null); setRenameValue('')}} width={420}>
+                <div className="p-6 space-y-4">
+                    <h3 className="text-lg font-semibold">Rename {renameTarget?.kind === 'folder' ? 'Folder' : 'File'}</h3>
+                    <Input value={renameValue} onChange={(e)=>setRenameValue(e.target.value)} />
+                    <div className="flex justify-end gap-2">
+                        <Button variant="twoTone" onClick={()=>{setRenameTarget(null); setRenameValue('')}}>Cancel</Button>
+                        <Button variant="solid" onClick={applyRename} disabled={!renameValue.trim()}>Save</Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Delete Confirm */}
+            <Dialog isOpen={Boolean(confirmDelete)} onClose={()=>setConfirmDelete(null)} width={420}>
+                <div className="p-6 space-y-4">
+                    <h3 className="text-lg font-semibold">Delete {confirmDelete?.kind === 'folder' ? 'Folder' : 'File'}</h3>
+                    <p className="text-gray-600">Are you sure you want to delete "{confirmDelete?.name}"? This action cannot be undone.</p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="twoTone" onClick={()=>setConfirmDelete(null)}>Cancel</Button>
+                        <Button variant="solid" className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDeleteAction}>Delete</Button>
+                    </div>
+                </div>
+            </Dialog>
+        </div>
+    )
+}
+
+export default AttachmentsManager
+
+
