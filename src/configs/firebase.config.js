@@ -8,7 +8,7 @@ const FirebaseConfig = {
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "tatco-crm.firebaseapp.com",
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "tatco-crm",
     // NOTE: storage bucket must be the appspot.com form, not firebasestorage.app
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "tatco-crm.appspot.com",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "tatco-crm.firebasestorage.app",
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "758117357297",
     appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:758117357297:web:0529da7ebf6b4c07fd3b50",
 }
