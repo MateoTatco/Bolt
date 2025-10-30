@@ -76,29 +76,7 @@ const LeadDetail = () => {
 
     useEffect(() => {
         if (lead) {
-            const defaultContent = `
-<h3>Project Description</h3>
-<p>Asked for case studies</p>
-
-<h3>Project Goals</h3>
-<ul>
-<li>Increase lead conversion rates by 25%</li>
-<li>Improve customer relationship management</li>
-<li>Streamline sales pipeline processes</li>
-<li>Enhance data-driven decision making</li>
-</ul>
-
-<h3>Key Metrics</h3>
-<p><strong>$125K</strong> - Potential Value</p>
-<p><strong>85%</strong> - Probability</p>
-
-<h3>Next Steps</h3>
-<ul>
-<li>Schedule follow-up meeting</li>
-<li>Prepare proposal document</li>
-<li>Review contract terms</li>
-</ul>
-            `
+            const defaultContent = `<p class="text-gray-500">Write anything here</p>`
             const content = lead.notes || defaultContent
             setEditedContent(content)
             setOriginalContent(content)

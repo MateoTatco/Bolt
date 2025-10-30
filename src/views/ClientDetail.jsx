@@ -68,29 +68,7 @@ const ClientDetail = () => {
 
     useEffect(() => {
         if (client) {
-            const defaultContent = `
-<h3>Company Overview</h3>
-<p>${client.clientName} is a ${client.clientType || 'business'} client with significant potential for growth and collaboration.</p>
-
-<h3>Business Goals</h3>
-<ul>
-<li>Strengthen client relationship and satisfaction</li>
-<li>Expand service offerings and capabilities</li>
-<li>Increase project portfolio and revenue</li>
-<li>Build long-term strategic partnership</li>
-</ul>
-
-<h3>Key Metrics</h3>
-<p><strong>${client.id}</strong> - Client ID</p>
-<p><strong>${client.clientType || 'N/A'}</strong> - Business Type</p>
-
-<h3>Next Steps</h3>
-<ul>
-<li>Schedule quarterly business review</li>
-<li>Assess service expansion opportunities</li>
-<li>Plan strategic initiatives</li>
-</ul>
-            `
+            const defaultContent = `<p class="text-gray-500">Write anything here</p>`
             const content = client.notes || defaultContent
             setEditedContent(content)
             setOriginalContent(content)
