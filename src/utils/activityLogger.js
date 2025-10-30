@@ -1,18 +1,29 @@
 import { db } from '@/configs/firebase.config'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { useSessionUser } from '@/store/authStore'
+import { getAuth } from 'firebase/auth'
 
 export const getCurrentActor = () => {
-    // Read from zustand store (app user profile)
     try {
         const state = useSessionUser.getState()
-        const user = state?.user || {}
-        const name = user.userName || user.name || 'Unknown User'
-        const email = user.email || ''
-        const avatar = user.avatar || ''
+        const storeUser = state?.user || {}
+        const authUser = getAuth().currentUser || {}
+
+        const pickEmail = storeUser.email || authUser.email || ''
+        const emailName = pickEmail ? pickEmail.split('@')[0] : ''
+
+        const name =
+            storeUser.userName ||
+            storeUser.name ||
+            authUser.displayName ||
+            emailName ||
+            'User'
+
+        const email = pickEmail
+        const avatar = storeUser.avatar || ''
         return { name, email, avatar }
     } catch {
-        return { name: 'Unknown User', email: '' }
+        return { name: 'User', email: '' }
     }
 }
 
