@@ -8,30 +8,8 @@ import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
-// Mock data to visualize v1
-const mockRoot = {
-    id: 'root',
-    name: 'Root',
-    depth: 0,
-}
-
-const mockFolders = [
-    { id: 'f1', name: 'Project_Files', size: 22800000, createdAt: '2025-10-20', updatedAt: '2025-10-25', parentId: 'root', depth: 0 },
-    { id: 'f2', name: 'Documents', size: 10500000, createdAt: '2025-10-12', updatedAt: '2025-10-22', parentId: 'root', depth: 0 },
-    { id: 'f3', name: 'Team_Resources', size: 783100, createdAt: '2025-10-10', updatedAt: '2025-10-18', parentId: 'root', depth: 0 },
-    { id: 'f4', name: 'Client_Data', size: 5400000, createdAt: '2025-10-05', updatedAt: '2025-10-26', parentId: 'root', depth: 0 },
-    { id: 'f5', name: 'Backup_Files', size: 2500000, createdAt: '2025-10-01', updatedAt: '2025-10-15', parentId: 'root', depth: 0 },
-    { id: 'f6', name: 'Designs', size: 3200000, createdAt: '2025-10-11', updatedAt: '2025-10-23', parentId: 'f1', depth: 1 },
-]
-
-const mockFiles = [
-    { id: 'fl1', name: 'Tech design.pdf', size: 2200000, type: 'pdf', createdAt: '2025-10-24', updatedAt: '2025-10-25', parentId: 'root' },
-    { id: 'fl2', name: 'Network_Diagram.vsdx', size: 123500, type: 'vsdx', createdAt: '2025-10-20', updatedAt: '2025-10-23', parentId: 'root' },
-    { id: 'fl3', name: 'Project_Summary.docx', size: 987700, type: 'docx', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
-    { id: 'fl4', name: 'Modern_Laputa.jpg', size: 139200, type: 'jpg', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
-    { id: 'fl5', name: 'Budget_Report.pdf', size: 1700000, type: 'pdf', createdAt: '2025-10-22', updatedAt: '2025-10-24', parentId: 'root' },
-    { id: 'fl6', name: 'Create responsive dashboard layout.txt', size: 40500, type: 'txt', createdAt: '2025-10-19', updatedAt: '2025-10-21', parentId: 'f6' },
-]
+// Root placeholder for breadcrumb
+const rootNode = { id: 'root', name: 'Root', depth: 0 }
 
 const bytesToHuman = (bytes) => {
     if (bytes === 0 || !bytes) return '0 B'
@@ -48,9 +26,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     const [view, setView] = useState('grid') // 'grid' | 'list'
     const [uploadOpen, setUploadOpen] = useState(false)
     const [currentFolderId, setCurrentFolderId] = useState('root')
-    const [breadcrumb, setBreadcrumb] = useState([mockRoot])
-    const [folders, setFolders] = useState(mockFolders)
-    const [files, setFiles] = useState(mockFiles)
+    const [breadcrumb, setBreadcrumb] = useState([rootNode])
+    const [folders, setFolders] = useState([])
+    const [files, setFiles] = useState([])
     const [error, setError] = useState(null)
     const [renameTarget, setRenameTarget] = useState(null)
     const [renameValue, setRenameValue] = useState('')
@@ -74,19 +52,11 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         const filesCol = collection(db, `${entityType}s`, entityId, 'files')
         const unsubFolders = onSnapshot(foldersCol, (snap) => {
             const fs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            // If nothing in Firestore, keep mock folders so stakeholders see content
-            if (fs && fs.length > 0) {
-                setFolders(fs)
-            }
+            setFolders(fs)
         }, () => {})
         const unsubFiles = onSnapshot(filesCol, (snap) => {
             const fl = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            if (fl && fl.length > 0) {
-                setFiles(prev => {
-                    // Replace mock when Firestore has data
-                    return fl
-                })
-            }
+            setFiles(fl)
         }, () => {})
         return () => {
             unsubFolders()
@@ -466,44 +436,47 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             )}
 
             {/* Sections */}
-            <div className="space-y-8">
-                <div>
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Folders</h3>
-                    {view === 'list' ? (
-                        <div className="space-y-2">
-                            {inFolder.folders.map(renderFolderRow)}
-                            {inFolder.folders.length === 0 && (
-                                <div className="text-sm text-gray-500">No folders</div>
+            {(inFolder.folders.length === 0 && inFolder.files.length === 0) ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center bg-gray-50/60 dark:bg-gray-800/30 rounded-xl">
+                    <div className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-2">This folder is empty</div>
+                    <div className="text-sm text-gray-500 mb-4">Upload your first file or create a folder to get started.</div>
+                    <div className="flex items-center gap-2">
+                        <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)}>New Folder</Button>
+                        <Button size="sm" variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)}>Upload</Button>
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-8">
+                    {inFolder.folders.length > 0 && (
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Folders</h3>
+                            {view === 'list' ? (
+                                <div className="space-y-2">
+                                    {inFolder.folders.map(renderFolderRow)}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {inFolder.folders.map(renderFolderCard)}
+                                </div>
                             )}
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {inFolder.folders.map(renderFolderCard)}
-                            {inFolder.folders.length === 0 && (
-                                <div className="text-sm text-gray-500">No folders</div>
+                    )}
+                    {inFolder.files.length > 0 && (
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Files</h3>
+                            {view === 'list' ? (
+                                <div className="space-y-2">
+                                    {inFolder.files.map(renderFileRow)}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {inFolder.files.map(renderFileCard)}
+                                </div>
                             )}
                         </div>
                     )}
                 </div>
-                <div>
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-3">Files</h3>
-                    {view === 'list' ? (
-                        <div className="space-y-2">
-                            {inFolder.files.map(renderFileRow)}
-                            {inFolder.files.length === 0 && (
-                                <div className="text-sm text-gray-500">No files</div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {inFolder.files.map(renderFileCard)}
-                            {inFolder.files.length === 0 && (
-                                <div className="text-sm text-gray-500">No files</div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
+            )}
 
             {error && (
                 <Alert type="danger" className="mb-2" onClose={() => setError(null)}>
