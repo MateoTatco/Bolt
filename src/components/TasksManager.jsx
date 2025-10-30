@@ -24,6 +24,7 @@ import {
 } from 'react-icons/hi'
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
+import logActivity from '@/utils/activityLogger'
 
 const TasksManager = ({ entityType, entityId }) => {
     const [sections, setSections] = useState([])
@@ -131,6 +132,7 @@ const TasksManager = ({ entityType, entityId }) => {
             })
             
             await Promise.all(updatePromises)
+            await logActivity(entityType, entityId, { type: 'reorder', message: 'reordered sections' })
         }
     }
 
@@ -159,6 +161,7 @@ const TasksManager = ({ entityType, entityId }) => {
             // Close dialog and reset
             setIsDeleteSectionOpen(false)
             setSectionToDelete(null)
+            await logActivity(entityType, entityId, { type: 'delete', message: `deleted section ${sectionToDelete.name}` })
         } catch (error) {
             console.error('Error deleting section:', error)
         }
@@ -178,6 +181,7 @@ const TasksManager = ({ entityType, entityId }) => {
             })
             setNewSectionName('')
             setIsCreateSectionOpen(false)
+            await logActivity(entityType, entityId, { type: 'create', message: `created section ${newSectionName}` })
         } catch (error) {
             console.error('Error creating section:', error)
         }
@@ -212,6 +216,7 @@ const TasksManager = ({ entityType, entityId }) => {
                 assignee: null
             })
             setIsCreateTaskOpen(false)
+            await logActivity(entityType, entityId, { type: 'create', message: `created task ${taskForm.name} in ${selectedSection.name}` })
         } catch (error) {
             console.error('Error creating task:', error)
         }
@@ -226,6 +231,7 @@ const TasksManager = ({ entityType, entityId }) => {
                 status: newStatus,
                 updatedAt: new Date()
             })
+            await logActivity(entityType, entityId, { type: 'update', message: `marked task as ${newStatus}` })
         } catch (error) {
             console.error('Error updating task:', error)
         }
@@ -254,6 +260,7 @@ const TasksManager = ({ entityType, entityId }) => {
             })
             setSelectedTask(null)
             setIsEditTaskOpen(false)
+            await logActivity(entityType, entityId, { type: 'update', message: `updated task ${selectedTask.name}` })
         } catch (error) {
             console.error('Error updating task:', error)
         }
@@ -276,6 +283,7 @@ const TasksManager = ({ entityType, entityId }) => {
     const handleDeleteTask = async (taskId) => {
         try {
             await deleteDoc(doc(db, `${entityType}s`, entityId, 'tasks', taskId))
+            await logActivity(entityType, entityId, { type: 'delete', message: 'deleted a task' })
         } catch (error) {
             console.error('Error deleting task:', error)
         }

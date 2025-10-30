@@ -6,7 +6,9 @@ import { useCrmStore } from '@/store/crmStore'
 import TasksManager from '@/components/TasksManager'
 import AttachmentsManager from '@/components/Attachments/AttachmentsManager'
 import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog } from 'react-icons/hi'
+import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import { APP_NAME } from '@/constants/app.constant'
+import logActivity from '@/utils/activityLogger'
 
 const ClientDetail = () => {
     const { clientId } = useParams()
@@ -115,6 +117,10 @@ const ClientDetail = () => {
             await updateClient(client.id, { ...client, notes: editedContent })
             setOriginalContent(editedContent)
             setShowAlert(true)
+            const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/\s+/g,' ').trim()
+            const prevText = strip(originalContent)
+            const nextText = strip(editedContent)
+            await logActivity('client', client.id, { type: 'update', message: 'updated client overview', metadata: { section: 'overview', changes: { overview: [prevText, nextText] } } })
         } catch (e) {
             console.error('Error saving changes:', e)
         }
@@ -257,7 +263,7 @@ const ClientDetail = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen">
                 {/* Seamless Header */}
-                {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && (
+                {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && activeTab !== 'activities' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
                     <div className="px-4 lg:px-8 py-6 lg:py-8">
                         {/* Mobile Navigation */}
@@ -435,6 +441,21 @@ const ClientDetail = () => {
                                                         await updateClient(client.id, payload)
                                                         setIsInfoEditing(false)
                                                         setShowAlert(true)
+                                                        const prev = {
+                                                            clientName: client.clientName || '',
+                                                            clientType: client.clientType || '',
+                                                            address: client.address || '',
+                                                            city: client.city || '',
+                                                            state: client.state || '',
+                                                            zip: client.zip || '',
+                                                            tags: client.tags || ''
+                                                        }
+                                                        const next = { ...infoForm }
+                                                        const changes = {}
+                                                        Object.keys(next).forEach((k)=>{
+                                                            if (String(prev[k]) !== String(next[k])) changes[k] = [prev[k], next[k]]
+                                                        })
+                                                        await logActivity('client', client.id, { type: 'update', message: 'updated client information', metadata: { changes } })
                                                     } catch (e) {
                                                         console.error('Error updating client:', e)
                                                     }
@@ -585,13 +606,7 @@ const ClientDetail = () => {
                                 <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
                                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Activities</h2>
                             </div>
-                            <div className="text-center py-16 rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm">
-                                <div className="text-gray-400 mb-6">
-                                    <HiOutlineClock size={64} />
-                                </div>
-                                <h3 className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">Activity Timeline</h3>
-                                <p className="text-lg text-gray-500 dark:text-gray-500">Activity timeline will be displayed here.</p>
-                            </div>
+                            <ActivitiesTimeline entityType="client" entityId={clientId} />
                         </div>
                     )}
 

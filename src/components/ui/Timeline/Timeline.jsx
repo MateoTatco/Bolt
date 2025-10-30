@@ -9,8 +9,9 @@ const Timeline = (props) => {
 
     // Only pass isLast to the composed TimeLineItem component and avoid leaking to DOM
     const items = mapCloneElement(children, (item, index) => {
-        const { isLast: _ignored, ...restProps } = item.props || {}
+        const { isLast: _ignored, isFirst: _ignored2, ...restProps } = item.props || {}
         return {
+            isFirst: index === 0,
             isLast: index === count - 1,
             ...restProps,
         }

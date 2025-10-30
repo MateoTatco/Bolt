@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 
 const TimeLineItem = (props) => {
-    const { children, className, isLast, media, ref } = props
+    const { children, className, isLast, isFirst, media, ref } = props
 
     return (
         <li
@@ -19,7 +19,7 @@ const TimeLineItem = (props) => {
                             <div className="timeline-item-media-default" />
                         )}
                     </div>
-                    {!isLast && <div className="timeline-connect" />}
+                    {!isLast && !isFirst && <div className="timeline-connect" />}
                 </div>
                 <div
                     className={classNames(

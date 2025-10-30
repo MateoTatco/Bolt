@@ -5,6 +5,7 @@ import { db, storage } from '@/configs/firebase.config'
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore'
 import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
+import logActivity from '@/utils/activityLogger'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
@@ -143,6 +144,11 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     updatedAt: serverTimestamp(),
                 }
                 await addDoc(collection(db, `${entityType}s`, entityId, 'files'), meta)
+                await logActivity(entityType, entityId, {
+                    type: 'upload',
+                    message: `uploaded file ${file.name}`,
+                    metadata: { path }
+                })
             }
         } catch (e) {
             console.error('Upload failed:', e)
@@ -168,10 +174,20 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     name: renameValue,
                     updatedAt: serverTimestamp(),
                 })
+                await logActivity(entityType, entityId, {
+                    type: 'rename',
+                    message: `renamed folder to ${renameValue}`,
+                    metadata: { id: renameTarget.id }
+                })
             } else {
                 await updateDoc(doc(db, `${entityType}s`, entityId, 'files', renameTarget.id), {
                     name: renameValue,
                     updatedAt: serverTimestamp(),
+                })
+                await logActivity(entityType, entityId, {
+                    type: 'rename',
+                    message: `renamed file to ${renameValue}`,
+                    metadata: { id: renameTarget.id }
                 })
             }
         } catch (e) {
@@ -213,12 +229,20 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         try {
             if (confirmDelete.kind === 'folder') {
                 await deleteFolderRecursive(confirmDelete.id)
+                await logActivity(entityType, entityId, {
+                    type: 'delete',
+                    message: `deleted folder ${confirmDelete.name}`,
+                })
             } else {
                 const fileDoc = files.find(f => f.id === confirmDelete.id)
                 if (fileDoc?.storagePath) {
                     try { await deleteObject(storageRef(storage, fileDoc.storagePath)) } catch {}
                 }
                 await deleteDoc(doc(db, `${entityType}s`, entityId, 'files', confirmDelete.id))
+                await logActivity(entityType, entityId, {
+                    type: 'delete',
+                    message: `deleted file ${confirmDelete.name}`,
+                })
             }
         } catch (e) {
             console.error('Delete failed:', e)
@@ -303,6 +327,10 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 entityId,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
+            })
+            await logActivity(entityType, entityId, {
+                type: 'create',
+                message: `created folder ${newFolderName.trim()}`,
             })
             setNewFolderOpen(false)
             setNewFolderName('')
