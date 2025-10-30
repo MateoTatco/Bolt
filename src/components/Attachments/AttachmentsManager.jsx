@@ -3,7 +3,8 @@ import { Button, Dialog, Input, Select, Tag, Tooltip, Avatar, Alert, Dropdown } 
 import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft } from 'react-icons/hi'
 import { db, storage } from '@/configs/firebase.config'
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore'
-import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
@@ -55,6 +56,10 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     const [renameValue, setRenameValue] = useState('')
     const [confirmDelete, setConfirmDelete] = useState(null)
     const [pendingUploads, setPendingUploads] = useState([]) // File list
+    const [uploading, setUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState([]) // {name, percent, cancel}
+    const [newFolderOpen, setNewFolderOpen] = useState(false)
+    const [newFolderName, setNewFolderName] = useState('')
 
     const inFolder = useMemo(() => ({
         folders: folders.filter(f => f.parentId === currentFolderId),
@@ -108,48 +113,76 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         setPendingUploads(prev => [...prev, ...filtered])
     }
 
-    const commitMockUpload = async () => {
-        // Upload files to Firebase Storage and create metadata in Firestore; fall back to mock if Storage fails
-        const uploaded = []
-        for (let i = 0; i < pendingUploads.length; i++) {
-            const f = pendingUploads[i]
-            try {
-                const path = `${entityType}s/${entityId}/${currentFolderId}/${f.name}`
+    const ensureSignedIn = async () => {
+        const auth = getAuth()
+        if (auth.currentUser) return auth.currentUser
+        try {
+            await signInAnonymously(auth)
+            return auth.currentUser
+        } catch (e) {
+            // If sign-in is in-flight, wait for it
+            await new Promise((resolve) => {
+                const unsub = onAuthStateChanged(auth, () => { unsub(); resolve() })
+            })
+            return auth.currentUser
+        }
+    }
+
+    const commitUpload = async () => {
+        if (pendingUploads.length === 0) return
+        setUploading(true)
+        setError(null)
+        const currentDepth = (breadcrumb[breadcrumb.length - 1]?.depth ?? 0)
+        const progressState = pendingUploads.map(f => ({ name: f.name, percent: 0, cancel: null }))
+        setUploadProgress(progressState)
+        try {
+            // Ensure we have an auth user before hitting Storage
+            await ensureSignedIn()
+            for (let i = 0; i < pendingUploads.length; i++) {
+                const file = pendingUploads[i]
+                const path = `${entityType}s/${entityId}/${currentFolderId}/${file.name}`
                 const sRef = storageRef(storage, path)
-                await new Promise((resolve, reject)=>{
-                    const task = uploadBytesResumable(sRef, f)
-                    task.on('state_changed', () => {}, reject, resolve)
-                })
+                try {
+                    // Preferred: resumable upload with progress
+                    await new Promise((resolve, reject) => {
+                        const task = uploadBytesResumable(sRef, file)
+                        progressState[i].cancel = () => task.cancel()
+                        task.on('state_changed', (snap) => {
+                            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+                            setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, percent: pct } : p))
+                        }, (err) => {
+                            reject(err)
+                        }, resolve)
+                    })
+                } catch (resumableErr) {
+                    // Fallback: simple upload (avoids some preflight quirks)
+                    await uploadBytes(sRef, file)
+                }
                 const url = await getDownloadURL(sRef)
                 const meta = {
-                    name: f.name,
-                    size: f.size,
-                    type: (f.name.split('.').pop() || '').toLowerCase(),
+                    name: file.name,
+                    size: file.size,
+                    type: (file.name.split('.').pop() || '').toLowerCase(),
                     parentId: currentFolderId,
-                    path,
+                    storagePath: path,
                     downloadURL: url,
+                    entityType,
+                    entityId,
+                    depth: currentDepth,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 }
-                // Store in Firestore under subcollection 'files'
                 await addDoc(collection(db, `${entityType}s`, entityId, 'files'), meta)
-                uploaded.push({ ...meta, id: `local_${Date.now()}_${i}` })
-            } catch (e) {
-                console.error('Upload failed, using mock fallback:', e)
-                uploaded.push({
-                    id: `mock_${Date.now()}_${i}`,
-                    name: f.name,
-                    size: f.size,
-                    type: (f.name.split('.').pop() || '').toLowerCase(),
-                    parentId: currentFolderId,
-                    createdAt: new Date().toISOString().slice(0,10),
-                    updatedAt: new Date().toISOString().slice(0,10),
-                })
             }
+        } catch (e) {
+            console.error('Upload failed:', e)
+            setError('Upload failed. Please check your storage rules and try again.')
+        } finally {
+            setUploading(false)
+            setPendingUploads([])
+            setUploadProgress([])
+            setUploadOpen(false)
         }
-        setFiles(prev => [...uploaded, ...prev])
-        setPendingUploads([])
-        setUploadOpen(false)
     }
 
     const startRename = (item, kind) => {
@@ -157,49 +190,81 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         setRenameValue(item.name)
     }
 
-    const applyRename = () => {
+    const applyRename = async () => {
         if (!renameTarget) return
-        if (renameTarget.kind === 'folder') {
-            setFolders(prev => prev.map(f => f.id === renameTarget.id ? { ...f, name: renameValue } : f))
-        } else {
-            setFiles(prev => prev.map(f => f.id === renameTarget.id ? { ...f, name: renameValue } : f))
+        try {
+            if (renameTarget.kind === 'folder') {
+                await updateDoc(doc(db, `${entityType}s`, entityId, 'folders', renameTarget.id), {
+                    name: renameValue,
+                    updatedAt: serverTimestamp(),
+                })
+            } else {
+                await updateDoc(doc(db, `${entityType}s`, entityId, 'files', renameTarget.id), {
+                    name: renameValue,
+                    updatedAt: serverTimestamp(),
+                })
+            }
+        } catch (e) {
+            console.error('Rename failed:', e)
+            setError('Rename failed. Please try again.')
+        } finally {
+            setRenameTarget(null)
+            setRenameValue('')
         }
-        setRenameTarget(null)
-        setRenameValue('')
     }
 
     const onDelete = (item, kind) => {
         setConfirmDelete({ kind, id: item.id, name: item.name })
     }
 
-    const confirmDeleteAction = () => {
-        if (!confirmDelete) return
-        if (confirmDelete.kind === 'folder') {
-            // Remove folder and its immediate children in mock
-            setFolders(prev => prev.filter(f => f.id !== confirmDelete.id && f.parentId !== confirmDelete.id))
-            setFiles(prev => prev.filter(f => f.parentId !== confirmDelete.id))
-        } else {
-            // Attempt to delete from Firebase Storage if path exists
-            const file = files.find(f => f.id === confirmDelete.id)
-            if (file?.path) {
-                const sRef = storageRef(storage, file.path)
-                deleteObject(sRef).catch(()=>{})
+    const deleteFolderRecursive = async (folderId) => {
+        // delete child files
+        const filesQ = query(collection(db, `${entityType}s`, entityId, 'files'), where('parentId', '==', folderId))
+        const filesSnap = await getDocs(filesQ)
+        for (const d of filesSnap.docs) {
+            const data = d.data()
+            if (data?.storagePath) {
+                try { await deleteObject(storageRef(storage, data.storagePath)) } catch {}
             }
-            // Remove Firestore metadata if it exists
-            if (file?.id && !String(file.id).startsWith('mock_') && !String(file.id).startsWith('local_')) {
-                deleteDoc(doc(db, `${entityType}s`, entityId, 'files', file.id)).catch(()=>{})
-            }
-            setFiles(prev => prev.filter(f => f.id !== confirmDelete.id))
+            await deleteDoc(d.ref)
         }
-        setConfirmDelete(null)
+        // find child folders and recurse
+        const foldersQ = query(collection(db, `${entityType}s`, entityId, 'folders'), where('parentId', '==', folderId))
+        const foldersSnap = await getDocs(foldersQ)
+        for (const fd of foldersSnap.docs) {
+            await deleteFolderRecursive(fd.id)
+        }
+        // finally delete this folder
+        await deleteDoc(doc(db, `${entityType}s`, entityId, 'folders', folderId))
+    }
+
+    const confirmDeleteAction = async () => {
+        if (!confirmDelete) return
+        try {
+            if (confirmDelete.kind === 'folder') {
+                await deleteFolderRecursive(confirmDelete.id)
+            } else {
+                const fileDoc = files.find(f => f.id === confirmDelete.id)
+                if (fileDoc?.storagePath) {
+                    try { await deleteObject(storageRef(storage, fileDoc.storagePath)) } catch {}
+                }
+                await deleteDoc(doc(db, `${entityType}s`, entityId, 'files', confirmDelete.id))
+            }
+        } catch (e) {
+            console.error('Delete failed:', e)
+            setError('Delete failed. Please try again.')
+        } finally {
+            setConfirmDelete(null)
+        }
     }
 
     const handleDownloadFile = async (file) => {
         try {
             // Prefer explicit downloadURL if present
             let url = file?.downloadURL
-            if (!url && file?.path) {
-                const sRef = storageRef(storage, file.path)
+            const pathRef = file?.storagePath || file?.path
+            if (!url && pathRef) {
+                const sRef = storageRef(storage, pathRef)
                 url = await getDownloadURL(sRef)
             }
             if (!url) {
@@ -234,9 +299,10 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             const allFiles = collectDescendantFiles(folder.id)
             for (let i = 0; i < allFiles.length; i++) {
                 const f = allFiles[i]
-                if (!f?.path) continue
+                const pathRef = f?.storagePath || f?.path
+                if (!pathRef) continue
                 try {
-                    const sRef = storageRef(storage, f.path)
+                    const sRef = storageRef(storage, pathRef)
                     const url = await getDownloadURL(sRef)
                     const res = await fetch(url)
                     const blob = await res.blob()
@@ -250,10 +316,37 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         }
     }
 
+    const handleCreateFolder = async () => {
+        if (!newFolderName.trim()) return
+        const currentDepth = (breadcrumb[breadcrumb.length - 1]?.depth ?? 0)
+        if (currentDepth + 1 > MAX_DEPTH) {
+            setError(`Maximum folder depth (${MAX_DEPTH}) reached.`)
+            return
+        }
+        try {
+            await addDoc(collection(db, `${entityType}s`, entityId, 'folders'), {
+                name: newFolderName.trim(),
+                parentId: currentFolderId,
+                depth: currentDepth + 1,
+                size: 0,
+                entityType,
+                entityId,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            })
+            setNewFolderOpen(false)
+            setNewFolderName('')
+        } catch (e) {
+            console.error('Create folder failed:', e)
+            setError('Could not create folder. Please try again.')
+        }
+    }
+
     const HeaderActions = (
         <div className="flex items-center gap-2">
             <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')}>Grid</Button>
             <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')}>List</Button>
+            <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)}>New Folder</Button>
             <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)}>Upload</Button>
         </div>
     )
@@ -430,12 +523,24 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                         <input type="file" multiple onChange={(e)=>onChooseFiles(e.target.files)} />
                         <div className="text-xs text-gray-500 mt-2">Max {MAX_FILE_MB}MB per file</div>
                     </div>
-                    {pendingUploads.length > 0 && (
+                    {pendingUploads.length > 0 && !uploading && (
                         <div className="mb-4 text-sm text-gray-600">{pendingUploads.length} file(s) ready</div>
                     )}
+                    {uploading && (
+                        <div className="space-y-2 mb-4">
+                            {uploadProgress.map((p)=> (
+                                <div key={p.name} className="flex items-center justify-between text-sm">
+                                    <span className="truncate mr-3">{p.name}</span>
+                                    <span>{p.percent}%</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     <div className="flex justify-end gap-2">
-                        <Button variant="twoTone" onClick={()=>setUploadOpen(false)}>Cancel</Button>
-                        <Button variant="solid" onClick={commitMockUpload} disabled={pendingUploads.length===0}>Upload</Button>
+                        <Button variant="twoTone" onClick={()=>setUploadOpen(false)} disabled={uploading}>Close</Button>
+                        {!uploading && (
+                            <Button variant="solid" onClick={commitUpload} disabled={pendingUploads.length===0}>Upload</Button>
+                        )}
                     </div>
                 </div>
             </Dialog>
@@ -462,6 +567,18 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     <div className="flex justify-end gap-2">
                         <Button variant="twoTone" onClick={()=>setConfirmDelete(null)}>Cancel</Button>
                         <Button variant="solid" className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDeleteAction}>Delete</Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* New Folder Dialog */}
+            <Dialog isOpen={newFolderOpen} onClose={()=>{setNewFolderOpen(false); setNewFolderName('')}} width={420}>
+                <div className="p-6 space-y-4">
+                    <h3 className="text-lg font-semibold">New Folder</h3>
+                    <Input value={newFolderName} onChange={(e)=>setNewFolderName(e.target.value)} placeholder="Folder name" />
+                    <div className="flex justify-end gap-2">
+                        <Button variant="twoTone" onClick={()=>{setNewFolderOpen(false); setNewFolderName('')}}>Cancel</Button>
+                        <Button variant="solid" onClick={handleCreateFolder} disabled={!newFolderName.trim()}>Create</Button>
                     </div>
                 </div>
             </Dialog>
