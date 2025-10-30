@@ -6,6 +6,7 @@ import { HiOutlineUpload, HiOutlineDownload, HiOutlineTrash, HiOutlineCheck } fr
 const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
     const [activeTab, setActiveTab] = useState('import')
     const [file, setFile] = useState(null)
+    const [targetEntity, setTargetEntity] = useState(entityType.endsWith('s') ? entityType : `${entityType}s`)
     const [importOptions, setImportOptions] = useState({
         format: 'json',
         validate: true,
@@ -29,7 +30,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
         loading
     } = useCrmStore()
 
-    const currentData = entityType === 'leads' ? leads : clients
+    const currentData = targetEntity === 'leads' ? leads : clients
 
     const handleFileSelect = (event) => {
         const selectedFile = event.target.files[0]
@@ -97,11 +98,11 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
 
             setProgress(50)
 
-            const result = await importData(data, entityType, importOptions)
+            const result = await importData(data, targetEntity, importOptions)
             
             if (result.success) {
                 setProgress(100)
-                alert(`Successfully imported ${result.importedCount} ${entityType}!`)
+                alert(`Successfully imported ${result.importedCount} ${targetEntity}!`)
                 onClose()
             } else {
                 throw new Error(result.error)
@@ -120,7 +121,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
 
         try {
             setProgress(50)
-            const result = await exportData(entityType, exportOptions.format, exportOptions)
+            const result = await exportData(targetEntity, exportOptions.format, exportOptions)
             
             if (result.success) {
                 setProgress(100)
@@ -142,7 +143,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
             return
         }
 
-        if (!window.confirm(`Are you sure you want to delete ALL ${currentData.length} ${entityType}? This action cannot be undone.`)) {
+        if (!window.confirm(`Are you sure you want to delete ALL ${currentData.length} ${targetEntity}? This action cannot be undone.`)) {
             return
         }
 
@@ -153,11 +154,11 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
             const ids = currentData.map(item => item.id)
             setProgress(50)
             
-            const result = await bulkDelete(ids, entityType)
+            const result = await bulkDelete(ids, targetEntity)
             
             if (result.success) {
                 setProgress(100)
-                alert(`Successfully deleted ${result.deletedCount} ${entityType}!`)
+                alert(`Successfully deleted ${result.deletedCount} ${targetEntity}!`)
                 onClose()
             } else {
                 throw new Error(result.error)
@@ -241,9 +242,15 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
             <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-semibold">
-                        Bulk Data Manager - {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s
+                        Bulk Data Manager - {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}
                     </h3>
                     <div className="flex items-center gap-2">
+                        <Select
+                            options={[{ value: 'leads', label: 'Leads' }, { value: 'clients', label: 'Clients' }]}
+                            value={{ value: targetEntity, label: targetEntity === 'leads' ? 'Leads' : 'Clients' }}
+                            onChange={(opt)=> setTargetEntity(opt?.value || 'leads')}
+                            className="w-36"
+                        />
                         <Button
                             variant={activeTab === 'import' ? 'solid' : 'twoTone'}
                             size="sm"
@@ -273,9 +280,9 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                     <div className="space-y-4">
                         <Alert type="info">
                             <div>
-                                <strong>Import {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</strong>
+                                <strong>Import {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}</strong>
                                 <p className="text-sm mt-1">
-                                    Upload a JSON or CSV file to import {entityType}. Download a template first to see the required format.
+                                    Upload a JSON or CSV file to import {targetEntity}. Download a template first to see the required format.
                                     {importOptions.format === 'csv' && (
                                         <span className="block mt-1 text-blue-600">
                                             💡 CSV is perfect for your team - just like Excel! Download the CSV template to get started.
@@ -371,7 +378,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                                 className="flex items-center gap-2"
                             >
                                 <HiOutlineUpload className="w-4 h-4" />
-                                Import {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s
+                                Import {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}
                             </Button>
                         </div>
                     </div>
@@ -381,7 +388,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                     <div className="space-y-4">
                         <Alert type="info">
                             <div>
-                                <strong>Export {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</strong>
+                                <strong>Export {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}</strong>
                                 <p className="text-sm mt-1">
                                     Export your {entityType} data in JSON or CSV format. You can apply filters to export specific data.
                                 </p>
@@ -403,7 +410,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                             <div>
                                 <label className="text-sm font-medium mb-2 block">Current Data</label>
                                 <p className="text-sm text-gray-600">
-                                    {currentData.length} {entityType} available for export
+                                    {currentData.length} {targetEntity} available for export
                                 </p>
                             </div>
                         </div>
@@ -424,7 +431,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                                 className="flex items-center gap-2"
                             >
                                 <HiOutlineDownload className="w-4 h-4" />
-                                Export {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s
+                                Export {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}
                             </Button>
                         </div>
                     </div>
@@ -436,7 +443,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                             <div>
                                 <strong>⚠️ Danger Zone</strong>
                                 <p className="text-sm mt-1">
-                                    This will permanently delete ALL {currentData.length} {entityType} in your database. 
+                                    This will permanently delete ALL {currentData.length} {targetEntity} in your database. 
                                     This action cannot be undone. Make sure you have a backup before proceeding.
                                 </p>
                             </div>
@@ -445,10 +452,10 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                         <div className="p-4 bg-red-50 border border-red-200 rounded">
                             <div className="flex items-center gap-2 mb-2">
                                 <HiOutlineTrash className="w-5 h-5 text-red-600" />
-                                <span className="font-medium text-red-800">Delete All {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</span>
+                                <span className="font-medium text-red-800">Delete All {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}</span>
                             </div>
                             <p className="text-sm text-red-700">
-                                This will delete {currentData.length} {entityType} permanently.
+                                This will delete {currentData.length} {targetEntity} permanently.
                             </p>
                         </div>
 
@@ -468,7 +475,7 @@ const BulkDataManager = ({ isOpen, onClose, entityType = 'leads' }) => {
                                 className="bg-red-600 hover:bg-red-700 flex items-center gap-2"
                             >
                                 <HiOutlineTrash className="w-4 h-4" />
-                                Delete All {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s
+                                Delete All {targetEntity.charAt(0).toUpperCase() + targetEntity.slice(1)}
                             </Button>
                         </div>
                     </div>

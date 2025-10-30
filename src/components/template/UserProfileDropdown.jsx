@@ -37,7 +37,7 @@ const _UserDropdown = () => {
                     <Avatar {...avatarProps} />
                     <div>
                         <div className="font-bold text-gray-900 dark:text-gray-100">
-                            {userName || 'Anonymous'}
+                            {userName || (email ? email.split('@')[0] : 'User')}
                         </div>
                         <div className="text-xs">
                             {email || 'No email available'}

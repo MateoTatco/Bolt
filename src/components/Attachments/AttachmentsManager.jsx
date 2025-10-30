@@ -88,6 +88,8 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         const auth = getAuth()
         if (auth.currentUser) return auth.currentUser
         try {
+            const enableAnon = import.meta.env.VITE_ENABLE_ANON_SIGNIN === 'true' || import.meta.env.DEV
+            if (!enableAnon) return auth.currentUser
             await signInAnonymously(auth)
             return auth.currentUser
         } catch (e) {
