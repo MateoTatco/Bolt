@@ -10,10 +10,9 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 function Root() {
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (user) => {
-            if (!user) {
-                signInAnonymously(auth).catch((e)=>{
-                    console.warn('Anonymous sign-in failed:', e)
-                })
+            const enableAnon = import.meta.env.VITE_ENABLE_ANON_SIGNIN === 'true' || import.meta.env.DEV
+            if (!user && enableAnon) {
+                signInAnonymously(auth).catch(()=>{})
             }
         })
         return () => unsub()
