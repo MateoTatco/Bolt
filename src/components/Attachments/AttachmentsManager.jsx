@@ -23,6 +23,21 @@ const bytesToHuman = (bytes) => {
 const MAX_DEPTH = 5
 const MAX_FILE_MB = 50
 
+const formatUpdatedAt = (ts) => {
+    try {
+        if (!ts) return ''
+        let d
+        if (typeof ts === 'string') d = new Date(ts)
+        else if (ts?.toDate) d = ts.toDate()
+        else if (typeof ts?.seconds === 'number') d = new Date(ts.seconds * 1000)
+        else d = new Date(ts)
+        if (isNaN(d.getTime())) return ''
+        return `${d.toLocaleDateString('en-US')} ${d.toLocaleTimeString('en-US')}`
+    } catch {
+        return ''
+    }
+}
+
 const AttachmentsManager = ({ entityType, entityId }) => {
     const [view, setView] = useState('grid') // 'grid' | 'list'
     const [uploadOpen, setUploadOpen] = useState(false)
@@ -357,7 +372,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 <HiOutlineFolder className="text-amber-500" />
                 <div className="min-w-0">
                     <div className="font-medium truncate">{folder.name}</div>
-                    <div className="text-xs text-gray-500">{bytesToHuman(folder.size)} • Updated {folder.updatedAt}</div>
+                    <div className="text-xs text-gray-500">{bytesToHuman(folder.size)} • Updated {formatUpdatedAt(folder.updatedAt)}</div>
                 </div>
             </div>
             <div className="flex items-center gap-2">
@@ -375,7 +390,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 <HiOutlineDocument className="text-emerald-500" />
                 <div className="min-w-0">
                     <div className="font-medium truncate">{file.name}</div>
-                    <div className="text-xs text-gray-500">{file.type?.toUpperCase()} • {bytesToHuman(file.size)} • Updated {file.updatedAt}</div>
+                    <div className="text-xs text-gray-500">{file.type?.toUpperCase()} • {bytesToHuman(file.size)} • Updated {formatUpdatedAt(file.updatedAt)}</div>
                 </div>
             </div>
             <div className="flex items-center gap-2">
