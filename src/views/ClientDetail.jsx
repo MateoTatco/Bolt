@@ -22,7 +22,7 @@ const ClientDetail = () => {
     const [activeTab, setActiveTab] = useState('overview')
     const [isEditing, setIsEditing] = useState(false)
     const [editedContent, setEditedContent] = useState('')
-    const [showAlert, setShowAlert] = useState(false)
+    const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'cancel' })
     const [originalContent, setOriginalContent] = useState('')
     const [filters, setFilters] = useState({
         dateFrom: null,
@@ -94,7 +94,8 @@ const ClientDetail = () => {
             // Persist the HTML content as notes
             await updateClient(client.id, { ...client, notes: editedContent })
             setOriginalContent(editedContent)
-            setShowAlert(true)
+            setAlertBanner({ visible: true, kind: 'saved' })
+            setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
             const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/\s+/g,' ').trim()
             const prevText = strip(originalContent)
             const nextText = strip(editedContent)
@@ -135,8 +136,8 @@ const ClientDetail = () => {
         setActiveTab('overview')
         
         // Show alert after cancellation
-        setShowAlert(true)
-        setTimeout(() => setShowAlert(false), 3000) // Auto-hide after 3 seconds
+        setAlertBanner({ visible: true, kind: 'cancel' })
+        setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
     }
 
     const handleCancelDialogClose = () => {
@@ -315,15 +316,15 @@ const ClientDetail = () => {
 
                 {/* Content Area - Seamless */}
                 <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
-                    {showAlert && (
+                    {alertBanner.visible && (
                         <Alert
-                            type="info"
+                            type={alertBanner.kind === 'saved' ? 'success' : 'info'}
                             showIcon
                             closable
-                            onClose={() => setShowAlert(false)}
+                            onClose={() => setAlertBanner((b) => ({ ...b, visible: false }))}
                             className="mb-8 rounded-xl shadow-sm border-0"
                         >
-                            Changes have been cancelled and discarded.
+                            {alertBanner.kind === 'saved' ? 'Changes saved successfully.' : 'Changes have been cancelled and discarded.'}
                         </Alert>
                     )}
                     
@@ -591,9 +592,23 @@ const ClientDetail = () => {
                     {activeTab === 'settings' && (
                         <div className="space-y-8">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
+                                <div className="flex items-center gap-4 min-w-0">
                                     <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h2>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight shrink-0">Settings</h2>
+                                            <div className="hidden md:inline h-5 w-px bg-gray-200 dark:bg-gray-700" />
+                                            {client?.clientName && (
+                                                <span className="truncate max-w-[320px] md:max-w-[420px] text-sm text-gray-600 dark:text-gray-300 font-medium">{client.clientName}</span>
+                                            )}
+                                        </div>
+                                        {/* Mobile-only stacked info */}
+                                        {client?.clientName && (
+                                            <div className="md:hidden mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                {client.clientName}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="flex items-center space-x-3">
                                     <Button 

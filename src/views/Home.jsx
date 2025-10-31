@@ -592,9 +592,9 @@ const Home = () => {
                     const onClick = (e) => {
                         if (e.ctrlKey || e.metaKey) {
                             e.preventDefault()
-                            window.open(`/clients/${item.id}`, '_blank')
+                            window.open(`/clients/${item.id}?tab=settings`, '_blank')
                         } else {
-                            navigate(`/clients/${item.id}`)
+                            navigate(`/clients/${item.id}?tab=settings`)
                         }
                     }
                     return (
@@ -685,10 +685,10 @@ const Home = () => {
     const handleLeadNameClick = (e, leadId) => {
         if (e.ctrlKey || e.metaKey) {
             e.preventDefault()
-            // Open in new tab with the correct route
-            window.open(`/leads/${leadId}`, '_blank')
+            // Open in new tab to Settings tab
+            window.open(`/leads/${leadId}?tab=settings`, '_blank')
         } else {
-            navigate(`/leads/${leadId}`)
+            navigate(`/leads/${leadId}?tab=settings`)
         }
     }
 
@@ -773,14 +773,21 @@ const Home = () => {
     }
     const handleBulkDelete = async () => {
         if (!selectedIds.size) return
+        const currentType = (filters.type && filters.type.value) || 'lead'
+        const isClient = currentType === 'client'
+        const title = isClient ? 'Delete Selected Clients' : 'Delete Selected Leads'
+        const msg = isClient
+            ? `Delete ${selectedIds.size} selected client(s)? This cannot be undone.`
+            : `Delete ${selectedIds.size} selected lead(s)? This cannot be undone.`
         showConfirmDialog(
-            'Delete Selected Leads',
-            `Delete ${selectedIds.size} selected lead(s)? This cannot be undone.`,
+            title,
+            msg,
             async () => {
                 try {
                     const ids = Array.from(selectedIds)
                     for (const id of ids) {
-                        await deleteLead(id)
+                        if (isClient) await deleteClient(id)
+                        else await deleteLead(id)
                     }
                     setSelectedIds(new Set())
                 } catch (e) {

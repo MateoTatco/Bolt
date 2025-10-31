@@ -22,7 +22,7 @@ const LeadDetail = () => {
     const [activeTab, setActiveTab] = useState('overview')
     const [isEditing, setIsEditing] = useState(false)
     const [editedContent, setEditedContent] = useState('')
-    const [showAlert, setShowAlert] = useState(false)
+    const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'cancel' })
     const [originalContent, setOriginalContent] = useState('')
     const updateLead = useCrmStore((s) => s.updateLead)
     const [isInfoEditing, setIsInfoEditing] = useState(false)
@@ -106,7 +106,8 @@ const LeadDetail = () => {
         try {
             await updateLead(lead.id, { ...lead, notes: editedContent })
             setOriginalContent(editedContent)
-            setShowAlert(true)
+            setAlertBanner({ visible: true, kind: 'saved' })
+            setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
             const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/\s+/g,' ').trim()
             const prevText = strip(originalContent)
             const nextText = strip(editedContent)
@@ -151,8 +152,8 @@ const LeadDetail = () => {
         setActiveTab('overview')
         
         // Show alert after cancellation
-        setShowAlert(true)
-        setTimeout(() => setShowAlert(false), 3000) // Auto-hide after 3 seconds
+        setAlertBanner({ visible: true, kind: 'cancel' })
+        setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
     }
 
     const handleCancelDialogClose = () => {
@@ -334,15 +335,15 @@ const LeadDetail = () => {
 
                 {/* Content Area - Seamless */}
                 <div className="flex-1 px-4 lg:px-8 py-8 lg:py-12">
-                    {showAlert && (
+                    {alertBanner.visible && (
                         <Alert
-                            type="info"
+                            type={alertBanner.kind === 'saved' ? 'success' : 'info'}
                             showIcon
                             closable
-                            onClose={() => setShowAlert(false)}
+                            onClose={() => setAlertBanner((b) => ({ ...b, visible: false }))}
                             className="mb-8 rounded-xl shadow-sm border-0"
                         >
-                            Changes have been cancelled and discarded.
+                            {alertBanner.kind === 'saved' ? 'Changes saved successfully.' : 'Changes have been cancelled and discarded.'}
                         </Alert>
                     )}
                     
@@ -443,7 +444,8 @@ const LeadDetail = () => {
                                                         }
                                                         await updateLead(lead.id, payload)
                                                         setIsInfoEditing(false)
-                                                        setShowAlert(true)
+                                                        setAlertBanner({ visible: true, kind: 'saved' })
+                                                        setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
                                                         const prev = {
                                                             companyName: lead.companyName || '',
                                                             leadContact: lead.leadContact || '',
@@ -477,7 +479,6 @@ const LeadDetail = () => {
                                                         await logActivity('lead', lead.id, { type: 'update', message: 'updated lead information', metadata: { changes } })
                                                     } catch (error) {
                                                         console.error('Error updating lead:', error)
-                                                        setShowAlert(true)
                                                     }
                                                 }}
                                                 className="px-6 py-2.5 rounded-xl font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
@@ -637,9 +638,37 @@ const LeadDetail = () => {
                     {activeTab === 'settings' && (
                         <div className="space-y-8">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
+                                <div className="flex items-center gap-4 min-w-0">
                                     <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h2>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight shrink-0">Settings</h2>
+                                            <div className="hidden md:inline h-5 w-px bg-gray-200 dark:bg-gray-700" />
+                                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
+                                                {lead?.companyName && (
+                                                    <span className="truncate max-w-[220px] md:max-w-[280px] font-medium">{lead.companyName}</span>
+                                                )}
+                                                {lead?.leadContact && (
+                                                    <>
+                                                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                                                        <span className="truncate max-w-[160px]">{lead.leadContact}</span>
+                                                    </>
+                                                )}
+                                                {lead?.email && (
+                                                    <>
+                                                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                                                        <span className="truncate max-w-[200px] text-blue-600 dark:text-blue-400">{lead.email}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {/* Mobile-only stacked info */}
+                                        <div className="md:hidden mt-1 text-xs text-gray-600 dark:text-gray-300 space-x-2">
+                                            {lead?.companyName && <span className="font-medium">{lead.companyName}</span>}
+                                            {lead?.leadContact && <span>• {lead.leadContact}</span>}
+                                            {lead?.email && <span>• {lead.email}</span>}
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="flex items-center space-x-3">
                                     <Button 
