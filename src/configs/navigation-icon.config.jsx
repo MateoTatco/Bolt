@@ -6,10 +6,12 @@ import {
     PiAcornDuotone,
     PiBagSimpleDuotone,
     PiGearDuotone,
+    PiClipboardTextDuotone,
 } from 'react-icons/pi'
 
 const navigationIcon = {
     home: <PiHouseLineDuotone />,
+    masterTracker: <PiClipboardTextDuotone />,
     singleMenu: <PiAcornDuotone />,
     collapseMenu: <PiArrowsInDuotone />,
     groupSingleMenu: <PiBookOpenUserDuotone />,

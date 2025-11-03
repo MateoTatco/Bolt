@@ -21,6 +21,7 @@ import {
     endAt
 } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 
 export const FirebaseDbService = {
     // LEADS COLLECTION
@@ -792,6 +793,381 @@ export const FirebaseDbService = {
                 return { success: false, error: error.message }
             }
         }
+    },
+
+    // PROJECTS COLLECTION
+    projects: {
+        // Get all projects
+        getAll: async () => {
+            try {
+                const projectsRef = collection(db, 'projects')
+                const snapshot = await getDocs(projectsRef)
+                const projects = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: projects }
+            } catch (error) {
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single project
+        getById: async (id) => {
+            try {
+                const stringId = String(id)
+                const projectRef = doc(db, 'projects', stringId)
+                const projectSnap = await getDoc(projectRef)
+                if (projectSnap.exists()) {
+                    return { success: true, data: { id: projectSnap.id, ...projectSnap.data() } }
+                } else {
+                    return { success: false, error: 'Project not found' }
+                }
+            } catch (error) {
+                console.error('Firebase getById error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new project
+        create: async (projectData) => {
+            try {
+                await ensureAuthUser()
+                const projectsRef = collection(db, 'projects')
+                const docRef = await addDoc(projectsRef, {
+                    ...projectData,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...projectData } }
+            } catch (error) {
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update project
+        update: async (id, projectData) => {
+            try {
+                const stringId = String(id)
+                const projectRef = doc(db, 'projects', stringId)
+                const updateData = { ...projectData }
+                delete updateData.id
+                await updateDoc(projectRef, {
+                    ...updateData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: stringId, ...projectData } }
+            } catch (error) {
+                console.error('Firebase update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete project
+        delete: async (id) => {
+            try {
+                const stringId = String(id)
+                const projectRef = doc(db, 'projects', stringId)
+                await deleteDoc(projectRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Real-time listener for projects
+        subscribe: (callback) => {
+            const projectsRef = collection(db, 'projects')
+            return onSnapshot(
+                projectsRef, 
+                (snapshot) => {
+                    const projects = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }))
+                    callback(projects)
+                },
+                (error) => {
+                    console.error('Projects listener error:', error)
+                    // Return empty array on error instead of crashing
+                    callback([])
+                }
+            )
+        },
+
+        // Advanced querying with filters, pagination, and sorting
+        query: async (options = {}) => {
+            try {
+                const {
+                    filters = {},
+                    sortBy = 'createdAt',
+                    sortOrder = 'desc',
+                    pageSize = 10,
+                    pageToken = null,
+                    searchTerm = '',
+                    dateRange = null
+                } = options
+
+                let q = query(collection(db, 'projects'))
+
+                // Apply filters
+                if (filters.market && filters.market !== '') {
+                    q = query(q, where('Market', '==', filters.market))
+                }
+                if (filters.projectStatus && filters.projectStatus !== '') {
+                    q = query(q, where('ProjectStatus', '==', filters.projectStatus))
+                }
+                if (filters.projectProbability && filters.projectProbability !== '') {
+                    q = query(q, where('ProjectProbability', '==', filters.projectProbability))
+                }
+                if (filters.favorite !== null && filters.favorite !== undefined) {
+                    q = query(q, where('favorite', '==', filters.favorite))
+                }
+
+                // Apply date range filter
+                if (dateRange && dateRange.from) {
+                    q = query(q, where('createdAt', '>=', dateRange.from))
+                }
+                if (dateRange && dateRange.to) {
+                    q = query(q, where('createdAt', '<=', dateRange.to))
+                }
+
+                // Apply sorting - use createdAt as safe default to avoid index errors
+                // Firestore requires composite indexes for multiple where + orderBy on different fields
+                try {
+                    q = query(q, orderBy('createdAt', sortOrder || 'desc'))
+                } catch (sortError) {
+                    console.warn('Sort error, using default:', sortError)
+                    q = query(q, orderBy('createdAt', 'desc'))
+                }
+
+                // Apply pagination
+                if (pageToken) {
+                    q = query(q, startAfter(pageToken))
+                }
+                q = query(q, limit(pageSize))
+
+                const snapshot = await getDocs(q)
+                const projects = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+
+                // Get total count for pagination
+                const countQuery = query(collection(db, 'projects'))
+                const countSnapshot = await getCountFromServer(countQuery)
+                const totalCount = countSnapshot.data().count
+
+                return {
+                    success: true,
+                    data: projects,
+                    pagination: {
+                        totalCount,
+                        pageSize,
+                        hasNextPage: snapshot.docs.length === pageSize,
+                        lastDoc: snapshot.docs[snapshot.docs.length - 1],
+                        hasPrevPage: pageToken !== null
+                    }
+                }
+            } catch (error) {
+                console.error('Firebase query error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Search projects with full-text search simulation
+        search: async (searchTerm, options = {}) => {
+            try {
+                const { limit: searchLimit = 20 } = options
+                
+                const allProjects = await FirebaseDbService.projects.getAll()
+                if (!allProjects.success) {
+                    return allProjects
+                }
+
+                const searchLower = searchTerm.toLowerCase()
+                const filteredProjects = allProjects.data.filter(project => {
+                    const searchableFields = [
+                        project.ProjectNumber?.toString(),
+                        project.ProjectName,
+                        project.city,
+                        project.State,
+                        project.ProjectManager
+                    ].filter(Boolean).join(' ').toLowerCase()
+
+                    return searchableFields.includes(searchLower)
+                })
+
+                return {
+                    success: true,
+                    data: filteredProjects.slice(0, searchLimit),
+                    totalResults: filteredProjects.length
+                }
+            } catch (error) {
+                console.error('Firebase search error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Batch operations
+        batchCreate: async (projectsData) => {
+            try {
+                await ensureAuthUser()
+                const batch = writeBatch(db)
+                const projectsRef = collection(db, 'projects')
+                const createdProjects = []
+
+                projectsData.forEach(projectData => {
+                    const docRef = doc(projectsRef)
+                    batch.set(docRef, {
+                        ...projectData,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
+                        version: 1
+                    })
+                    createdProjects.push({ id: docRef.id, ...projectData })
+                })
+
+                await batch.commit()
+                return { success: true, data: createdProjects }
+            } catch (error) {
+                console.error('Firebase batch create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        batchUpdate: async (updates) => {
+            try {
+                const batch = writeBatch(db)
+                const validUpdates = []
+                
+                for (const { id, data } of updates) {
+                    const projectRef = doc(db, 'projects', String(id))
+                    const projectSnap = await getDoc(projectRef)
+                    
+                    if (projectSnap.exists()) {
+                        batch.update(projectRef, {
+                            ...data,
+                            updatedAt: serverTimestamp()
+                        })
+                        validUpdates.push({ id, data })
+                    } else {
+                        console.warn(`Project with ID ${id} not found, skipping update`)
+                    }
+                }
+
+                if (validUpdates.length === 0) {
+                    return { success: false, error: 'No valid documents found to update' }
+                }
+
+                await batch.commit()
+                return { 
+                    success: true, 
+                    data: validUpdates,
+                    skipped: updates.length - validUpdates.length
+                }
+            } catch (error) {
+                console.error('Firebase batch update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        batchDelete: async (ids) => {
+            try {
+                const batch = writeBatch(db)
+                
+                ids.forEach(id => {
+                    const projectRef = doc(db, 'projects', String(id))
+                    batch.delete(projectRef)
+                })
+
+                await batch.commit()
+                return { success: true, deletedCount: ids.length }
+            } catch (error) {
+                console.error('Firebase batch delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Export data
+        exportData: async (format = 'json') => {
+            try {
+                const result = await FirebaseDbService.projects.getAll()
+                if (!result.success) {
+                    return result
+                }
+
+                if (format === 'json') {
+                    return {
+                        success: true,
+                        data: JSON.stringify(result.data, null, 2),
+                        mimeType: 'application/json',
+                        filename: `projects_export_${new Date().toISOString().split('T')[0]}.json`
+                    }
+                } else if (format === 'csv') {
+                    const csvData = convertToCSV(result.data)
+                    return {
+                        success: true,
+                        data: csvData,
+                        mimeType: 'text/csv',
+                        filename: `projects_export_${new Date().toISOString().split('T')[0]}.csv`
+                    }
+                }
+
+                return { success: false, error: 'Unsupported format' }
+            } catch (error) {
+                console.error('Firebase export error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Import data
+        importData: async (data, options = {}) => {
+            try {
+                await ensureAuthUser()
+                const { validate = true, merge = false } = options
+                
+                if (validate) {
+                    // Basic validation - can be expanded
+                    if (!Array.isArray(data)) {
+                        return { success: false, error: 'Data must be an array' }
+                    }
+                }
+
+                if (merge) {
+                    const batch = writeBatch(db)
+                    const projectsRef = collection(db, 'projects')
+                    
+                    for (const projectData of data) {
+                        if (projectData.id) {
+                            const projectRef = doc(db, 'projects', String(projectData.id))
+                            batch.update(projectRef, {
+                                ...projectData,
+                                updatedAt: serverTimestamp()
+                            })
+                        } else {
+                            const docRef = doc(projectsRef)
+                            batch.set(docRef, {
+                                ...projectData,
+                                createdAt: serverTimestamp(),
+                                updatedAt: serverTimestamp(),
+                                version: 1
+                            })
+                        }
+                    }
+                    
+                    await batch.commit()
+                } else {
+                    return await FirebaseDbService.projects.batchCreate(data)
+                }
+
+                return { success: true, importedCount: data.length }
+            } catch (error) {
+                console.error('Firebase import error:', error)
+                return { success: false, error: error.message }
+            }
+        }
     }
 }
 
@@ -881,6 +1257,27 @@ const validateClientsData = (data) => {
     })
     
     return { valid: errors.length === 0, errors }
+}
+
+// Ensure we have an authenticated user before performing writes
+const ensureAuthUser = async () => {
+    try {
+        const auth = getAuth()
+        if (auth.currentUser) return auth.currentUser
+        const enableAnon = import.meta.env.VITE_ENABLE_ANON_SIGNIN === 'true' || import.meta.env.DEV
+        if (!enableAnon) {
+            // Wait briefly for any in-flight sign-in
+            await new Promise((resolve) => {
+                const unsub = onAuthStateChanged(auth, () => { unsub(); resolve() })
+            })
+            return auth.currentUser
+        }
+        await signInAnonymously(auth)
+        return auth.currentUser
+    } catch {
+        // Swallow to avoid breaking flows; Firestore will still enforce rules
+        return null
+    }
 }
 
 // Export utility functions

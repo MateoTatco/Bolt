@@ -16,6 +16,16 @@ const navigationConfig = [
         subMenu: [],
     },
     {
+        key: 'masterTracker',
+        path: '/projects',
+        title: 'Master Tracker',
+        translateKey: 'nav.masterTracker',
+        icon: 'masterTracker',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+    },
+    {
         key: 'advancedFeatures',
         path: '/advanced-features',
         title: 'Advanced Features Dashboard',

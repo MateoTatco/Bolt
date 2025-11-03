@@ -82,6 +82,7 @@ function DataTable(props) {
         checkboxChecked,
         indeterminateCheckboxChecked,
         instanceId = 'data-table',
+        rowClassName,
         ref,
         ...rest
     } = props
@@ -291,8 +292,9 @@ function DataTable(props) {
                                 .getRowModel()
                                 .rows.slice(0, pageSize)
                                 .map((row) => {
+                                    const rowClass = rowClassName ? rowClassName(row.original) : ''
                                     return (
-                                        <Tr key={row.id}>
+                                        <Tr key={row.id} className={rowClass}>
                                             {row
                                                 .getVisibleCells()
                                                 .map((cell) => {
