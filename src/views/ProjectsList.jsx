@@ -1,6 +1,6 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, Card, Input, Select, Tag, Tooltip, Dialog, DatePicker } from '@/components/ui'
+import { Button, Card, Input, Select, Tag, Tooltip, Dialog, DatePicker, Checkbox } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useProjectsStore } from '@/store/projectsStore'
 import ProjectsBulkDataManager from '@/components/ProjectsBulkDataManager'
@@ -104,6 +104,65 @@ const ProjectsList = () => {
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [wizardStep, setWizardStep] = useState(1)
+    
+    // Debounce timer refs
+    const searchDebounceRef = useRef(null)
+    
+    // Local search state for immediate UI updates
+    const [localSearchValue, setLocalSearchValue] = useState('')
+    
+    // Column visibility & order persistence
+    const defaultProjectKeys = [
+        'ProjectNumber',
+        'ProjectName',
+        'city',
+        'ProjectManager',
+        'State',
+        'Market',
+        'ProjectStatus',
+        'ProjectProbability',
+        'BidDueDate',
+        'ProjectRevisedContractAmount',
+        'StartDate',
+        'ProjectedFinishDate',
+        'Superintendent',
+        'actions',
+    ]
+    
+    const [columnOrder, setColumnOrder] = useState(() => {
+        try {
+            const raw = localStorage.getItem('projectsColumnOrder')
+            const parsed = raw ? JSON.parse(raw) : null
+            if (Array.isArray(parsed) && parsed.length) {
+                return parsed
+            }
+            return defaultProjectKeys
+        } catch {
+            return defaultProjectKeys
+        }
+    })
+    
+    const [visibleColumns, setVisibleColumns] = useState(() => {
+        try {
+            const raw = localStorage.getItem('projectsVisibleColumns')
+            const parsed = raw ? JSON.parse(raw) : null
+            if (parsed && typeof parsed === 'object') {
+                return parsed
+            }
+        } catch {}
+        return defaultProjectKeys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+    })
+    
+    // Persist column visibility and order
+    useEffect(() => {
+        try {
+            localStorage.setItem('projectsVisibleColumns', JSON.stringify(visibleColumns))
+            localStorage.setItem('projectsColumnOrder', JSON.stringify(columnOrder))
+        } catch {}
+    }, [visibleColumns, columnOrder])
+    
+    // UI state for collapsible sections
+    const [showMoreFilters, setShowMoreFilters] = useState(false)
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
@@ -139,9 +198,14 @@ const ProjectsList = () => {
     useEffect(() => {
         loadProjects()
     }, [loadProjects])
+    
+    // Sync local search with filters.search on mount or when filters.search changes externally
+    useEffect(() => {
+        setLocalSearchValue(filters.search || '')
+    }, [filters.search])
 
     const filteredProjects = useMemo(() => {
-        const { search, market, projectStatus, projectProbability } = filters
+        const { search, market, projectStatus, projectProbability, projectManager, superintendent } = filters
         
         return projects
             .filter((project) => {
@@ -154,6 +218,8 @@ const ProjectsList = () => {
                 if (market && market.value && project.Market !== market.value) return false
                 if (projectStatus && projectStatus.value && project.ProjectStatus !== projectStatus.value) return false
                 if (projectProbability && projectProbability.value && project.ProjectProbability !== projectProbability.value) return false
+                if (projectManager && projectManager.value && project.ProjectManager !== projectManager.value) return false
+                if (superintendent && superintendent.value && project.Superintendent !== superintendent.value) return false
                 
                 return true
             })
@@ -170,6 +236,20 @@ const ProjectsList = () => {
                 return av > bv ? dir : -dir
             })
     }, [projects, filters, sort])
+    
+    // Clear all filters function
+    const handleClearAllFilters = () => {
+        setPageIndex(1)
+        setFilters({
+            search: '',
+            market: null,
+            projectStatus: null,
+            projectProbability: null,
+            projectManager: null,
+            superintendent: null,
+        })
+        setLocalSearchValue('')
+    }
 
     const pageTotal = filteredProjects.length
     const pageStart = (pageIndex - 1) * pageSize
@@ -397,11 +477,12 @@ const ProjectsList = () => {
         }
     }
 
-    const columns = useMemo(() => [
+    const allColumns = useMemo(() => [
         {
             header: 'Project Number',
             accessorKey: 'ProjectNumber',
-            size: 140,
+            size: 120,
+            meta: { key: 'ProjectNumber' },
             cell: (props) => {
                 const value = props.row.original.ProjectNumber
                 return <span>{value || '-'}</span>
@@ -410,41 +491,56 @@ const ProjectsList = () => {
         {
             header: 'Project',
             accessorKey: 'ProjectName',
-            size: 300,
+            size: 250,
+            meta: { key: 'ProjectName' },
             cell: (props) => {
                 const item = props.row.original
+                const projectName = item.ProjectName || '-'
                 return (
-                    <button 
-                        onClick={(e) => handleProjectNameClick(e, item.id)}
-                        className="font-semibold text-left hover:text-primary transition-colors"
-                    >
-                        {item.ProjectName || '-'}
-                    </button>
+                    <Tooltip title={projectName}>
+                        <button 
+                            onClick={(e) => handleProjectNameClick(e, item.id)}
+                            className="font-semibold text-left hover:text-primary transition-colors block max-w-[250px] truncate"
+                        >
+                            {projectName}
+                        </button>
+                    </Tooltip>
                 )
             },
         },
         {
             header: 'City',
             accessorKey: 'city',
-            size: 150,
+            size: 120,
+            meta: { key: 'city' },
             cell: (props) => <span>{props.row.original.city || '-'}</span>,
         },
         {
             header: 'PM',
             accessorKey: 'ProjectManager',
-            size: 180,
-            cell: (props) => <span>{props.row.original.ProjectManager || '-'}</span>,
+            size: 150,
+            meta: { key: 'ProjectManager' },
+            cell: (props) => {
+                const value = props.row.original.ProjectManager || '-'
+                return (
+                    <Tooltip title={value}>
+                        <span className="block max-w-[150px] truncate">{value}</span>
+                    </Tooltip>
+                )
+            },
         },
         {
             header: 'State',
             accessorKey: 'State',
-            size: 100,
+            size: 80,
+            meta: { key: 'State' },
             cell: (props) => <span>{props.row.original.State || '-'}</span>,
         },
         {
             header: 'Market',
             accessorKey: 'Market',
-            size: 100,
+            size: 80,
+            meta: { key: 'Market' },
             cell: (props) => {
                 const val = props.row.original.Market
                 const opt = marketOptions.find((o) => o.value === val)
@@ -454,7 +550,8 @@ const ProjectsList = () => {
         {
             header: 'Status',
             accessorKey: 'ProjectStatus',
-            size: 180,
+            size: 140,
+            meta: { key: 'ProjectStatus' },
             cell: (props) => {
                 const val = props.row.original.ProjectStatus
                 if (!val) return <span>-</span>
@@ -464,7 +561,8 @@ const ProjectsList = () => {
         {
             header: 'Project Probability',
             accessorKey: 'ProjectProbability',
-            size: 160,
+            size: 110,
+            meta: { key: 'ProjectProbability' },
             cell: (props) => {
                 const val = props.row.original.ProjectProbability
                 if (!val) return <span>-</span>
@@ -475,36 +573,49 @@ const ProjectsList = () => {
             header: 'Bid Due Date',
             accessorKey: 'BidDueDate',
             size: 140,
-            cell: (props) => <span>{formatDate(props.row.original.BidDueDate)}</span>,
+            meta: { key: 'BidDueDate' },
+            cell: (props) => <span className="whitespace-nowrap">{formatDate(props.row.original.BidDueDate)}</span>,
         },
         {
             header: 'Contract Amount',
             accessorKey: 'ProjectRevisedContractAmount',
-            size: 160,
+            size: 130,
+            meta: { key: 'ProjectRevisedContractAmount' },
             cell: (props) => <span>{formatCurrency(props.row.original.ProjectRevisedContractAmount)}</span>,
         },
         {
             header: 'Start Date',
             accessorKey: 'StartDate',
             size: 140,
-            cell: (props) => <span>{formatDate(props.row.original.StartDate)}</span>,
+            meta: { key: 'StartDate' },
+            cell: (props) => <span className="whitespace-nowrap">{formatDate(props.row.original.StartDate)}</span>,
         },
         {
             header: 'Projected Completion',
             accessorKey: 'ProjectedFinishDate',
-            size: 180,
+            size: 130,
+            meta: { key: 'ProjectedFinishDate' },
             cell: (props) => <span>{formatDate(props.row.original.ProjectedFinishDate)}</span>,
         },
         {
             header: 'Super Assigned',
             accessorKey: 'Superintendent',
-            size: 180,
-            cell: (props) => <span>{props.row.original.Superintendent || '-'}</span>,
+            size: 140,
+            meta: { key: 'Superintendent' },
+            cell: (props) => {
+                const value = props.row.original.Superintendent || '-'
+                return (
+                    <Tooltip title={value}>
+                        <span className="block max-w-[140px] truncate">{value}</span>
+                    </Tooltip>
+                )
+            },
         },
         {
             header: 'Actions',
             id: 'actions',
-            size: 200,
+            size: 160,
+            meta: { key: 'actions' },
             cell: (props) => {
                 const item = props.row.original
                 return (
@@ -526,6 +637,24 @@ const ProjectsList = () => {
             },
         },
     ], [navigate, toggleFavorite])
+    
+    // Filter and order columns based on visibility and order settings
+    const columns = useMemo(() => {
+        // Create a map of all columns by their meta key
+        const columnsMap = new Map()
+        allColumns.forEach(col => {
+            const key = col.meta?.key || col.accessorKey || col.id
+            columnsMap.set(key, col)
+        })
+        
+        // Filter visible columns and order them according to columnOrder
+        const orderedColumns = columnOrder
+            .filter(key => visibleColumns[key] !== false)
+            .map(key => columnsMap.get(key))
+            .filter(Boolean)
+        
+        return orderedColumns
+    }, [allColumns, columnOrder, visibleColumns])
 
     return (
         <div className="flex flex-col gap-4">
@@ -555,31 +684,203 @@ const ProjectsList = () => {
             <Card>
                 <div className="p-6 space-y-4">
                     {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                         <Input
                             placeholder="Search by Project Number, Name, City, State, PM..."
-                            value={filters.search || ''}
-                            onChange={(e) => setFilters({ search: e.target.value })}
+                            value={localSearchValue}
+                            onChange={(e) => {
+                                const value = e.target.value
+                                // Update local state immediately for smooth typing
+                                setLocalSearchValue(value)
+                                
+                                // Debounce the actual filter application
+                                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                searchDebounceRef.current = setTimeout(() => {
+                                    setPageIndex(1)
+                                    setFilters({ search: value })
+                                }, 300)
+                            }}
                         />
                         <Select
                             placeholder="Market"
+                            isClearable
                             options={marketOptions}
                             value={filters.market}
-                            onChange={(opt) => setFilters({ market: opt })}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ market: opt || null })
+                            }}
                         />
                         <Select
                             placeholder="Status"
+                            isClearable
                             options={projectStatusOptions}
                             value={filters.projectStatus}
-                            onChange={(opt) => setFilters({ projectStatus: opt })}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ projectStatus: opt || null })
+                            }}
                         />
                         <Select
                             placeholder="Probability"
+                            isClearable
                             options={projectProbabilityOptions}
                             value={filters.projectProbability}
-                            onChange={(opt) => setFilters({ projectProbability: opt })}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ projectProbability: opt || null })
+                            }}
+                        />
+                        <Select
+                            placeholder="PM"
+                            isClearable
+                            options={projectManagerOptions}
+                            value={filters.projectManager}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ projectManager: opt || null })
+                            }}
+                        />
+                        <Select
+                            placeholder="Super Assigned"
+                            isClearable
+                            options={superintendentOptions}
+                            value={filters.superintendent}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ superintendent: opt || null })
+                            }}
                         />
                     </div>
+                    
+                    {/* Clear All Filters Button */}
+                    {(filters.search || filters.market || filters.projectStatus || filters.projectProbability || filters.projectManager || filters.superintendent) && (
+                        <div className="flex justify-end">
+                            <Button 
+                                size="sm" 
+                                variant="twoTone"
+                                onClick={handleClearAllFilters}
+                            >
+                                Clear All Filters
+                            </Button>
+                        </div>
+                    )}
+                    
+                    {/* Quick filter chips */}
+                    <div className="mt-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-500">Quick filters:</span>
+                            <Button 
+                                size="sm" 
+                                variant="twoTone" 
+                                onClick={() => setShowMoreFilters(!showMoreFilters)}
+                            >
+                                {showMoreFilters ? 'Less' : 'More'} Filters
+                            </Button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
+                            {projectStatusOptions.map((status) => (
+                                <Button 
+                                    key={status.value} 
+                                    size="sm" 
+                                    variant={filters.projectStatus?.value === status.value ? 'solid' : 'twoTone'}
+                                    onClick={() => {
+                                        setPageIndex(1)
+                                        setFilters({ projectStatus: filters.projectStatus?.value === status.value ? null : status })
+                                    }}
+                                >
+                                    {status.label}
+                                </Button>
+                            ))}
+                            {projectProbabilityOptions.map((prob) => (
+                                <Button 
+                                    key={prob.value} 
+                                    size="sm" 
+                                    variant={filters.projectProbability?.value === prob.value ? 'solid' : 'twoTone'}
+                                    onClick={() => {
+                                        setPageIndex(1)
+                                        setFilters({ projectProbability: filters.projectProbability?.value === prob.value ? null : prob })
+                                    }}
+                                >
+                                    {prob.label}
+                                </Button>
+                            ))}
+                            <Button 
+                                size="sm" 
+                                onClick={() => {
+                                    setFilters({ projectStatus: null, projectProbability: null })
+                                    setPageIndex(1)
+                                }}
+                            >
+                                Clear
+                            </Button>
+                        </div>
+                    </div>
+                    
+                    {/* Collapsible advanced filters */}
+                    {showMoreFilters && (
+                        <div className="mt-4 space-y-4">
+                            {/* Column visibility & order controls */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Card className="p-4">
+                                    <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                        Column Visibility
+                                        <Tag className="text-xs">Project columns</Tag>
+                                    </h6>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {defaultProjectKeys.map((key) => (
+                                            <label key={key} className="flex items-center gap-2 text-sm">
+                                                <Checkbox
+                                                    checked={visibleColumns[key] !== false}
+                                                    onChange={(checked) => {
+                                                        setVisibleColumns((prev) => ({ ...prev, [key]: Boolean(checked) }))
+                                                    }}
+                                                />
+                                                <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </Card>
+                                <Card className="p-4">
+                                    <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                        Column Order
+                                        <Tag className="text-xs">Project columns</Tag>
+                                    </h6>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {columnOrder.map((key, idx) => (
+                                            <div key={key} className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                                <span className="capitalize flex-1">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                                <div className="flex items-center gap-1">
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="twoTone"
+                                                        disabled={idx === 0}
+                                                        onClick={() => {
+                                                            if (idx === 0) return
+                                                            const next = [...columnOrder]
+                                                            ;[next[idx-1], next[idx]] = [next[idx], next[idx-1]]
+                                                            setColumnOrder(next)
+                                                        }}
+                                                    >↑</Button>
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="twoTone"
+                                                        disabled={idx === columnOrder.length - 1}
+                                                        onClick={() => {
+                                                            if (idx === columnOrder.length - 1) return
+                                                            const next = [...columnOrder]
+                                                            ;[next[idx+1], next[idx]] = [next[idx], next[idx+1]]
+                                                            setColumnOrder(next)
+                                                        }}
+                                                    >↓</Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Bulk Actions */}
                     {selectedIds.size > 0 && (

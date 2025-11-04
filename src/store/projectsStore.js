@@ -11,6 +11,8 @@ export const useProjectsStore = create((set, get) => ({
         market: null,
         projectStatus: null,
         projectProbability: null,
+        projectManager: null,
+        superintendent: null,
         favorite: null,
         dateFrom: null,
         dateTo: null,
@@ -120,7 +122,8 @@ export const useProjectsStore = create((set, get) => ({
     },
 
     // Update project
-    updateProject: async (id, projectData) => {
+    updateProject: async (id, projectData, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         try {
             const response = await FirebaseDbService.projects.update(id, projectData)
@@ -132,13 +135,15 @@ export const useProjectsStore = create((set, get) => ({
                     loading: false
                 }))
                 
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2000, title: 'Success' },
-                        'Project updated successfully!',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2000, title: 'Success' },
+                            'Project updated successfully!',
+                        ),
+                    )
+                }
                 return response.data
             } else {
                 throw new Error(response.error)
@@ -197,7 +202,8 @@ export const useProjectsStore = create((set, get) => ({
 
         const newFavoriteState = !project.favorite
         try {
-            await get().updateProject(id, { favorite: newFavoriteState })
+            // Update silently without showing notification
+            await get().updateProject(id, { favorite: newFavoriteState }, { silent: true })
         } catch (error) {
             console.error('Failed to toggle favorite:', error)
         }
