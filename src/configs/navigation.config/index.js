@@ -8,7 +8,7 @@ const navigationConfig = [
     {
         key: 'home',
         path: '/home',
-        title: 'Home',
+        title: 'CRM',
         translateKey: 'nav.home',
         icon: 'home',
         type: NAV_ITEM_TYPE_ITEM,
