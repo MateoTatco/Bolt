@@ -30,8 +30,54 @@ const projectProbabilityOptions = [
     { value: 'High', label: 'High' },
     { value: 'Low', label: 'Low' },
 ]
+const projectStyleOptions = [
+    { value: 'Ground Up', label: 'Ground Up' },
+    { value: 'TI', label: 'TI' },
+    { value: 'Renovation', label: 'Renovation' },
+]
+const projectManagerOptions = [
+    { value: 'Admin', label: 'Admin' },
+    { value: 'Brett Tatum', label: 'Brett Tatum' },
+    { value: 'Cindy Smith-Frawner', label: 'Cindy Smith-Frawner' },
+    { value: 'Harrison McKee', label: 'Harrison McKee' },
+    { value: 'Heath Pickens', label: 'Heath Pickens' },
+    { value: 'Jamey Montgomery', label: 'Jamey Montgomery' },
+    { value: 'Joe Lassiter', label: 'Joe Lassiter' },
+    { value: 'Kaitlyn Divilbiss', label: 'Kaitlyn Divilbiss' },
+    { value: 'Kenny Beaird', label: 'Kenny Beaird' },
+    { value: 'Marc Dunham', label: 'Marc Dunham' },
+    { value: 'Melissa Keene', label: 'Melissa Keene' },
+    { value: 'Nathaniel Viera', label: 'Nathaniel Viera' },
+    { value: 'Sam McKee', label: 'Sam McKee' },
+    { value: 'Sarah Barr', label: 'Sarah Barr' },
+    { value: 'Simon Cox', label: 'Simon Cox' },
+    { value: 'Standards IT', label: 'Standards IT' },
+    { value: 'Trey Roberts', label: 'Trey Roberts' },
+]
+const superintendentOptions = [
+    { value: 'Aaron Rodriguez', label: 'Aaron Rodriguez' },
+    { value: 'Bart Vanpool', label: 'Bart Vanpool' },
+    { value: 'Braulio Nieto', label: 'Braulio Nieto' },
+    { value: 'Chase Albro', label: 'Chase Albro' },
+    { value: 'Christopher Venable', label: 'Christopher Venable' },
+    { value: 'Corey Dolezel', label: 'Corey Dolezel' },
+    { value: 'Daniel Mitchell', label: 'Daniel Mitchell' },
+    { value: 'David Harrison', label: 'David Harrison' },
+    { value: 'Dominic Hastings', label: 'Dominic Hastings' },
+    { value: 'Gerardo Medina', label: 'Gerardo Medina' },
+    { value: 'Jared Prince', label: 'Jared Prince' },
+    { value: 'Jeremy Christian', label: 'Jeremy Christian' },
+    { value: 'Jesse Torrez', label: 'Jesse Torrez' },
+    { value: 'Joey McClanahan', label: 'Joey McClanahan' },
+    { value: 'Josh Finch', label: 'Josh Finch' },
+    { value: 'Kevin Bagshaw', label: 'Kevin Bagshaw' },
+    { value: 'Mark Rummel', label: 'Mark Rummel' },
+    { value: 'Nathaniel Viera', label: 'Nathaniel Viera' },
+    { value: 'TBD', label: 'TBD' },
+    { value: 'Tony Martin', label: 'Tony Martin' },
+]
 const bidTypeOptions = [
-    { value: 'new oportunity', label: 'New Opportunity' },
+    { value: 'New Opportunity', label: 'New Opportunity' },
     { value: 'Legacy', label: 'Legacy' },
 ]
 
@@ -242,7 +288,32 @@ const ProjectDetail = () => {
         </div>
     )
 
-    const fieldCurrency = (label, key, className = '') => fieldNumber(label, key, className)
+    const fieldCurrency = (label, key, className = '') => (
+        <div className={className}>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+            {key === 'ProjectRevisedContractAmount' ? (
+                <div className="relative">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                    <Input 
+                        className="pl-8"
+                        value={form[key] ?? ''} 
+                        onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9.]/g, '')
+                            setForm((f) => ({ ...f, [key]: value }))
+                        }} 
+                    />
+                </div>
+            ) : (
+                <Input 
+                    value={form[key] ?? ''} 
+                    onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9.]/g, '')
+                        setForm((f) => ({ ...f, [key]: value }))
+                    }} 
+                />
+            )}
+        </div>
+    )
 
     const fieldDate = (label, key, className = '') => (
         <div className={className}>
@@ -603,11 +674,12 @@ const ProjectDetail = () => {
                                         {fieldInput('State', 'State')}
                                         {fieldInput('ZIP', 'zip')}
                                         {fieldSelect('Market', 'Market', marketOptions)}
+                                        {fieldSelect('Project Style', 'ProjectStyle', projectStyleOptions)}
+                                        {fieldSelect('Project Manager', 'ProjectManager', projectManagerOptions)}
                                         {fieldSelect('Status', 'ProjectStatus', projectStatusOptions)}
                                         {fieldSelect('Probability', 'ProjectProbability', projectProbabilityOptions)}
+                                        {fieldSelect('Super Assigned', 'Superintendent', superintendentOptions)}
                                         {fieldSelect('Bid Type', 'BidType', bidTypeOptions)}
-                                        {fieldInput('Project Manager', 'ProjectManager')}
-                                        {fieldInput('Superintendent', 'Superintendent')}
                                         {fieldNumber('Super Id', 'SuperId')}
                                     </div>
 
@@ -641,7 +713,6 @@ const ProjectDetail = () => {
 
                                     {/* Misc */}
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {fieldInput('Project Style', 'ProjectStyle')}
                                         {fieldBool('Archived', 'Archived')}
                                     </div>
                                 </div>

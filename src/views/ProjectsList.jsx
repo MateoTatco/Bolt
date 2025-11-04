@@ -31,6 +31,60 @@ const projectProbabilityOptions = [
     { value: 'Low', label: 'Low' }
 ]
 
+const projectStyleOptions = [
+    { value: 'Ground Up', label: 'Ground Up' },
+    { value: 'TI', label: 'TI' },
+    { value: 'Renovation', label: 'Renovation' }
+]
+
+const projectManagerOptions = [
+    { value: 'Admin', label: 'Admin' },
+    { value: 'Brett Tatum', label: 'Brett Tatum' },
+    { value: 'Cindy Smith-Frawner', label: 'Cindy Smith-Frawner' },
+    { value: 'Harrison McKee', label: 'Harrison McKee' },
+    { value: 'Heath Pickens', label: 'Heath Pickens' },
+    { value: 'Jamey Montgomery', label: 'Jamey Montgomery' },
+    { value: 'Joe Lassiter', label: 'Joe Lassiter' },
+    { value: 'Kaitlyn Divilbiss', label: 'Kaitlyn Divilbiss' },
+    { value: 'Kenny Beaird', label: 'Kenny Beaird' },
+    { value: 'Marc Dunham', label: 'Marc Dunham' },
+    { value: 'Melissa Keene', label: 'Melissa Keene' },
+    { value: 'Nathaniel Viera', label: 'Nathaniel Viera' },
+    { value: 'Sam McKee', label: 'Sam McKee' },
+    { value: 'Sarah Barr', label: 'Sarah Barr' },
+    { value: 'Simon Cox', label: 'Simon Cox' },
+    { value: 'Standards IT', label: 'Standards IT' },
+    { value: 'Trey Roberts', label: 'Trey Roberts' }
+]
+
+const superintendentOptions = [
+    { value: 'Aaron Rodriguez', label: 'Aaron Rodriguez' },
+    { value: 'Bart Vanpool', label: 'Bart Vanpool' },
+    { value: 'Braulio Nieto', label: 'Braulio Nieto' },
+    { value: 'Chase Albro', label: 'Chase Albro' },
+    { value: 'Christopher Venable', label: 'Christopher Venable' },
+    { value: 'Corey Dolezel', label: 'Corey Dolezel' },
+    { value: 'Daniel Mitchell', label: 'Daniel Mitchell' },
+    { value: 'David Harrison', label: 'David Harrison' },
+    { value: 'Dominic Hastings', label: 'Dominic Hastings' },
+    { value: 'Gerardo Medina', label: 'Gerardo Medina' },
+    { value: 'Jared Prince', label: 'Jared Prince' },
+    { value: 'Jeremy Christian', label: 'Jeremy Christian' },
+    { value: 'Jesse Torrez', label: 'Jesse Torrez' },
+    { value: 'Joey McClanahan', label: 'Joey McClanahan' },
+    { value: 'Josh Finch', label: 'Josh Finch' },
+    { value: 'Kevin Bagshaw', label: 'Kevin Bagshaw' },
+    { value: 'Mark Rummel', label: 'Mark Rummel' },
+    { value: 'Nathaniel Viera', label: 'Nathaniel Viera' },
+    { value: 'TBD', label: 'TBD' },
+    { value: 'Tony Martin', label: 'Tony Martin' }
+]
+
+const bidTypeOptions = [
+    { value: 'New Opportunity', label: 'New Opportunity' },
+    { value: 'Legacy', label: 'Legacy' }
+]
+
 const ProjectsList = () => {
     const navigate = useNavigate()
     const projects = useProjectsStore((s) => s.projects)
@@ -49,6 +103,7 @@ const ProjectsList = () => {
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    const [wizardStep, setWizardStep] = useState(1)
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
@@ -56,20 +111,29 @@ const ProjectsList = () => {
         onConfirm: null,
         onCancel: null
     })
-    const [newProject, setNewProject] = useState({
-        ProjectNumber: '',
+    const [wizardData, setWizardData] = useState({
         ProjectName: '',
+        ProjectNumber: '',
+        address: '',
         city: '',
         State: '',
+        zip: '',
         Market: '',
+        ProjectStyle: '',
+        ProjectManager: '',
         ProjectStatus: '',
         ProjectProbability: '',
-        ProjectManager: '',
+        Superintendent: '',
+        SquareFeet: '',
+        EstDuration: '',
         StartDate: null,
+        CompletionDate: null,
         ProjectedFinishDate: null,
+        CommunicatedStartDate: null,
+        CommunicatedFinishDate: null,
         BidDueDate: null,
         ProjectRevisedContractAmount: '',
-        Superintendent: '',
+        BidType: '',
     })
 
     useEffect(() => {
@@ -252,43 +316,81 @@ const ProjectsList = () => {
         })
     }
 
-    const resetNewProject = () => setNewProject({
-        ProjectNumber: '',
-        ProjectName: '',
-        city: '',
-        State: '',
-        Market: '',
-        ProjectStatus: '',
-        ProjectProbability: '',
-        ProjectManager: '',
-        StartDate: null,
-        ProjectedFinishDate: null,
-        BidDueDate: null,
-        ProjectRevisedContractAmount: '',
-        Superintendent: '',
-    })
+    // Wizard handlers
+    const nextWizardStep = () => {
+        if (wizardStep < 3) {
+            setWizardStep(prev => prev + 1)
+        }
+    }
+    
+    const prevWizardStep = () => {
+        if (wizardStep > 1) {
+            setWizardStep(prev => prev - 1)
+        }
+    }
+    
+    const resetWizard = () => {
+        setWizardStep(1)
+        setWizardData({
+            ProjectName: '',
+            ProjectNumber: '',
+            address: '',
+            city: '',
+            State: '',
+            zip: '',
+            Market: '',
+            ProjectStyle: '',
+            ProjectManager: '',
+            ProjectStatus: '',
+            ProjectProbability: '',
+            Superintendent: '',
+            SquareFeet: '',
+            EstDuration: '',
+            StartDate: null,
+            CompletionDate: null,
+            ProjectedFinishDate: null,
+            CommunicatedStartDate: null,
+            CommunicatedFinishDate: null,
+            BidDueDate: null,
+            ProjectRevisedContractAmount: '',
+            BidType: '',
+        })
+    }
 
     const handleCreateProject = async () => {
-        if (!newProject.ProjectName.trim()) {
+        if (!wizardData.ProjectName.trim()) {
             alert('Project Name is required')
             return
         }
         
         try {
             const payload = {
-                ...newProject,
-                StartDate: newProject.StartDate ? (newProject.StartDate instanceof Date ? newProject.StartDate.toISOString() : newProject.StartDate) : null,
-                ProjectedFinishDate: newProject.ProjectedFinishDate ? (newProject.ProjectedFinishDate instanceof Date ? newProject.ProjectedFinishDate.toISOString() : newProject.ProjectedFinishDate) : null,
-                BidDueDate: newProject.BidDueDate ? (newProject.BidDueDate instanceof Date ? newProject.BidDueDate.toISOString() : newProject.BidDueDate) : null,
-                Market: newProject.Market?.value || newProject.Market || '',
-                ProjectStatus: newProject.ProjectStatus?.value || newProject.ProjectStatus || '',
-                ProjectProbability: newProject.ProjectProbability?.value || newProject.ProjectProbability || '',
-                ProjectRevisedContractAmount: newProject.ProjectRevisedContractAmount ? parseFloat(newProject.ProjectRevisedContractAmount) : null,
-                ProjectNumber: newProject.ProjectNumber ? parseFloat(newProject.ProjectNumber) : null,
+                ProjectName: wizardData.ProjectName,
+                ProjectNumber: wizardData.ProjectNumber ? parseFloat(wizardData.ProjectNumber) : null,
+                address: wizardData.address || '',
+                city: wizardData.city || '',
+                State: wizardData.State || '',
+                zip: wizardData.zip || '',
+                Market: wizardData.Market || '',
+                ProjectStyle: wizardData.ProjectStyle || '',
+                ProjectManager: wizardData.ProjectManager || '',
+                ProjectStatus: wizardData.ProjectStatus || '',
+                ProjectProbability: wizardData.ProjectProbability || '',
+                Superintendent: wizardData.Superintendent || '',
+                SquareFeet: wizardData.SquareFeet ? parseFloat(wizardData.SquareFeet) : null,
+                EstDuration: wizardData.EstDuration ? parseFloat(wizardData.EstDuration) : null,
+                StartDate: wizardData.StartDate ? (wizardData.StartDate instanceof Date ? wizardData.StartDate.toISOString() : wizardData.StartDate) : null,
+                CompletionDate: wizardData.CompletionDate ? (wizardData.CompletionDate instanceof Date ? wizardData.CompletionDate.toISOString() : wizardData.CompletionDate) : null,
+                ProjectedFinishDate: wizardData.ProjectedFinishDate ? (wizardData.ProjectedFinishDate instanceof Date ? wizardData.ProjectedFinishDate.toISOString() : wizardData.ProjectedFinishDate) : null,
+                CommunicatedStartDate: wizardData.CommunicatedStartDate ? (wizardData.CommunicatedStartDate instanceof Date ? wizardData.CommunicatedStartDate.toISOString() : wizardData.CommunicatedStartDate) : null,
+                CommunicatedFinishDate: wizardData.CommunicatedFinishDate ? (wizardData.CommunicatedFinishDate instanceof Date ? wizardData.CommunicatedFinishDate.toISOString() : wizardData.CommunicatedFinishDate) : null,
+                BidDueDate: wizardData.BidDueDate ? (wizardData.BidDueDate instanceof Date ? wizardData.BidDueDate.toISOString() : wizardData.BidDueDate) : null,
+                ProjectRevisedContractAmount: wizardData.ProjectRevisedContractAmount ? parseFloat(wizardData.ProjectRevisedContractAmount.replace(/[^0-9.]/g, '')) : null,
+                BidType: wizardData.BidType || '',
                 favorite: false,
             }
             await addProject(payload)
-            resetNewProject()
+            resetWizard()
             setIsCreateOpen(false)
         } catch (error) {
             console.error('Error creating project:', error)
@@ -433,7 +535,10 @@ const ProjectsList = () => {
                     <Button
                         variant="twoTone"
                         icon={<HiOutlinePlus />}
-                        onClick={() => setIsCreateOpen(true)}
+                        onClick={() => {
+                            resetWizard()
+                            setIsCreateOpen(true)
+                        }}
                     >
                         Create Project
                     </Button>
@@ -517,129 +622,269 @@ const ProjectsList = () => {
                 onClose={() => setIsBulkManagerOpen(false)}
             />
 
-            {/* Create Project Dialog */}
-            <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetNewProject() }} width={700}>
+            {/* Multi-Step Create Project Wizard */}
+            <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetWizard(); }} width={800}>
                 <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-6">Create New Project</h3>
-                    
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Name *</label>
-                                <Input 
-                                    value={newProject.ProjectName} 
-                                    onChange={(e) => setNewProject({ ...newProject, ProjectName: e.target.value })} 
-                                    placeholder="Enter project name"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Number</label>
-                                <Input 
-                                    value={newProject.ProjectNumber} 
-                                    onChange={(e) => setNewProject({ ...newProject, ProjectNumber: e.target.value.replace(/[^0-9.]/g, '') })} 
-                                    placeholder="Enter project number"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">City</label>
-                                <Input 
-                                    value={newProject.city} 
-                                    onChange={(e) => setNewProject({ ...newProject, city: e.target.value })} 
-                                    placeholder="Enter city"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">State</label>
-                                <Input 
-                                    value={newProject.State} 
-                                    onChange={(e) => setNewProject({ ...newProject, State: e.target.value })} 
-                                    placeholder="Enter state"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Market</label>
-                                <Select
-                                    options={marketOptions}
-                                    value={marketOptions.find((o) => o.value === newProject.Market) || null}
-                                    onChange={(opt) => setNewProject({ ...newProject, Market: opt })}
-                                    placeholder="Select market"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
-                                <Select
-                                    options={projectStatusOptions}
-                                    value={projectStatusOptions.find((o) => o.value === newProject.ProjectStatus) || null}
-                                    onChange={(opt) => setNewProject({ ...newProject, ProjectStatus: opt })}
-                                    placeholder="Select status"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Probability</label>
-                                <Select
-                                    options={projectProbabilityOptions}
-                                    value={projectProbabilityOptions.find((o) => o.value === newProject.ProjectProbability) || null}
-                                    onChange={(opt) => setNewProject({ ...newProject, ProjectProbability: opt })}
-                                    placeholder="Select probability"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Manager</label>
-                                <Input 
-                                    value={newProject.ProjectManager} 
-                                    onChange={(e) => setNewProject({ ...newProject, ProjectManager: e.target.value })} 
-                                    placeholder="Enter PM name"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superintendent</label>
-                                <Input 
-                                    value={newProject.Superintendent} 
-                                    onChange={(e) => setNewProject({ ...newProject, Superintendent: e.target.value })} 
-                                    placeholder="Enter superintendent"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contract Amount (USD)</label>
-                                <Input 
-                                    value={newProject.ProjectRevisedContractAmount} 
-                                    onChange={(e) => setNewProject({ ...newProject, ProjectRevisedContractAmount: e.target.value.replace(/[^0-9.]/g, '') })} 
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
-                                <DatePicker 
-                                    value={newProject.StartDate ? new Date(newProject.StartDate) : null} 
-                                    onChange={(d) => setNewProject({ ...newProject, StartDate: d })} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Projected Finish Date</label>
-                                <DatePicker 
-                                    value={newProject.ProjectedFinishDate ? new Date(newProject.ProjectedFinishDate) : null} 
-                                    onChange={(d) => setNewProject({ ...newProject, ProjectedFinishDate: d })} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bid Due Date</label>
-                                <DatePicker 
-                                    value={newProject.BidDueDate ? new Date(newProject.BidDueDate) : null} 
-                                    onChange={(d) => setNewProject({ ...newProject, BidDueDate: d })} 
-                                />
+                    <div className="flex items-center justify-between mb-6">
+                        <h5 className="text-xl font-semibold">Create Project</h5>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">Step {wizardStep} of 3</span>
+                            <div className="flex gap-1">
+                                {Array.from({ length: 3 }, (_, i) => i + 1).map((step) => (
+                                    <div
+                                        key={step}
+                                        className={`w-2 h-2 rounded-full ${
+                                            step <= wizardStep ? 'bg-blue-500' : 'bg-gray-300'
+                                        }`}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>
-
-                    <div className="flex justify-end gap-2 mt-6">
-                        <Button variant="twoTone" onClick={() => { setIsCreateOpen(false); resetNewProject() }}>Cancel</Button>
-                        <Button 
-                            variant="solid" 
-                            onClick={handleCreateProject}
-                            disabled={!newProject.ProjectName.trim()}
-                        >
-                            Create Project
-                        </Button>
+                    
+                    {/* Step 1: Basic Information */}
+                    {wizardStep === 1 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Basic Information</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Project Name *</label>
+                                    <Input 
+                                        value={wizardData.ProjectName} 
+                                        onChange={(e) => setWizardData({ ...wizardData, ProjectName: e.target.value })} 
+                                        placeholder="Enter project name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Project Number</label>
+                                    <Input 
+                                        value={wizardData.ProjectNumber} 
+                                        onChange={(e) => setWizardData({ ...wizardData, ProjectNumber: e.target.value.replace(/[^0-9.]/g, '') })} 
+                                        placeholder="Enter project number"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Address</label>
+                                    <Input 
+                                        value={wizardData.address} 
+                                        onChange={(e) => setWizardData({ ...wizardData, address: e.target.value })} 
+                                        placeholder="Enter address"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">City</label>
+                                    <Input 
+                                        value={wizardData.city} 
+                                        onChange={(e) => setWizardData({ ...wizardData, city: e.target.value })} 
+                                        placeholder="Enter city"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">State</label>
+                                    <Input 
+                                        value={wizardData.State} 
+                                        onChange={(e) => setWizardData({ ...wizardData, State: e.target.value })} 
+                                        placeholder="Enter state"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Zip</label>
+                                    <Input 
+                                        value={wizardData.zip} 
+                                        onChange={(e) => setWizardData({ ...wizardData, zip: e.target.value })} 
+                                        placeholder="Enter ZIP code"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Market</label>
+                                    <Select
+                                        options={marketOptions}
+                                        value={marketOptions.find((o) => o.value === wizardData.Market) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, Market: opt?.value || '' })}
+                                        placeholder="Select market"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Project Style</label>
+                                    <Select
+                                        options={projectStyleOptions}
+                                        value={projectStyleOptions.find((o) => o.value === wizardData.ProjectStyle) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, ProjectStyle: opt?.value || '' })}
+                                        placeholder="Select project style"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Step 2: Project Details */}
+                    {wizardStep === 2 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Project Details</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Project Manager</label>
+                                    <Select
+                                        options={projectManagerOptions}
+                                        value={projectManagerOptions.find((o) => o.value === wizardData.ProjectManager) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, ProjectManager: opt?.value || '' })}
+                                        placeholder="Select project manager"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Status</label>
+                                    <Select
+                                        options={projectStatusOptions}
+                                        value={projectStatusOptions.find((o) => o.value === wizardData.ProjectStatus) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, ProjectStatus: opt?.value || '' })}
+                                        placeholder="Select status"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Probability</label>
+                                    <Select
+                                        options={projectProbabilityOptions}
+                                        value={projectProbabilityOptions.find((o) => o.value === wizardData.ProjectProbability) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, ProjectProbability: opt?.value || '' })}
+                                        placeholder="Select probability"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Super Assigned</label>
+                                    <Select
+                                        options={superintendentOptions}
+                                        value={superintendentOptions.find((o) => o.value === wizardData.Superintendent) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, Superintendent: opt?.value || '' })}
+                                        placeholder="Select superintendent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Square Footage</label>
+                                    <Input 
+                                        value={wizardData.SquareFeet} 
+                                        onChange={(e) => setWizardData({ ...wizardData, SquareFeet: e.target.value.replace(/[^0-9.]/g, '') })} 
+                                        placeholder="Enter square footage"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Estimated Duration</label>
+                                    <Input 
+                                        value={wizardData.EstDuration} 
+                                        onChange={(e) => setWizardData({ ...wizardData, EstDuration: e.target.value.replace(/[^0-9.]/g, '') })} 
+                                        placeholder="Enter duration (days)"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Step 3: Dates and Financial */}
+                    {wizardStep === 3 && (
+                        <div className="space-y-4">
+                            <h6 className="text-lg font-medium text-gray-700 dark:text-gray-300">Dates and Financial Information</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Contracted Start Date</label>
+                                    <DatePicker 
+                                        value={wizardData.StartDate ? (wizardData.StartDate instanceof Date ? wizardData.StartDate : new Date(wizardData.StartDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, StartDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Contracted Finish Date</label>
+                                    <DatePicker 
+                                        value={wizardData.CompletionDate ? (wizardData.CompletionDate instanceof Date ? wizardData.CompletionDate : new Date(wizardData.CompletionDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, CompletionDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Communicated Start Date</label>
+                                    <DatePicker 
+                                        value={wizardData.CommunicatedStartDate ? (wizardData.CommunicatedStartDate instanceof Date ? wizardData.CommunicatedStartDate : new Date(wizardData.CommunicatedStartDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, CommunicatedStartDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Communicated Finish Date</label>
+                                    <DatePicker 
+                                        value={wizardData.CommunicatedFinishDate ? (wizardData.CommunicatedFinishDate instanceof Date ? wizardData.CommunicatedFinishDate : new Date(wizardData.CommunicatedFinishDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, CommunicatedFinishDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Projected Finish Date</label>
+                                    <DatePicker 
+                                        value={wizardData.ProjectedFinishDate ? (wizardData.ProjectedFinishDate instanceof Date ? wizardData.ProjectedFinishDate : new Date(wizardData.ProjectedFinishDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, ProjectedFinishDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Bid Due Date</label>
+                                    <DatePicker 
+                                        value={wizardData.BidDueDate ? (wizardData.BidDueDate instanceof Date ? wizardData.BidDueDate : new Date(wizardData.BidDueDate)) : null} 
+                                        onChange={(d) => setWizardData({ ...wizardData, BidDueDate: d })} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Contract Amount (USD)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                                        <Input 
+                                            className="pl-8"
+                                            value={wizardData.ProjectRevisedContractAmount} 
+                                            onChange={(e) => {
+                                                const value = e.target.value.replace(/[^0-9.]/g, '')
+                                                setWizardData({ ...wizardData, ProjectRevisedContractAmount: value })
+                                            }} 
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Bid Type</label>
+                                    <Select
+                                        options={bidTypeOptions}
+                                        value={bidTypeOptions.find((o) => o.value === wizardData.BidType) || null}
+                                        onChange={(opt) => setWizardData({ ...wizardData, BidType: opt?.value || '' })}
+                                        placeholder="Select bid type"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Navigation buttons */}
+                    <div className="flex justify-between mt-8">
+                        <div>
+                            {wizardStep > 1 && (
+                                <Button variant="twoTone" onClick={prevWizardStep}>
+                                    ← Previous
+                                </Button>
+                            )}
+                        </div>
+                        
+                        <div className="flex gap-2">
+                            <Button variant="twoTone" onClick={() => { setIsCreateOpen(false); resetWizard(); }}>
+                                Cancel
+                            </Button>
+                            {wizardStep < 3 ? (
+                                <Button 
+                                    variant="solid" 
+                                    onClick={nextWizardStep} 
+                                    disabled={!wizardData.ProjectName.trim()}
+                                >
+                                    Next →
+                                </Button>
+                            ) : (
+                                <Button 
+                                    variant="solid" 
+                                    onClick={handleCreateProject} 
+                                    disabled={!wizardData.ProjectName.trim()}
+                                >
+                                    Create Project
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </Dialog>
