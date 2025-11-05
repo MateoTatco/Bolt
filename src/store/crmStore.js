@@ -141,7 +141,8 @@ export const useCrmStore = create((set, get) => ({
     },
 
     // Update lead with optimistic updates
-    updateLead: async (id, leadData, useOptimistic = true) => {
+    updateLead: async (id, leadData, useOptimistic = true, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         
         // Store original data for rollback
@@ -185,13 +186,15 @@ export const useCrmStore = create((set, get) => ({
                 // Cache data for offline use
                 get().cacheData()
                 
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2000, title: 'Success' },
-                        'Lead updated successfully!',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2000, title: 'Success' },
+                            'Lead updated successfully!',
+                        ),
+                    )
+                }
                 return updatedLead
             } else if (response.conflict) {
                 // Revert optimistic update on conflict
@@ -362,19 +365,31 @@ export const useCrmStore = create((set, get) => ({
     },
 
     // Toggle favorite (entity-aware: avoids ID collision between leads and clients)
-    toggleFavorite: (id, entityType) => set((state) => {
+    toggleFavorite: async (id, entityType) => {
         if (entityType === 'lead') {
-            return {
-                leads: state.leads.map((l) => (l.id === id ? { ...l, favorite: !l.favorite } : l)),
+            const lead = get().leads.find((l) => l.id === id)
+            if (!lead) return
+
+            const newFavoriteState = !lead.favorite
+            try {
+                // Update silently without showing notification
+                await get().updateLead(id, { favorite: newFavoriteState }, false, { silent: true })
+            } catch (error) {
+                console.error('Failed to toggle favorite:', error)
+            }
+        } else if (entityType === 'client') {
+            const client = get().clients.find((c) => c.id === id)
+            if (!client) return
+
+            const newFavoriteState = !client.favorite
+            try {
+                // Update silently without showing notification
+                await get().updateClient(id, { favorite: newFavoriteState }, { silent: true })
+            } catch (error) {
+                console.error('Failed to toggle favorite:', error)
             }
         }
-        if (entityType === 'client') {
-            return {
-                clients: state.clients.map((c) => (c.id === id ? { ...c, favorite: !c.favorite } : c)),
-            }
-        }
-        return state
-    }),
+    },
 
     // Create new client
     addClient: async (clientData) => {
@@ -414,7 +429,8 @@ export const useCrmStore = create((set, get) => ({
     },
 
     // Update client
-    updateClient: async (id, clientData) => {
+    updateClient: async (id, clientData, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         try {
             console.log('Updating client:', id, clientData)
@@ -429,13 +445,15 @@ export const useCrmStore = create((set, get) => ({
                     loading: false
                 }))
                 
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2000, title: 'Success' },
-                        'Client updated successfully!',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2000, title: 'Success' },
+                            'Client updated successfully!',
+                        ),
+                    )
+                }
                 return updatedClient
             } else {
                 console.error('Update failed:', response.error)

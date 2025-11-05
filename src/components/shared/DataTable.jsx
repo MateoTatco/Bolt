@@ -225,10 +225,14 @@ function DataTable(props) {
                     {table.getHeaderGroups().map((headerGroup) => (
                         <Tr key={headerGroup.id}>
                             {headerGroup.headers.map((header) => {
+                                const isActionsColumn = header.column.id === 'actions'
                                 return (
                                     <Th
                                         key={header.id}
                                         colSpan={header.colSpan}
+                                        className={classNames(
+                                            isActionsColumn && 'sticky right-0 z-10 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700'
+                                        )}
                                     >
                                         {header.isPlaceholder ? null : (
                                             <div
@@ -298,9 +302,19 @@ function DataTable(props) {
                                             {row
                                                 .getVisibleCells()
                                                 .map((cell) => {
+                                                    const isActionsColumn = cell.column.id === 'actions'
+                                                    // Get row background class if any
+                                                    const rowBgClass = rowClass || ''
+                                                    // Determine background color based on row state
+                                                    const actionsBg = rowBgClass.includes('bg-blue') 
+                                                        ? 'bg-blue-50 dark:bg-blue-900/20' 
+                                                        : 'bg-white dark:bg-gray-800'
                                                     return (
                                                         <Td
                                                             key={cell.id}
+                                                            className={classNames(
+                                                                isActionsColumn && `sticky right-0 z-10 ${actionsBg} hover:bg-gray-50 dark:hover:bg-gray-700 border-l border-gray-200 dark:border-gray-700`
+                                                            )}
                                                             style={{
                                                                 width: cell.column.getSize(),
                                                             }}

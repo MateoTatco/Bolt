@@ -1351,6 +1351,17 @@ const Home = () => {
                     />
                 </div>
 
+                {/* More Filters Toggle Button */}
+                <div className="flex justify-end mt-3">
+                    <Button 
+                        size="sm" 
+                        variant="twoTone" 
+                        onClick={() => setShowMoreFilters(!showMoreFilters)}
+                    >
+                        {showMoreFilters ? 'Less' : 'More'} Filters
+                    </Button>
+                </div>
+
                 {/* Collapsible advanced filters */}
                 {showMoreFilters && (
                     <div className="mt-4 space-y-4">
