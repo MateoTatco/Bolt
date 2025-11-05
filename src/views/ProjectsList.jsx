@@ -215,11 +215,46 @@ const ProjectsList = () => {
                     if (!hay.includes(term)) return false
                 }
                 
-                if (market && market.value && project.Market !== market.value) return false
-                if (projectStatus && projectStatus.value && project.ProjectStatus !== projectStatus.value) return false
-                if (projectProbability && projectProbability.value && project.ProjectProbability !== projectProbability.value) return false
-                if (projectManager && projectManager.value && project.ProjectManager !== projectManager.value) return false
-                if (superintendent && superintendent.value && project.Superintendent !== superintendent.value) return false
+                // Market filter - handle both single object and array
+                if (market) {
+                    if (Array.isArray(market)) {
+                        if (market.length > 0 && !market.some(m => m.value === project.Market)) return false
+                    } else if (market.value) {
+                        if (project.Market !== market.value) return false
+                    }
+                }
+                // Status filter - handle both single object and array
+                if (projectStatus) {
+                    if (Array.isArray(projectStatus)) {
+                        if (projectStatus.length > 0 && !projectStatus.some(s => s.value === project.ProjectStatus)) return false
+                    } else if (projectStatus.value) {
+                        if (project.ProjectStatus !== projectStatus.value) return false
+                    }
+                }
+                // Probability filter - handle both single object and array
+                if (projectProbability) {
+                    if (Array.isArray(projectProbability)) {
+                        if (projectProbability.length > 0 && !projectProbability.some(p => p.value === project.ProjectProbability)) return false
+                    } else if (projectProbability.value) {
+                        if (project.ProjectProbability !== projectProbability.value) return false
+                    }
+                }
+                // PM filter - handle both single object and array
+                if (projectManager) {
+                    if (Array.isArray(projectManager)) {
+                        if (projectManager.length > 0 && !projectManager.some(pm => pm.value === project.ProjectManager)) return false
+                    } else if (projectManager.value) {
+                        if (project.ProjectManager !== projectManager.value) return false
+                    }
+                }
+                // Super Assigned filter - handle both single object and array
+                if (superintendent) {
+                    if (Array.isArray(superintendent)) {
+                        if (superintendent.length > 0 && !superintendent.some(s => s.value === project.Superintendent)) return false
+                    } else if (superintendent.value) {
+                        if (project.Superintendent !== superintendent.value) return false
+                    }
+                }
                 
                 return true
             })
@@ -704,57 +739,67 @@ const ProjectsList = () => {
                         <Select
                             placeholder="Market"
                             isClearable
+                            isMulti
                             options={marketOptions}
-                            value={filters.market}
+                            value={Array.isArray(filters.market) ? filters.market : (filters.market ? [filters.market] : null)}
                             onChange={(opt) => {
                                 setPageIndex(1)
-                                setFilters({ market: opt || null })
+                                setFilters({ market: opt && opt.length > 0 ? opt : null })
                             }}
                         />
                         <Select
                             placeholder="Status"
                             isClearable
+                            isMulti
                             options={projectStatusOptions}
-                            value={filters.projectStatus}
+                            value={Array.isArray(filters.projectStatus) ? filters.projectStatus : (filters.projectStatus ? [filters.projectStatus] : null)}
                             onChange={(opt) => {
                                 setPageIndex(1)
-                                setFilters({ projectStatus: opt || null })
+                                setFilters({ projectStatus: opt && opt.length > 0 ? opt : null })
                             }}
                         />
                         <Select
                             placeholder="Probability"
                             isClearable
+                            isMulti
                             options={projectProbabilityOptions}
-                            value={filters.projectProbability}
+                            value={Array.isArray(filters.projectProbability) ? filters.projectProbability : (filters.projectProbability ? [filters.projectProbability] : null)}
                             onChange={(opt) => {
                                 setPageIndex(1)
-                                setFilters({ projectProbability: opt || null })
+                                setFilters({ projectProbability: opt && opt.length > 0 ? opt : null })
                             }}
                         />
                         <Select
                             placeholder="PM"
                             isClearable
+                            isMulti
                             options={projectManagerOptions}
-                            value={filters.projectManager}
+                            value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                             onChange={(opt) => {
                                 setPageIndex(1)
-                                setFilters({ projectManager: opt || null })
+                                setFilters({ projectManager: opt && opt.length > 0 ? opt : null })
                             }}
                         />
                         <Select
                             placeholder="Super Assigned"
                             isClearable
+                            isMulti
                             options={superintendentOptions}
-                            value={filters.superintendent}
+                            value={Array.isArray(filters.superintendent) ? filters.superintendent : (filters.superintendent ? [filters.superintendent] : null)}
                             onChange={(opt) => {
                                 setPageIndex(1)
-                                setFilters({ superintendent: opt || null })
+                                setFilters({ superintendent: opt && opt.length > 0 ? opt : null })
                             }}
                         />
                     </div>
                     
                     {/* Clear All Filters Button */}
-                    {(filters.search || filters.market || filters.projectStatus || filters.projectProbability || filters.projectManager || filters.superintendent) && (
+                    {(filters.search || 
+                        (filters.market && (Array.isArray(filters.market) ? filters.market.length > 0 : filters.market.value)) ||
+                        (filters.projectStatus && (Array.isArray(filters.projectStatus) ? filters.projectStatus.length > 0 : filters.projectStatus.value)) ||
+                        (filters.projectProbability && (Array.isArray(filters.projectProbability) ? filters.projectProbability.length > 0 : filters.projectProbability.value)) ||
+                        (filters.projectManager && (Array.isArray(filters.projectManager) ? filters.projectManager.length > 0 : filters.projectManager.value)) ||
+                        (filters.superintendent && (Array.isArray(filters.superintendent) ? filters.superintendent.length > 0 : filters.superintendent.value))) && (
                         <div className="flex justify-end">
                             <Button 
                                 size="sm" 
@@ -765,57 +810,6 @@ const ProjectsList = () => {
                             </Button>
                         </div>
                     )}
-                    
-                    {/* Quick filter chips */}
-                    <div className="mt-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-gray-500">Quick filters:</span>
-                            <Button 
-                                size="sm" 
-                                variant="twoTone" 
-                                onClick={() => setShowMoreFilters(!showMoreFilters)}
-                            >
-                                {showMoreFilters ? 'Less' : 'More'} Filters
-                            </Button>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
-                            {projectStatusOptions.map((status) => (
-                                <Button 
-                                    key={status.value} 
-                                    size="sm" 
-                                    variant={filters.projectStatus?.value === status.value ? 'solid' : 'twoTone'}
-                                    onClick={() => {
-                                        setPageIndex(1)
-                                        setFilters({ projectStatus: filters.projectStatus?.value === status.value ? null : status })
-                                    }}
-                                >
-                                    {status.label}
-                                </Button>
-                            ))}
-                            {projectProbabilityOptions.map((prob) => (
-                                <Button 
-                                    key={prob.value} 
-                                    size="sm" 
-                                    variant={filters.projectProbability?.value === prob.value ? 'solid' : 'twoTone'}
-                                    onClick={() => {
-                                        setPageIndex(1)
-                                        setFilters({ projectProbability: filters.projectProbability?.value === prob.value ? null : prob })
-                                    }}
-                                >
-                                    {prob.label}
-                                </Button>
-                            ))}
-                            <Button 
-                                size="sm" 
-                                onClick={() => {
-                                    setFilters({ projectStatus: null, projectProbability: null })
-                                    setPageIndex(1)
-                                }}
-                            >
-                                Clear
-                            </Button>
-                        </div>
-                    </div>
                     
                     {/* Collapsible advanced filters */}
                     {showMoreFilters && (

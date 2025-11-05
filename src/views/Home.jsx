@@ -266,8 +266,16 @@ const Home = () => {
             const nextFilters = {}
             if (qSearch) nextFilters.search = qSearch
             if (qType) nextFilters.type = { value: qType, label: qType === 'lead' ? '👤 Lead' : '🏢 Client' }
-            if (qStatus) nextFilters.status = { value: qStatus, label: qStatus }
-            if (qMethod) nextFilters.methodOfContact = { value: qMethod, label: qMethod }
+            // Handle status as array (comma-separated in URL)
+            if (qStatus) {
+                const statusArray = qStatus.split(',').filter(Boolean)
+                nextFilters.status = statusArray.map(s => ({ value: s.trim(), label: s.trim() }))
+            }
+            // Handle method as array (comma-separated in URL)
+            if (qMethod) {
+                const methodArray = qMethod.split(',').filter(Boolean)
+                nextFilters.methodOfContact = methodArray.map(m => ({ value: m.trim(), label: m.trim() }))
+            }
             if (qResponded === 'true' || qResponded === 'false') {
                 nextFilters.responded = { value: qResponded === 'true', label: qResponded === 'true' ? 'Responded' : 'No response' }
             }
@@ -298,8 +306,30 @@ const Home = () => {
         }
         if (filters.search) params.set('search', filters.search); else params.delete('search')
         if (filters.type?.value) params.set('type', filters.type.value); else params.delete('type')
-        if (filters.status?.value) params.set('status', filters.status.value); else params.delete('status')
-        if (filters.methodOfContact?.value) params.set('method', filters.methodOfContact.value); else params.delete('method')
+        // Handle status as array
+        if (filters.status) {
+            if (Array.isArray(filters.status) && filters.status.length > 0) {
+                params.set('status', filters.status.map(s => s.value).join(','))
+            } else if (!Array.isArray(filters.status) && filters.status.value) {
+                params.set('status', filters.status.value)
+            } else {
+                params.delete('status')
+            }
+        } else {
+            params.delete('status')
+        }
+        // Handle methodOfContact as array
+        if (filters.methodOfContact) {
+            if (Array.isArray(filters.methodOfContact) && filters.methodOfContact.length > 0) {
+                params.set('method', filters.methodOfContact.map(m => m.value).join(','))
+            } else if (!Array.isArray(filters.methodOfContact) && filters.methodOfContact.value) {
+                params.set('method', filters.methodOfContact.value)
+            } else {
+                params.delete('method')
+            }
+        } else {
+            params.delete('method')
+        }
         if (typeof filters.responded === 'object' && filters.responded?.value !== undefined) {
             params.set('responded', String(filters.responded.value))
         } else if (typeof filters.responded === 'boolean') {
@@ -346,11 +376,21 @@ const Home = () => {
                 
                 // Lead-specific filters
                 if (item.entityType === 'lead') {
-                if (status && status.value) {
+                // Status filter - handle both single object and array
+                if (status) {
+                    if (Array.isArray(status)) {
+                        if (status.length > 0 && !status.some(s => s.value === item.status)) return false
+                    } else if (status.value) {
                         if (item.status !== status.value) return false
+                    }
                 }
-                if (methodOfContact && methodOfContact.value) {
+                // Method filter - handle both single object and array
+                if (methodOfContact) {
+                    if (Array.isArray(methodOfContact)) {
+                        if (methodOfContact.length > 0 && !methodOfContact.some(m => m.value === item.methodOfContact)) return false
+                    } else if (methodOfContact.value) {
                         if (item.methodOfContact !== methodOfContact.value) return false
+                    }
                 }
                 if (responded !== null && responded !== undefined) {
                     if (typeof responded === 'object' && 'value' in responded) {
@@ -1255,21 +1295,23 @@ const Home = () => {
                     <Select
                         placeholder="Status"
                         isClearable
+                        isMulti
                         options={leadStatusOptions}
-                        value={filters.status}
+                        value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
                         onChange={(opt) => {
                             setPageIndex(1)
-                            setFilters({ status: opt || null })
+                            setFilters({ status: opt && opt.length > 0 ? opt : null })
                         }}
                     />
                     <Select
                         placeholder="Method"
                         isClearable
+                        isMulti
                         options={methodOfContactOptions}
-                        value={filters.methodOfContact}
+                        value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
                         onChange={(opt) => {
                             setPageIndex(1)
-                            setFilters({ methodOfContact: opt || null })
+                            setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
                         }}
                     />
                     <Select
@@ -1307,40 +1349,6 @@ const Home = () => {
                         value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
                         onChange={(opt) => applyDatePreset(opt?.value || 'none')}
                     />
-                </div>
-                {/* Quick filter chips - more mobile friendly */}
-                <div className="mt-3">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-500">Quick filters:</span>
-                        <Button 
-                            size="sm" 
-                            variant="twoTone" 
-                            onClick={() => setShowMoreFilters(!showMoreFilters)}
-                        >
-                            {showMoreFilters ? 'Less' : 'More'} Filters
-                        </Button>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
-                        {['new','contacted','qualified','proposal','won','lost'].map((s) => (
-                            <Button key={s} size="sm" variant={filters.status?.value === s ? 'solid' : 'twoTone'}                             onClick={() => {
-                                setFilters({ status: { value: s, label: s } })
-                                setPageIndex(1)
-                            }}>{s}</Button>
-                        ))}
-                        {[
-                            { v: true, label: 'responded' },
-                            { v: false, label: 'no response' },
-                        ].map((r) => (
-                            <Button key={String(r.v)} size="sm" variant={filters.responded?.value === r.v ? 'solid' : 'twoTone'}                             onClick={() => {
-                                setFilters({ responded: { value: r.v, label: r.label } })
-                                setPageIndex(1)
-                            }}>{r.label}</Button>
-                        ))}
-                        <Button size="sm" onClick={() => {
-                            setFilters({ status: null, responded: null })
-                            setPageIndex(1)
-                        }}>Clear</Button>
-                    </div>
                 </div>
 
                 {/* Collapsible advanced filters */}
