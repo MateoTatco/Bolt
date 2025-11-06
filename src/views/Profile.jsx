@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Card, Button, Input, Form, FormItem, FormContainer, Avatar } from '@/components/ui'
+import PasswordInput from '@/components/shared/PasswordInput'
 import { useSessionUser } from '@/store/authStore'
 import { PiUserDuotone, PiLockDuotone, PiBellDuotone } from 'react-icons/pi'
 import { HiOutlineArrowLeft } from 'react-icons/hi'
 import toast from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { FirebaseAuthService } from '@/services/FirebaseAuthService'
 import { storage } from '@/configs/firebase.config'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth } from 'firebase/auth'
@@ -27,33 +29,34 @@ const Profile = () => {
     const fileInputRef = useRef(null)
     const hasLoadedProfileRef = useRef(false)
     const isSavingRef = useRef(false)
+    
+    // Password state
+    const [passwordData, setPasswordData] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    })
+    const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
 
     // Load user profile from Firestore on mount (only once)
     useEffect(() => {
         // Prevent loading if we've already loaded or are currently saving
         if (hasLoadedProfileRef.current || isSavingRef.current) {
-            console.log('🔵 [Profile] Skipping load - already loaded or saving in progress')
             return
         }
 
         const loadUserProfile = async () => {
-            console.log('🔵 [Profile] Loading user profile on mount')
-            console.log('🔵 [Profile] Current user from store:', user)
             hasLoadedProfileRef.current = true
             
             try {
                 const auth = getAuth()
                 const currentUser = auth.currentUser
-                console.log('🔵 [Profile] Firebase auth currentUser:', currentUser ? { uid: currentUser.uid, email: currentUser.email } : 'null')
                 
                 if (currentUser) {
-                    console.log('🔵 [Profile] Fetching profile from Firestore for userId:', currentUser.uid)
                     const result = await FirebaseDbService.users.getById(currentUser.uid)
-                    console.log('🔵 [Profile] Firestore getById result:', result)
                     
                     if (result.success && result.data) {
                         const profileData = result.data
-                        console.log('✅ [Profile] Profile data loaded from Firestore:', profileData)
                         
                         setFormData({
                             firstName: profileData.firstName || user.firstName || '',
@@ -72,9 +75,7 @@ const Profile = () => {
                             phoneNumber: profileData.phoneNumber || user.phoneNumber,
                             avatar: profileData.avatar || user.avatar,
                         })
-                        console.log('✅ [Profile] Form data and store updated from Firestore')
                     } else {
-                        console.warn('⚠️ [Profile] No profile found in Firestore, using store data')
                         // Fallback to store data if Firestore doesn't have profile
                         setFormData({
                             firstName: user.firstName || '',
@@ -85,7 +86,6 @@ const Profile = () => {
                         setAvatar(user.avatar || '')
                     }
                 } else {
-                    console.warn('⚠️ [Profile] No authenticated user, using store data')
                     // Fallback to store data if not authenticated
                     setFormData({
                         firstName: user.firstName || '',
@@ -96,8 +96,7 @@ const Profile = () => {
                     setAvatar(user.avatar || '')
                 }
             } catch (error) {
-                console.error('❌ [Profile] Error loading user profile:', error)
-                console.error('❌ [Profile] Error stack:', error.stack)
+                console.error('Error loading user profile:', error)
                 // Fallback to store data on error
                 setFormData({
                     firstName: user.firstName || '',
@@ -243,22 +242,16 @@ const Profile = () => {
 
         // Prevent multiple simultaneous saves
         if (isSavingRef.current) {
-            console.warn('⚠️ [Profile] Save already in progress, ignoring duplicate call')
             return
         }
 
         isSavingRef.current = true
-        console.log('🔵 [Profile] handleSave called')
-        console.log('🔵 [Profile] Form data:', formData)
-        console.log('🔵 [Profile] Avatar:', avatar)
 
         try {
             const auth = getAuth()
             const currentUser = auth.currentUser
-            console.log('🔵 [Profile] Current user:', currentUser ? { uid: currentUser.uid, email: currentUser.email } : 'null')
             
             if (!currentUser) {
-                console.error('❌ [Profile] No authenticated user')
                 toast.push(
                     <Notification type="danger" duration={2000} title="Error">
                         Please sign in to save profile
@@ -268,7 +261,6 @@ const Profile = () => {
             }
 
             const userId = currentUser.uid
-            console.log('🔵 [Profile] User ID:', userId)
 
             const userData = {
                 firstName: formData.firstName,
@@ -278,25 +270,15 @@ const Profile = () => {
                 avatar: avatar,
             }
 
-            console.log('🔵 [Profile] User data to save:', userData)
-            console.log('🔵 [Profile] Calling FirebaseDbService.users.upsert...')
-
             // Save to Firestore
             const result = await FirebaseDbService.users.upsert(userId, userData)
             
-            console.log('🔵 [Profile] Upsert result:', result)
-            
             if (result.success) {
-                console.log('✅ [Profile] Successfully saved to Firestore')
-                console.log('🔵 [Profile] Updating local store...')
-                
                 // Update user in store
                 setUser({
                     ...user,
                     ...userData,
                 })
-
-                console.log('✅ [Profile] Local store updated')
                 
                 // Update form data state to prevent reversion
                 setFormData({
@@ -307,24 +289,17 @@ const Profile = () => {
                 })
                 // Avatar is already set in state
 
-                console.log('✅ [Profile] Form state updated')
-
                 toast.push(
                     <Notification type="success" duration={2000} title="Success">
                         Profile updated successfully!
                     </Notification>
                 )
             } else {
-                console.error('❌ [Profile] Firebase upsert failed:', result.error)
-                console.error('❌ [Profile] Full result object:', result)
                 throw new Error(result.error || 'Failed to update profile')
             }
         } catch (error) {
-            console.error('❌ [Profile] Error saving profile:', error)
-            console.error('❌ [Profile] Error stack:', error.stack)
-            console.error('❌ [Profile] Error name:', error.name)
-            console.error('❌ [Profile] Error message:', error.message)
-            const errorMessage = error.message || 'Failed to save profile. Please check console for details.'
+            console.error('Error saving profile:', error)
+            const errorMessage = error.message || 'Failed to save profile. Please try again.'
             toast.push(
                 <Notification type="danger" duration={3000} title="Error">
                     {errorMessage}
@@ -332,7 +307,104 @@ const Profile = () => {
             )
         } finally {
             isSavingRef.current = false
-            console.log('🔵 [Profile] Save operation completed, isSavingRef reset')
+        }
+    }
+
+    const handlePasswordChange = (field, value) => {
+        setPasswordData((prev) => ({
+            ...prev,
+            [field]: value,
+        }))
+    }
+
+    const handleUpdatePassword = async (e) => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        if (isUpdatingPassword) {
+            return
+        }
+
+        // Validation
+        if (!passwordData.currentPassword) {
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    Please enter your current password
+                </Notification>
+            )
+            return
+        }
+
+        if (!passwordData.newPassword) {
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    Please enter a new password
+                </Notification>
+            )
+            return
+        }
+
+        if (passwordData.newPassword.length < 6) {
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    New password must be at least 6 characters long
+                </Notification>
+            )
+            return
+        }
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    New passwords do not match
+                </Notification>
+            )
+            return
+        }
+
+        setIsUpdatingPassword(true)
+
+        try {
+            const result = await FirebaseAuthService.updatePassword(
+                passwordData.currentPassword,
+                passwordData.newPassword
+            )
+
+            if (result.success) {
+                toast.push(
+                    <Notification type="success" duration={2000} title="Success">
+                        Password updated successfully!
+                    </Notification>
+                )
+                // Clear password fields
+                setPasswordData({
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: '',
+                })
+            } else {
+                throw new Error(result.error || 'Failed to update password')
+            }
+        } catch (error) {
+            console.error('Error updating password:', error)
+            let errorMessage = error.message || 'Failed to update password. Please try again.'
+            
+            // User-friendly error messages
+            if (errorMessage.includes('wrong-password') || errorMessage.includes('invalid-credential')) {
+                errorMessage = 'Current password is incorrect'
+            } else if (errorMessage.includes('weak-password')) {
+                errorMessage = 'Password is too weak. Please choose a stronger password.'
+            }
+            
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    {errorMessage}
+                </Notification>
+            )
+        } finally {
+            setIsUpdatingPassword(false)
         }
     }
 
@@ -471,10 +543,93 @@ const Profile = () => {
                     )}
 
                     {activeTab === 'security' && (
-                        <Card className="p-6">
-                            <h1 className="text-2xl font-bold mb-6">Security</h1>
-                            <p className="text-gray-600 dark:text-gray-400">Security settings coming soon...</p>
-                        </Card>
+                        <div className="space-y-8">
+                            {/* Password Section */}
+                            <Card className="p-6">
+                                <h1 className="text-2xl font-bold text-primary mb-2">Password</h1>
+                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                    Remember, your password is your digital key to your account. Keep it safe, keep it secure!
+                                </p>
+                                
+                                <Form onSubmit={handleUpdatePassword}>
+                                    <FormContainer>
+                                        <FormItem label="Current password">
+                                            <PasswordInput
+                                                value={passwordData.currentPassword}
+                                                onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
+                                                placeholder="Enter current password"
+                                            />
+                                        </FormItem>
+
+                                        <FormItem label="New password">
+                                            <PasswordInput
+                                                value={passwordData.newPassword}
+                                                onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+                                                placeholder="Enter new password"
+                                            />
+                                        </FormItem>
+
+                                        <FormItem label="Confirm new password">
+                                            <PasswordInput
+                                                value={passwordData.confirmPassword}
+                                                onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+                                                placeholder="Confirm new password"
+                                            />
+                                        </FormItem>
+
+                                        <FormItem>
+                                            <div className="flex justify-end">
+                                                <Button
+                                                    type="button"
+                                                    variant="solid"
+                                                    onClick={handleUpdatePassword}
+                                                    loading={isUpdatingPassword}
+                                                >
+                                                    Update
+                                                </Button>
+                                            </div>
+                                        </FormItem>
+                                    </FormContainer>
+                                </Form>
+                            </Card>
+
+                            {/* 2-Step Verification Section */}
+                            <Card className="p-6">
+                                <h1 className="text-2xl font-bold mb-2">2-Step verification</h1>
+                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                    Your account holds great value to hackers. Enable two-step verification to safeguard your account!
+                                </p>
+                                
+                                <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                    <div className="flex-shrink-0">
+                                        <div className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-900">
+                                            <img
+                                                src="/img/others/google.png"
+                                                alt="Google"
+                                                className="w-10 h-10"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-1">
+                                            Google Authenticator
+                                        </h3>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            Using Google Authenticator app generates time-sensitive codes for secure logins.
+                                        </p>
+                                    </div>
+                                    <div className="flex-shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 dark:text-green-400 dark:border-green-500"
+                                            disabled
+                                        >
+                                            Coming Soon
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Card>
+                        </div>
                     )}
 
                     {activeTab === 'notification' && (

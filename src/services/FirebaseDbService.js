@@ -1190,47 +1190,31 @@ export const FirebaseDbService = {
 
         // Create or update user profile
         upsert: async (userId, userData) => {
-            console.log('🔵 [FirebaseDbService.users.upsert] Called with:', { userId, userData })
             try {
-                console.log('🔵 [FirebaseDbService.users.upsert] Ensuring auth user...')
                 await ensureAuthUser()
-                console.log('✅ [FirebaseDbService.users.upsert] Auth user ensured')
                 
                 const userRef = doc(db, 'users', userId)
-                console.log('🔵 [FirebaseDbService.users.upsert] User ref created:', userRef.path)
-                
-                console.log('🔵 [FirebaseDbService.users.upsert] Checking if document exists...')
                 const userSnap = await getDoc(userRef)
-                console.log('🔵 [FirebaseDbService.users.upsert] Document exists:', userSnap.exists())
                 
                 const dataToSave = {
                     ...userData,
                     updatedAt: serverTimestamp()
                 }
-                console.log('🔵 [FirebaseDbService.users.upsert] Data to save:', { ...dataToSave, updatedAt: 'serverTimestamp()' })
                 
                 if (userSnap.exists()) {
-                    console.log('🔵 [FirebaseDbService.users.upsert] Updating existing document...')
                     // Update existing user
                     await updateDoc(userRef, dataToSave)
-                    console.log('✅ [FirebaseDbService.users.upsert] Document updated successfully')
                 } else {
-                    console.log('🔵 [FirebaseDbService.users.upsert] Creating new document...')
                     // Create new user profile
                     await setDoc(userRef, {
                         ...dataToSave,
                         createdAt: serverTimestamp()
                     })
-                    console.log('✅ [FirebaseDbService.users.upsert] Document created successfully')
                 }
                 
-                console.log('✅ [FirebaseDbService.users.upsert] Returning success')
                 return { success: true, data: { id: userId, ...userData } }
             } catch (error) {
-                console.error('❌ [FirebaseDbService.users.upsert] Error:', error)
-                console.error('❌ [FirebaseDbService.users.upsert] Error code:', error.code)
-                console.error('❌ [FirebaseDbService.users.upsert] Error message:', error.message)
-                console.error('❌ [FirebaseDbService.users.upsert] Error stack:', error.stack)
+                console.error('User upsert error:', error)
                 return { success: false, error: error.message, errorCode: error.code }
             }
         },

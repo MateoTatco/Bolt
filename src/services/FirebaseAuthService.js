@@ -6,7 +6,10 @@ import {
     GoogleAuthProvider,
     signInWithPopup,
     sendPasswordResetEmail,
-    updateProfile
+    updateProfile,
+    updatePassword,
+    EmailAuthProvider,
+    reauthenticateWithCredential
 } from 'firebase/auth'
 import { auth } from '@/configs/firebase.config'
 
@@ -105,5 +108,32 @@ export const FirebaseAuthService = {
     // Listen to auth state changes
     onAuthStateChanged: (callback) => {
         return onAuthStateChanged(auth, callback)
+    },
+
+    // Update password
+    updatePassword: async (currentPassword, newPassword) => {
+        try {
+            const user = auth.currentUser
+            if (!user || !user.email) {
+                return {
+                    success: false,
+                    error: 'No authenticated user found'
+                }
+            }
+
+            // Re-authenticate user with current password
+            const credential = EmailAuthProvider.credential(user.email, currentPassword)
+            await reauthenticateWithCredential(user, credential)
+
+            // Update password
+            await updatePassword(user, newPassword)
+
+            return { success: true }
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            }
+        }
     }
 }
