@@ -5,20 +5,21 @@ import {
     getDoc, 
     addDoc, 
     updateDoc, 
+    setDoc,
     deleteDoc, 
     query, 
     where, 
     orderBy, 
-    onSnapshot,
-    serverTimestamp,
-    limit,
-    startAfter,
-    endBefore,
-    limitToLast,
-    writeBatch,
-    getCountFromServer,
-    startAt,
-    endAt
+    onSnapshot, 
+    serverTimestamp, 
+    limit, 
+    startAfter, 
+    endBefore, 
+    limitToLast, 
+    writeBatch, 
+    getCountFromServer, 
+    startAt, 
+    endAt 
 } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
@@ -1194,23 +1195,23 @@ export const FirebaseDbService = {
                 const userRef = doc(db, 'users', userId)
                 const userSnap = await getDoc(userRef)
                 
+                const dataToSave = {
+                    ...userData,
+                    updatedAt: serverTimestamp()
+                }
+                
                 if (userSnap.exists()) {
                     // Update existing user
-                    await updateDoc(userRef, {
-                        ...userData,
-                        updatedAt: serverTimestamp()
-                    })
-                    return { success: true, data: { id: userId, ...userData } }
+                    await updateDoc(userRef, dataToSave)
                 } else {
                     // Create new user profile
-                    const newUserRef = doc(db, 'users', userId)
-                    await updateDoc(newUserRef, {
-                        ...userData,
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp()
+                    await setDoc(userRef, {
+                        ...dataToSave,
+                        createdAt: serverTimestamp()
                     })
-                    return { success: true, data: { id: userId, ...userData } }
                 }
+                
+                return { success: true, data: { id: userId, ...userData } }
             } catch (error) {
                 console.error('User upsert error:', error)
                 return { success: false, error: error.message }

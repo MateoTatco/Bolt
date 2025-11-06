@@ -249,13 +249,15 @@ const Profile = () => {
                     </Notification>
                 )
             } else {
+                console.error('Firebase upsert failed:', result.error)
                 throw new Error(result.error || 'Failed to update profile')
             }
         } catch (error) {
             console.error('Error saving profile:', error)
+            const errorMessage = error.message || 'Failed to save profile. Please check console for details.'
             toast.push(
-                <Notification type="danger" duration={2000} title="Error">
-                    Failed to save profile. Please try again.
+                <Notification type="danger" duration={3000} title="Error">
+                    {errorMessage}
                 </Notification>
             )
         }
