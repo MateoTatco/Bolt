@@ -3,7 +3,7 @@ import Dropdown from '@/components/ui/Dropdown'
 import withHeaderItem from '@/utils/hoc/withHeaderItem'
 import { useSessionUser } from '@/store/authStore'
 import { Link } from 'react-router'
-import { PiUserDuotone, PiSignOutDuotone } from 'react-icons/pi'
+import { PiUserDuotone, PiSignOutDuotone, PiUserCircleDuotone } from 'react-icons/pi'
 import { useAuth } from '@/auth'
 
 const dropdownItemList = []
@@ -37,7 +37,7 @@ const _UserDropdown = () => {
                     <Avatar {...avatarProps} />
                     <div>
                         <div className="font-bold text-gray-900 dark:text-gray-100">
-                            {userName || (email ? email.split('@')[0] : 'User')}
+                            {userName || 'User'}
                         </div>
                         <div className="text-xs">
                             {email || 'No email available'}
@@ -60,6 +60,18 @@ const _UserDropdown = () => {
                     </Link>
                 </Dropdown.Item>
             ))}
+            <Dropdown.Item
+                eventKey="Profile"
+                className="gap-2"
+            >
+                <Link className="flex gap-2 items-center w-full" to="/profile">
+                    <span className="text-xl">
+                        <PiUserCircleDuotone />
+                    </span>
+                    <span>Profile</span>
+                </Link>
+            </Dropdown.Item>
+            <Dropdown.Item variant="divider" />
             <Dropdown.Item
                 eventKey="Sign Out"
                 className="gap-2"

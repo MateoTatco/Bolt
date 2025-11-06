@@ -1168,7 +1168,70 @@ export const FirebaseDbService = {
                 return { success: false, error: error.message }
             }
         }
-    }
+    },
+
+    // USERS COLLECTION
+    users: {
+        // Get user profile by ID
+        getById: async (userId) => {
+            try {
+                const userRef = doc(db, 'users', userId)
+                const userSnap = await getDoc(userRef)
+                if (userSnap.exists()) {
+                    return { success: true, data: { id: userSnap.id, ...userSnap.data() } }
+                } else {
+                    return { success: false, error: 'User not found' }
+                }
+            } catch (error) {
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create or update user profile
+        upsert: async (userId, userData) => {
+            try {
+                await ensureAuthUser()
+                const userRef = doc(db, 'users', userId)
+                const userSnap = await getDoc(userRef)
+                
+                if (userSnap.exists()) {
+                    // Update existing user
+                    await updateDoc(userRef, {
+                        ...userData,
+                        updatedAt: serverTimestamp()
+                    })
+                    return { success: true, data: { id: userId, ...userData } }
+                } else {
+                    // Create new user profile
+                    const newUserRef = doc(db, 'users', userId)
+                    await updateDoc(newUserRef, {
+                        ...userData,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    })
+                    return { success: true, data: { id: userId, ...userData } }
+                }
+            } catch (error) {
+                console.error('User upsert error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update user profile
+        update: async (userId, userData) => {
+            try {
+                await ensureAuthUser()
+                const userRef = doc(db, 'users', userId)
+                await updateDoc(userRef, {
+                    ...userData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: userId, ...userData } }
+            } catch (error) {
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing
