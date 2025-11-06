@@ -25,17 +25,36 @@ const Profile = () => {
     })
     const [avatar, setAvatar] = useState('')
     const fileInputRef = useRef(null)
+    const hasLoadedProfileRef = useRef(false)
+    const isSavingRef = useRef(false)
 
-    // Load user profile from Firestore on mount
+    // Load user profile from Firestore on mount (only once)
     useEffect(() => {
+        // Prevent loading if we've already loaded or are currently saving
+        if (hasLoadedProfileRef.current || isSavingRef.current) {
+            console.log('🔵 [Profile] Skipping load - already loaded or saving in progress')
+            return
+        }
+
         const loadUserProfile = async () => {
+            console.log('🔵 [Profile] Loading user profile on mount')
+            console.log('🔵 [Profile] Current user from store:', user)
+            hasLoadedProfileRef.current = true
+            
             try {
                 const auth = getAuth()
                 const currentUser = auth.currentUser
+                console.log('🔵 [Profile] Firebase auth currentUser:', currentUser ? { uid: currentUser.uid, email: currentUser.email } : 'null')
+                
                 if (currentUser) {
+                    console.log('🔵 [Profile] Fetching profile from Firestore for userId:', currentUser.uid)
                     const result = await FirebaseDbService.users.getById(currentUser.uid)
+                    console.log('🔵 [Profile] Firestore getById result:', result)
+                    
                     if (result.success && result.data) {
                         const profileData = result.data
+                        console.log('✅ [Profile] Profile data loaded from Firestore:', profileData)
+                        
                         setFormData({
                             firstName: profileData.firstName || user.firstName || '',
                             userName: profileData.userName || user.userName || '',
@@ -53,7 +72,9 @@ const Profile = () => {
                             phoneNumber: profileData.phoneNumber || user.phoneNumber,
                             avatar: profileData.avatar || user.avatar,
                         })
+                        console.log('✅ [Profile] Form data and store updated from Firestore')
                     } else {
+                        console.warn('⚠️ [Profile] No profile found in Firestore, using store data')
                         // Fallback to store data if Firestore doesn't have profile
                         setFormData({
                             firstName: user.firstName || '',
@@ -64,6 +85,7 @@ const Profile = () => {
                         setAvatar(user.avatar || '')
                     }
                 } else {
+                    console.warn('⚠️ [Profile] No authenticated user, using store data')
                     // Fallback to store data if not authenticated
                     setFormData({
                         firstName: user.firstName || '',
@@ -74,7 +96,8 @@ const Profile = () => {
                     setAvatar(user.avatar || '')
                 }
             } catch (error) {
-                console.error('Error loading user profile:', error)
+                console.error('❌ [Profile] Error loading user profile:', error)
+                console.error('❌ [Profile] Error stack:', error.stack)
                 // Fallback to store data on error
                 setFormData({
                     firstName: user.firstName || '',
@@ -211,11 +234,31 @@ const Profile = () => {
         }
     }
 
-    const handleSave = async () => {
+    const handleSave = async (e) => {
+        // Prevent form submission and page reload
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        // Prevent multiple simultaneous saves
+        if (isSavingRef.current) {
+            console.warn('⚠️ [Profile] Save already in progress, ignoring duplicate call')
+            return
+        }
+
+        isSavingRef.current = true
+        console.log('🔵 [Profile] handleSave called')
+        console.log('🔵 [Profile] Form data:', formData)
+        console.log('🔵 [Profile] Avatar:', avatar)
+
         try {
             const auth = getAuth()
             const currentUser = auth.currentUser
+            console.log('🔵 [Profile] Current user:', currentUser ? { uid: currentUser.uid, email: currentUser.email } : 'null')
+            
             if (!currentUser) {
+                console.error('❌ [Profile] No authenticated user')
                 toast.push(
                     <Notification type="danger" duration={2000} title="Error">
                         Please sign in to save profile
@@ -225,6 +268,8 @@ const Profile = () => {
             }
 
             const userId = currentUser.uid
+            console.log('🔵 [Profile] User ID:', userId)
+
             const userData = {
                 firstName: formData.firstName,
                 userName: formData.userName,
@@ -233,15 +278,36 @@ const Profile = () => {
                 avatar: avatar,
             }
 
+            console.log('🔵 [Profile] User data to save:', userData)
+            console.log('🔵 [Profile] Calling FirebaseDbService.users.upsert...')
+
             // Save to Firestore
             const result = await FirebaseDbService.users.upsert(userId, userData)
             
+            console.log('🔵 [Profile] Upsert result:', result)
+            
             if (result.success) {
+                console.log('✅ [Profile] Successfully saved to Firestore')
+                console.log('🔵 [Profile] Updating local store...')
+                
                 // Update user in store
                 setUser({
                     ...user,
                     ...userData,
                 })
+
+                console.log('✅ [Profile] Local store updated')
+                
+                // Update form data state to prevent reversion
+                setFormData({
+                    firstName: formData.firstName,
+                    userName: formData.userName,
+                    email: formData.email,
+                    phoneNumber: formData.phoneNumber,
+                })
+                // Avatar is already set in state
+
+                console.log('✅ [Profile] Form state updated')
 
                 toast.push(
                     <Notification type="success" duration={2000} title="Success">
@@ -249,17 +315,24 @@ const Profile = () => {
                     </Notification>
                 )
             } else {
-                console.error('Firebase upsert failed:', result.error)
+                console.error('❌ [Profile] Firebase upsert failed:', result.error)
+                console.error('❌ [Profile] Full result object:', result)
                 throw new Error(result.error || 'Failed to update profile')
             }
         } catch (error) {
-            console.error('Error saving profile:', error)
+            console.error('❌ [Profile] Error saving profile:', error)
+            console.error('❌ [Profile] Error stack:', error.stack)
+            console.error('❌ [Profile] Error name:', error.name)
+            console.error('❌ [Profile] Error message:', error.message)
             const errorMessage = error.message || 'Failed to save profile. Please check console for details.'
             toast.push(
                 <Notification type="danger" duration={3000} title="Error">
                     {errorMessage}
                 </Notification>
             )
+        } finally {
+            isSavingRef.current = false
+            console.log('🔵 [Profile] Save operation completed, isSavingRef reset')
         }
     }
 
@@ -345,7 +418,7 @@ const Profile = () => {
                             </div>
 
                             {/* Form Fields */}
-                            <Form>
+                            <Form onSubmit={(e) => { e.preventDefault(); handleSave(e); }}>
                                 <FormContainer>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <FormItem label="First name">
@@ -385,8 +458,9 @@ const Profile = () => {
 
                                     <FormItem>
                                         <Button
+                                            type="button"
                                             variant="solid"
-                                            onClick={handleSave}
+                                            onClick={(e) => handleSave(e)}
                                         >
                                             Save
                                         </Button>
