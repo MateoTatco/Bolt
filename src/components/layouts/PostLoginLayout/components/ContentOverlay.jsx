@@ -1,5 +1,6 @@
 import Header from '@/components/template/Header'
 import UserProfileDropdown from '@/components//template/UserProfileDropdown'
+import NotificationBell from '@/components/template/NotificationBell'
 import HeaderLogo from '@/components/template/HeaderLogo'
 import MobileNav from '@/components/template/MobileNav'
 import HorizontalNav from '@/components/template/HorizontalNav'
@@ -107,6 +108,7 @@ const ContentOverlay = ({ children }) => {
                         headerMiddle={<>{larger.lg && <HorizontalNav />}</>}
                         headerEnd={
                             <>
+                                <NotificationBell hoverable={false} />
                                 <UserProfileDropdown hoverable={false} />
                             </>
                         }

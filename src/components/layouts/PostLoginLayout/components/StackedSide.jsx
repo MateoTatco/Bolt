@@ -2,6 +2,7 @@ import StackedSideNav from '@/components/template/StackedSideNav'
 import Header from '@/components/template/Header'
 import MobileNav from '@/components/template/MobileNav'
 import UserProfileDropdown from '@/components//template/UserProfileDropdown'
+import NotificationBell from '@/components/template/NotificationBell'
 import LayoutBase from '@/components//template/LayoutBase'
 import useResponsive from '@/utils/hooks/useResponsive'
 import { LAYOUT_STACKED_SIDE } from '@/constants/theme.constant'
@@ -22,6 +23,7 @@ const StackedSide = ({ children }) => {
                         headerStart={<>{smaller.lg && <MobileNav />}</>}
                         headerEnd={
                             <>
+                                <NotificationBell hoverable={false} />
                                 <UserProfileDropdown hoverable={false} />
                             </>
                         }

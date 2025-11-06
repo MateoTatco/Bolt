@@ -4,6 +4,7 @@ import FrameLessGap from '@/components/template/FrameLessGap'
 import SideNavToggle from '@/components/template/SideNavToggle'
 import MobileNav from '@/components/template/MobileNav'
 import UserProfileDropdown from '@/components//template/UserProfileDropdown'
+import NotificationBell from '@/components/template/NotificationBell'
 import LayoutBase from '@/components//template/LayoutBase'
 import classNames from '@/utils/classNames'
 import useScrollTop from '@/utils/hooks/useScrollTop'
@@ -94,6 +95,7 @@ const FrameLessSide = ({ children }) => {
                             }
                             headerEnd={
                                 <>
+                                    <NotificationBell hoverable={false} />
                                     <UserProfileDropdown hoverable={false} />
                                 </>
                             }
