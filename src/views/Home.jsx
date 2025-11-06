@@ -4,7 +4,7 @@ import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, Fo
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
-import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload } from 'react-icons/hi'
+import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus } from 'react-icons/hi'
 import FirebaseTest from '@/components/FirebaseTest'
 import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
@@ -424,6 +424,22 @@ const Home = () => {
                 return av > bv ? dir : -dir
             })
     }, [leads, clients, filters, sort])
+
+    // Clear all filters function
+    const handleClearAllFilters = () => {
+        setPageIndex(1)
+        setFilters({
+            search: '',
+            status: null,
+            methodOfContact: null,
+            responded: null,
+            dateFrom: null,
+            dateTo: null,
+            // Keep type filter as is
+        })
+        setLocalSearchValue('')
+        setDatePreset('none')
+    }
 
     const pageTotal = filteredLeads.length
     const pageStart = (pageIndex - 1) * pageSize
@@ -1049,7 +1065,7 @@ const Home = () => {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="flex flex-col gap-4">
             {/* Dev Only Toggle Button */}
             <div className="flex justify-end gap-2">
                 <Button 
@@ -1215,17 +1231,22 @@ const Home = () => {
             )}
             
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold">CRM</h1>
+                <h1 className="text-2xl font-bold">CRM</h1>
                 <div className="flex items-center gap-2">
-                    <Button 
-                        variant="outline" 
-                        onClick={() => setIsBulkManagerOpen(true)}
-                        className="flex items-center gap-2"
+                    <Button
+                        variant="twoTone"
+                        icon={<HiOutlinePlus />}
+                        onClick={handleCreateClick}
                     >
-                        <HiOutlineUpload className="w-4 h-4" />
-                        Bulk Import/Export
+                        Create
                     </Button>
-                    <Button variant="solid" onClick={handleCreateClick}>Create</Button>
+                    <Button
+                        variant="solid"
+                        icon={<HiOutlineUpload />}
+                        onClick={() => setIsBulkManagerOpen(true)}
+                    >
+                        Bulk Import / Export
+                    </Button>
                 </div>
             </div>
 
@@ -1273,94 +1294,114 @@ const Home = () => {
                 </div>
             </div>
 
-            <Card className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-                    <Input
-                        placeholder="Search leads"
-                        value={localSearchValue}
-                        onChange={(e) => {
-                            const value = e.target.value
-                            // Update local state immediately for smooth typing
-                            setLocalSearchValue(value)
-                            
-                            // Debounce the actual filter application
-                            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                            searchDebounceRef.current = setTimeout(() => {
-                            setPageIndex(1)
-                                setFilters({ search: value })
-                            }, 300)
-                        }}
-                    />
-                    {/* Type Select removed; replaced by top toggle */}
-                    <Select
-                        placeholder="Status"
-                        isClearable
-                        isMulti
-                        options={leadStatusOptions}
-                        value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ status: opt && opt.length > 0 ? opt : null })
-                        }}
-                    />
-                    <Select
-                        placeholder="Method"
-                        isClearable
-                        isMulti
-                        options={methodOfContactOptions}
-                        value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
-                        }}
-                    />
-                    <Select
-                        placeholder="Responded"
-                        isClearable
-                        options={respondedOptions}
-                        value={filters.responded}
-                        onChange={(opt) => {
-                            setPageIndex(1)
-                            setFilters({ responded: opt || null })
-                        }}
-                    />
-                    <DatePicker.DatePickerRange
-                        placeholder={['From', 'To']}
-                        value={[filters.dateFrom || null, filters.dateTo || null]}
-                        onChange={(vals) => {
-                            // Debounce date range updates; also reset preset to custom
-                            if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
-                            dateDebounceRef.current = setTimeout(() => {
-                                const arr = Array.isArray(vals) ? vals : [null, null]
-                                const [from, to] = arr
-                                setDatePreset('none')
-                            setPageIndex(1)
-                            setFilters({
-                                dateFrom: from || null,
-                                dateTo: to || null,
-                            })
-                            }, 200)
-                        }}
-                    />
-                    <Select
-                        placeholder="Date presets"
-                        isClearable={false}
-                        options={datePresetOptions}
-                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
-                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
-                    />
-                </div>
-
-                {/* More Filters Toggle Button */}
-                <div className="flex justify-end mt-3">
-                    <Button 
-                        size="sm" 
-                        variant="twoTone" 
-                        onClick={() => setShowMoreFilters(!showMoreFilters)}
-                    >
-                        {showMoreFilters ? 'Less' : 'More'} Filters
-                    </Button>
-                </div>
+            <Card>
+                <div className="p-6 space-y-4">
+                    {/* Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
+                        <Input
+                            placeholder="Search leads"
+                            value={localSearchValue}
+                            onChange={(e) => {
+                                const value = e.target.value
+                                // Update local state immediately for smooth typing
+                                setLocalSearchValue(value)
+                                
+                                // Debounce the actual filter application
+                                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                searchDebounceRef.current = setTimeout(() => {
+                                setPageIndex(1)
+                                    setFilters({ search: value })
+                                }, 300)
+                            }}
+                        />
+                        {/* Type Select removed; replaced by top toggle */}
+                        <Select
+                            placeholder="Status"
+                            isClearable
+                            isMulti
+                            options={leadStatusOptions}
+                            value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ status: opt && opt.length > 0 ? opt : null })
+                            }}
+                        />
+                        <Select
+                            placeholder="Method"
+                            isClearable
+                            isMulti
+                            options={methodOfContactOptions}
+                            value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
+                            }}
+                        />
+                        <Select
+                            placeholder="Responded"
+                            isClearable
+                            options={respondedOptions}
+                            value={filters.responded}
+                            onChange={(opt) => {
+                                setPageIndex(1)
+                                setFilters({ responded: opt || null })
+                            }}
+                        />
+                        <DatePicker.DatePickerRange
+                            placeholder={['From', 'To']}
+                            value={[filters.dateFrom || null, filters.dateTo || null]}
+                            onChange={(vals) => {
+                                // Debounce date range updates; also reset preset to custom
+                                if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                                dateDebounceRef.current = setTimeout(() => {
+                                    const arr = Array.isArray(vals) ? vals : [null, null]
+                                    const [from, to] = arr
+                                    setDatePreset('none')
+                                setPageIndex(1)
+                                setFilters({
+                                    dateFrom: from || null,
+                                    dateTo: to || null,
+                                })
+                                }, 200)
+                            }}
+                        />
+                        <Select
+                            placeholder="Date presets"
+                            isClearable={false}
+                            options={datePresetOptions}
+                            value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                            onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                        />
+                    </div>
+                    
+                    {/* Clear All Filters Button */}
+                    {(filters.search || 
+                        (filters.status && (Array.isArray(filters.status) ? filters.status.length > 0 : filters.status.value)) ||
+                        (filters.methodOfContact && (Array.isArray(filters.methodOfContact) ? filters.methodOfContact.length > 0 : filters.methodOfContact.value)) ||
+                        (filters.responded !== null && filters.responded !== undefined) ||
+                        filters.dateFrom ||
+                        filters.dateTo) && (
+                        <div className="flex justify-end">
+                            <Button 
+                                size="sm" 
+                                variant="twoTone"
+                                onClick={handleClearAllFilters}
+                            >
+                                Clear All Filters
+                            </Button>
+                        </div>
+                    )}
+                    
+                    {/* More Filters Toggle Button */}
+                    <div className="flex justify-end mt-3">
+                        <Button 
+                            size="sm" 
+                            variant="twoTone" 
+                            onClick={() => setShowMoreFilters(!showMoreFilters)}
+                        >
+                            {showMoreFilters ? 'Less' : 'More'} Filters
+                        </Button>
+                    </div>
 
                 {/* Collapsible advanced filters */}
                 {showMoreFilters && (
@@ -1428,34 +1469,13 @@ const Home = () => {
                                 </div>
                             </Card>
                         </div>
-                            </div>
+                    </div>
                 )}
-            </Card>
 
-            <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-500">
-                    {pageTotal} lead{pageTotal === 1 ? '' : 's'} • Page {pageIndex}
-                    {sort.key && sort.order ? ` • Sorted by ${sort.key} (${sort.order})` : ''}
-                </div>
-                <div className="flex items-center gap-2">
-                    {sort.key && sort.order && (
-                        <Button 
-                            size="sm" 
-                            variant="twoTone"
-                            onClick={handleClearSort}
-                            className="text-red-600 hover:text-red-700"
-                        >
-                            Clear sort
-                        </Button>
-                    )}
-                </div>
-            </div>
-
-            {/* Bulk actions bar */}
-            {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
-                <Card className="p-3">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="text-sm">{selectedIds.size} selected</div>
+                {/* Bulk Actions */}
+                {typeof selectedIds !== 'undefined' && selectedIds.size > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <span className="text-sm font-medium">{selectedIds.size} selected</span>
                         <div className="flex items-center gap-2">
                             <Select
                                 placeholder="Set status"
@@ -1464,31 +1484,38 @@ const Home = () => {
                                 onChange={(opt) => setBulkStatus(opt || null)}
                             />
                             <Button size="sm" variant="solid" onClick={handleApplyBulkStatus} disabled={!bulkStatus}>Apply</Button>
-                            <Button size="sm" onClick={handleBulkDelete} className="text-red-600 hover:text-red-700">Delete</Button>
+                            <Button size="sm" variant="twoTone" onClick={handleBulkDelete} className="text-red-600">
+                                Delete Selected
+                            </Button>
                         </div>
                     </div>
-                </Card>
-            )}
+                )}
 
-            <DataTable
-                key={tableInstanceKey}
-                columns={orderedAndVisibleColumns}
-                data={pageData}
-                loading={loading}
-                pagingData={{ total: pageTotal, pageIndex, pageSize }}
-                onPaginationChange={(pi) => setPageIndex(pi)}
-                onSelectChange={(ps) => {
-                    setPageIndex(1)
-                    setPageSize(ps)
-                }}
-                onSort={({ key, order }) => setSort({ key, order })}
-                selectable
-                checkboxChecked={(row) => checkboxChecked(row)}
-                indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
-                onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
-                onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
-                className="card"
-            />
+                <DataTable
+                    key={tableInstanceKey}
+                    columns={orderedAndVisibleColumns}
+                    data={pageData}
+                    loading={loading}
+                    pagingData={{ total: pageTotal, pageIndex, pageSize }}
+                    onPaginationChange={(pi) => setPageIndex(pi)}
+                    onSelectChange={(ps) => {
+                        setPageIndex(1)
+                        setPageSize(ps)
+                    }}
+                    onSort={({ key, order }) => setSort({ key, order })}
+                    selectable
+                    checkboxChecked={(row) => checkboxChecked(row)}
+                    indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
+                    onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
+                    onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
+                    className="card"
+                    rowClassName={(row) => {
+                        // row here is the original data object
+                        return checkboxChecked(row) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                    }}
+                />
+                </div>
+            </Card>
 
 
 
