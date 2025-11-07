@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { Card, Button, Input, Form, FormItem, FormContainer, Avatar } from '@/components/ui'
+import { Card, Button, Input, Form, FormItem, FormContainer, Avatar, Switcher } from '@/components/ui'
 import PasswordInput from '@/components/shared/PasswordInput'
 import { useSessionUser } from '@/store/authStore'
 import { PiUserDuotone, PiLockDuotone, PiBellDuotone } from 'react-icons/pi'
@@ -12,6 +12,7 @@ import { FirebaseAuthService } from '@/services/FirebaseAuthService'
 import { storage } from '@/configs/firebase.config'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth } from 'firebase/auth'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 
 const Profile = () => {
     const navigate = useNavigate()
@@ -37,6 +38,10 @@ const Profile = () => {
         confirmPassword: '',
     })
     const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+
+    // Notification preferences state
+    const [notificationPreferences, setNotificationPreferences] = useState({})
+    const [isSavingPreferences, setIsSavingPreferences] = useState(false)
 
     // Load user profile from Firestore on mount (only once)
     useEffect(() => {
@@ -66,6 +71,18 @@ const Profile = () => {
                         })
                         setAvatar(profileData.avatar || user.avatar || '')
                         
+                        // Load notification preferences
+                        if (profileData.notificationPreferences) {
+                            setNotificationPreferences(profileData.notificationPreferences)
+                        } else {
+                            // Default: all enabled
+                            const defaultPreferences = {}
+                            Object.values(NOTIFICATION_TYPES).forEach(type => {
+                                defaultPreferences[type] = true
+                            })
+                            setNotificationPreferences(defaultPreferences)
+                        }
+                        
                         // Update store with Firestore data
                         setUser({
                             ...user,
@@ -84,6 +101,13 @@ const Profile = () => {
                             phoneNumber: user.phoneNumber || '',
                         })
                         setAvatar(user.avatar || '')
+                        
+                        // Default notification preferences
+                        const defaultPreferences = {}
+                        Object.values(NOTIFICATION_TYPES).forEach(type => {
+                            defaultPreferences[type] = true
+                        })
+                        setNotificationPreferences(defaultPreferences)
                     }
                 } else {
                     // Fallback to store data if not authenticated
@@ -94,6 +118,13 @@ const Profile = () => {
                         phoneNumber: user.phoneNumber || '',
                     })
                     setAvatar(user.avatar || '')
+                    
+                    // Default notification preferences
+                    const defaultPreferences = {}
+                    Object.values(NOTIFICATION_TYPES).forEach(type => {
+                        defaultPreferences[type] = true
+                    })
+                    setNotificationPreferences(defaultPreferences)
                 }
             } catch (error) {
                 console.error('Error loading user profile:', error)
@@ -105,6 +136,13 @@ const Profile = () => {
                     phoneNumber: user.phoneNumber || '',
                 })
                 setAvatar(user.avatar || '')
+                
+                // Default notification preferences
+                const defaultPreferences = {}
+                Object.values(NOTIFICATION_TYPES).forEach(type => {
+                    defaultPreferences[type] = true
+                })
+                setNotificationPreferences(defaultPreferences)
             }
         }
 
@@ -315,6 +353,72 @@ const Profile = () => {
             ...prev,
             [field]: value,
         }))
+    }
+
+    const handleNotificationPreferenceChange = (notificationType, enabled) => {
+        setNotificationPreferences((prev) => ({
+            ...prev,
+            [notificationType]: enabled,
+        }))
+    }
+
+    const handleSaveNotificationPreferences = async (e) => {
+        if (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        if (isSavingPreferences) {
+            return
+        }
+
+        setIsSavingPreferences(true)
+
+        try {
+            const auth = getAuth()
+            const currentUser = auth.currentUser
+            
+            if (!currentUser) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        "Please sign in to save preferences"
+                    )
+                )
+                return
+            }
+
+            const userId = currentUser.uid
+
+            // Update user document with notification preferences
+            const result = await FirebaseDbService.users.update(userId, {
+                notificationPreferences: notificationPreferences
+            })
+            
+            if (result.success) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "success", duration: 2000, title: "Success" },
+                        "Notification preferences saved successfully!"
+                    )
+                )
+            } else {
+                throw new Error(result.error || 'Failed to save preferences')
+            }
+        } catch (error) {
+            console.error('Error saving notification preferences:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 3000, title: "Error" },
+                    error.message || 'Failed to save preferences. Please try again.'
+                )
+            )
+        } finally {
+            setIsSavingPreferences(false)
+        }
     }
 
     const handleUpdatePassword = async (e) => {
@@ -634,8 +738,200 @@ const Profile = () => {
 
                     {activeTab === 'notification' && (
                         <Card className="p-6">
-                            <h1 className="text-2xl font-bold mb-6">Notification</h1>
-                            <p className="text-gray-600 dark:text-gray-400">Notification settings coming soon...</p>
+                            <h1 className="text-2xl font-bold mb-2">Notification Preferences</h1>
+                            <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                Choose which notifications you want to receive. You can customize your preferences for different types of activities.
+                            </p>
+                            
+                            <Form onSubmit={handleSaveNotificationPreferences}>
+                                <FormContainer>
+                                    {/* Task Notifications */}
+                                    <div className="mb-8">
+                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Task Notifications</h2>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Assigned</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is assigned to you</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_ASSIGNED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_ASSIGNED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Completed</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is completed</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_COMPLETED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_COMPLETED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Updated</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is updated</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_UPDATED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_UPDATED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Due Soon</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is approaching its due date</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_DUE_SOON, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Overdue</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task becomes overdue</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_OVERDUE, checked)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Entity Notifications */}
+                                    <div className="mb-8">
+                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Entity Notifications</h2>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Created</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a new lead, client, or project is created</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_CREATED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ENTITY_CREATED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Updated</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is updated</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_UPDATED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ENTITY_UPDATED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Status Changed</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when the status of a lead, client, or project changes</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_STATUS_CHANGED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ENTITY_STATUS_CHANGED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Deleted</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is deleted</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_DELETED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ENTITY_DELETED, checked)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Attachment Notifications */}
+                                    <div className="mb-8">
+                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Attachment Notifications</h2>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Attachment Added</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a file is uploaded</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ATTACHMENT_ADDED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ATTACHMENT_ADDED, checked)}
+                                                />
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Attachment Deleted</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a file is deleted</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ATTACHMENT_DELETED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ATTACHMENT_DELETED, checked)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Activity Notifications */}
+                                    <div className="mb-8">
+                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Activity Notifications</h2>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Activity Added</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a new activity is logged</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.ACTIVITY_ADDED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.ACTIVITY_ADDED, checked)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* System Notifications */}
+                                    <div className="mb-8">
+                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">System Notifications</h2>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                                <div>
+                                                    <p className="font-medium text-gray-900 dark:text-gray-100">System Notifications</p>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about important system updates and announcements</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.SYSTEM] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.SYSTEM, checked)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <FormItem>
+                                        <div className="flex justify-end">
+                                            <Button
+                                                type="button"
+                                                variant="solid"
+                                                onClick={handleSaveNotificationPreferences}
+                                                loading={isSavingPreferences}
+                                            >
+                                                Save Preferences
+                                            </Button>
+                                        </div>
+                                    </FormItem>
+                                </FormContainer>
+                            </Form>
                         </Card>
                     )}
                 </div>

@@ -1234,6 +1234,205 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // NOTIFICATIONS COLLECTION
+    notifications: {
+        // Create a new notification
+        create: async (notificationData) => {
+            try {
+                await ensureAuthUser()
+                const notificationsRef = collection(db, 'notifications')
+                const docRef = await addDoc(notificationsRef, {
+                    ...notificationData,
+                    read: false,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...notificationData } }
+            } catch (error) {
+                console.error('Notification create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get notifications for a user
+        getUserNotifications: async (userId, options = {}) => {
+            try {
+                const {
+                    limit: notificationLimit = 50,
+                    startAfter: startAfterDoc = null,
+                    readStatus = null // null = all, true = read only, false = unread only
+                } = options
+
+                let q = query(
+                    collection(db, 'notifications'),
+                    where('userId', '==', userId),
+                    orderBy('createdAt', 'desc')
+                )
+
+                if (readStatus !== null) {
+                    q = query(q, where('read', '==', readStatus))
+                }
+
+                if (startAfterDoc) {
+                    q = query(q, startAfter(startAfterDoc))
+                }
+
+                q = query(q, limit(notificationLimit))
+
+                const snapshot = await getDocs(q)
+                const notifications = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+
+                return {
+                    success: true,
+                    data: notifications,
+                    hasMore: snapshot.docs.length === notificationLimit,
+                    lastDoc: snapshot.docs[snapshot.docs.length - 1] || null
+                }
+            } catch (error) {
+                console.error('Get notifications error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get unread count for a user
+        getUnreadCount: async (userId) => {
+            try {
+                const q = query(
+                    collection(db, 'notifications'),
+                    where('userId', '==', userId),
+                    where('read', '==', false)
+                )
+                const snapshot = await getCountFromServer(q)
+                return { success: true, count: snapshot.data().count }
+            } catch (error) {
+                console.error('Get unread count error:', error)
+                return { success: false, error: error.message, count: 0 }
+            }
+        },
+
+        // Mark notification as read
+        markAsRead: async (notificationId) => {
+            try {
+                await ensureAuthUser()
+                const notificationRef = doc(db, 'notifications', notificationId)
+                await updateDoc(notificationRef, {
+                    read: true,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true }
+            } catch (error) {
+                console.error('Mark as read error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Mark all notifications as read for a user
+        markAllAsRead: async (userId) => {
+            try {
+                await ensureAuthUser()
+                const q = query(
+                    collection(db, 'notifications'),
+                    where('userId', '==', userId),
+                    where('read', '==', false)
+                )
+                const snapshot = await getDocs(q)
+                const batch = writeBatch(db)
+                
+                snapshot.docs.forEach((doc) => {
+                    batch.update(doc.ref, {
+                        read: true,
+                        updatedAt: serverTimestamp()
+                    })
+                })
+
+                await batch.commit()
+                return { success: true, updatedCount: snapshot.docs.length }
+            } catch (error) {
+                console.error('Mark all as read error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete a notification
+        delete: async (notificationId) => {
+            try {
+                await ensureAuthUser()
+                const notificationRef = doc(db, 'notifications', notificationId)
+                await deleteDoc(notificationRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Delete notification error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete all notifications for a user
+        deleteAll: async (userId) => {
+            try {
+                await ensureAuthUser()
+                const q = query(
+                    collection(db, 'notifications'),
+                    where('userId', '==', userId)
+                )
+                const snapshot = await getDocs(q)
+                const batch = writeBatch(db)
+                
+                snapshot.docs.forEach((doc) => {
+                    batch.delete(doc.ref)
+                })
+
+                await batch.commit()
+                return { success: true, deletedCount: snapshot.docs.length }
+            } catch (error) {
+                console.error('Delete all notifications error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Real-time listener for user notifications
+        subscribe: (userId, callback, options = {}) => {
+            try {
+                const {
+                    limit: notificationLimit = 50,
+                    readStatus = null
+                } = options
+
+                let q = query(
+                    collection(db, 'notifications'),
+                    where('userId', '==', userId),
+                    orderBy('createdAt', 'desc')
+                )
+
+                if (readStatus !== null) {
+                    q = query(q, where('read', '==', readStatus))
+                }
+
+                q = query(q, limit(notificationLimit))
+
+                return onSnapshot(
+                    q,
+                    (snapshot) => {
+                        const notifications = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }))
+                        callback(notifications)
+                    },
+                    (error) => {
+                        console.error('Notifications subscription error:', error)
+                        callback([])
+                    }
+                )
+            } catch (error) {
+                console.error('Subscribe notifications error:', error)
+                return () => {} // Return empty unsubscribe function
+            }
+        },
+    },
 }
 
 // Utility functions for data processing

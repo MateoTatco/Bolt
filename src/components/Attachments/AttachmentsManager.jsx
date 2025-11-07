@@ -6,6 +6,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, o
 import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import logActivity from '@/utils/activityLogger'
+import { notifyAttachmentAdded, getCurrentUserId } from '@/utils/notificationHelper'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
@@ -166,6 +167,21 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     message: `uploaded file ${file.name}`,
                     metadata: { path }
                 })
+                
+                // Notify users about new attachment
+                // TODO: Get actual users to notify (team members, watchers, etc.)
+                // For now, skip notification as we don't have a user list
+                // const currentUserId = getCurrentUserId()
+                // if (currentUserId) {
+                //     await notifyAttachmentAdded({
+                //         userIds: [/* users to notify */],
+                //         entityType,
+                //         entityId,
+                //         entityName: '', // Would need to fetch entity name
+                //         fileName: file.name,
+                //         uploadedBy: currentUserId
+                //     })
+                // }
             }
         } catch (e) {
             console.error('Upload failed:', e)

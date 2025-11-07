@@ -10,6 +10,7 @@ import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboar
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import { APP_NAME } from '@/constants/app.constant'
 import logActivity from '@/utils/activityLogger'
+import { notifyStatusChanged, notifyEntityUpdated, getCurrentUserId } from '@/utils/notificationHelper'
 
 const LeadDetail = () => {
     const { leadId } = useParams()
@@ -476,6 +477,26 @@ const LeadDetail = () => {
                                                         Object.keys(next).forEach((k)=>{
                                                             if (String(prev[k]) !== String(next[k])) changes[k] = [prev[k], next[k]]
                                                         })
+                                                        
+                                                        // Check if status changed
+                                                        const statusChanged = prev.status !== next.status
+                                                        const currentUserId = getCurrentUserId()
+                                                        
+                                                        // Notify on status change (for now, we'll notify all users - can be refined later)
+                                                        if (statusChanged && currentUserId) {
+                                                            // TODO: Get actual users to notify (team members, watchers, etc.)
+                                                            // For now, skip notification as we don't have a user list
+                                                            // await notifyStatusChanged({
+                                                            //     userIds: [/* users to notify */],
+                                                            //     entityType: 'lead',
+                                                            //     entityId: lead.id,
+                                                            //     entityName: lead.companyName,
+                                                            //     oldStatus: prev.status,
+                                                            //     newStatus: next.status,
+                                                            //     changedBy: currentUserId
+                                                            // })
+                                                        }
+                                                        
                                                         await logActivity('lead', lead.id, { type: 'update', message: 'updated lead information', metadata: { changes } })
                                                     } catch (error) {
                                                         console.error('Error updating lead:', error)

@@ -25,6 +25,7 @@ import {
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, getDocs, where } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
 import logActivity from '@/utils/activityLogger'
+import { notifyTaskAssigned, notifyTaskCompleted, notifyTaskUpdated, getCurrentUserId } from '@/utils/notificationHelper'
 
 const TasksManager = ({ entityType, entityId }) => {
     const [sections, setSections] = useState([])
@@ -38,8 +39,10 @@ const TasksManager = ({ entityType, entityId }) => {
     const [selectedTask, setSelectedTask] = useState(null)
     const [sectionToDelete, setSectionToDelete] = useState(null)
     const [members, setMembers] = useState([])
+    const [selectedSectionForMembers, setSelectedSectionForMembers] = useState(null)
     const [searchTerm, setSearchTerm] = useState('')
     const [newSectionName, setNewSectionName] = useState('')
+    const [availableUsers, setAvailableUsers] = useState([])
     
     // Task form state
     const [taskForm, setTaskForm] = useState({
@@ -50,13 +53,30 @@ const TasksManager = ({ entityType, entityId }) => {
         assignee: null
     })
 
-    // Mock users for now - will be replaced with actual user management
-    const availableUsers = [
-        { id: 'admin', name: 'Admin', email: 'admin@tatco.com' },
-        { id: 'brett', name: 'Brett', email: 'brett@tatco.com' },
-        { id: 'simon', name: 'Simon', email: 'simon@tatco.com' },
-        { id: 'robb', name: 'Robb', email: 'robb@tatco.com' }
-    ]
+    // Get current user ID
+    const currentUserId = getCurrentUserId()
+    
+    // Load users from Firestore
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const usersRef = collection(db, 'users')
+                const snapshot = await getDocs(usersRef)
+                const users = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    name: doc.data().userName || doc.data().firstName || doc.data().displayName || 'Unknown User',
+                    email: doc.data().email || ''
+                }))
+                setAvailableUsers(users)
+            } catch (error) {
+                console.error('Error loading users:', error)
+                // Fallback to empty array if error
+                setAvailableUsers([])
+            }
+        }
+        
+        loadUsers()
+    }, [])
 
     const statusOptions = [
         { value: 'pending', label: 'Pending' },
@@ -86,7 +106,8 @@ const TasksManager = ({ entityType, entityId }) => {
         const unsubscribeSections = onSnapshot(sectionsQuery, (snapshot) => {
             const sectionsData = snapshot.docs.map(doc => ({
                 id: doc.id,
-                ...doc.data()
+                ...doc.data(),
+                members: doc.data().members || [] // Ensure members array exists
             }))
             setSections(sectionsData)
         })
@@ -194,6 +215,7 @@ const TasksManager = ({ entityType, entityId }) => {
         try {
             const sectionTasks = tasks.filter(t => t.sectionId === selectedSection.id)
             const newOrder = sectionTasks.length
+            const currentUserId = getCurrentUserId()
 
             await addDoc(collection(db, `${entityType}s`, entityId, 'tasks'), {
                 name: taskForm.name,
@@ -205,8 +227,27 @@ const TasksManager = ({ entityType, entityId }) => {
                 order: newOrder,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-                createdBy: 'current-user' // TODO: Get from auth context
+                createdBy: currentUserId || 'current-user'
             })
+            
+            // Notify assignee if task is assigned
+            if (taskForm.assignee) {
+                console.log('Creating task assignment notification:', {
+                    assigneeId: taskForm.assignee,
+                    currentUserId,
+                    taskName: taskForm.name
+                })
+                const notificationResult = await notifyTaskAssigned({
+                    assigneeId: taskForm.assignee,
+                    taskName: taskForm.name,
+                    entityType,
+                    entityId,
+                    assignedBy: currentUserId,
+                    metadata: { sectionName: selectedSection.name },
+                    showToast: taskForm.assignee === currentUserId // Show toast if assigning to self
+                })
+                console.log('Task assignment notification result:', notificationResult)
+            }
             
             setTaskForm({
                 name: '',
@@ -225,12 +266,38 @@ const TasksManager = ({ entityType, entityId }) => {
     // Toggle task completion
     const handleToggleTask = async (taskId, currentStatus) => {
         const newStatus = currentStatus === 'completed' ? 'pending' : 'completed'
+        const currentUserId = getCurrentUserId()
         
         try {
+            const task = tasks.find(t => t.id === taskId)
             await updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', taskId), {
                 status: newStatus,
                 updatedAt: new Date()
             })
+            
+            // Notify when task is completed
+            if (newStatus === 'completed' && task) {
+                // Notify the assignee (or creator if no assignee)
+                const notifyUserId = task.assignee || task.createdBy || currentUserId
+                if (notifyUserId) {
+                    console.log('Creating task completion notification:', {
+                        notifyUserId,
+                        currentUserId,
+                        taskName: task.name
+                    })
+                    const notificationResult = await notifyTaskCompleted({
+                        userId: notifyUserId,
+                        taskName: task.name,
+                        entityType,
+                        entityId,
+                        completedBy: currentUserId,
+                        metadata: {},
+                        showToast: notifyUserId === currentUserId // Show toast if completing own task
+                    })
+                    console.log('Task completion notification result:', notificationResult)
+                }
+            }
+            
             await logActivity(entityType, entityId, { type: 'update', message: `marked task as ${newStatus}` })
         } catch (error) {
             console.error('Error updating task:', error)
@@ -242,6 +309,10 @@ const TasksManager = ({ entityType, entityId }) => {
         if (!taskForm.name.trim() || !selectedTask) return
 
         try {
+            const currentUserId = getCurrentUserId()
+            const oldAssignee = selectedTask.assignee
+            const newAssignee = taskForm.assignee
+            
             await updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', selectedTask.id), {
                 name: taskForm.name,
                 status: taskForm.status,
@@ -250,6 +321,64 @@ const TasksManager = ({ entityType, entityId }) => {
                 assignee: taskForm.assignee,
                 updatedAt: new Date()
             })
+            
+            // Notify if assignee changed
+            if (newAssignee && newAssignee !== oldAssignee) {
+                console.log('Creating task assignment change notification:', {
+                    newAssignee,
+                    oldAssignee,
+                    currentUserId,
+                    taskName: taskForm.name
+                })
+                const notificationResult = await notifyTaskAssigned({
+                    assigneeId: newAssignee,
+                    taskName: taskForm.name,
+                    entityType,
+                    entityId,
+                    assignedBy: currentUserId,
+                    metadata: {},
+                    showToast: newAssignee === currentUserId
+                })
+                console.log('Task assignment change notification result:', notificationResult)
+            }
+            
+            // Notify old assignee if they were removed
+            if (oldAssignee && oldAssignee !== newAssignee && oldAssignee !== currentUserId) {
+                console.log('Creating task assignment removal notification:', {
+                    oldAssignee,
+                    currentUserId,
+                    taskName: taskForm.name
+                })
+                const notificationResult = await notifyTaskUpdated({
+                    assigneeId: oldAssignee,
+                    taskName: taskForm.name,
+                    entityType,
+                    entityId,
+                    updatedBy: currentUserId,
+                    metadata: { change: 'assignment_removed' },
+                    showToast: false
+                })
+                console.log('Task assignment removal notification result:', notificationResult)
+            }
+            
+            // Notify current assignee if task was updated (but not assignment change)
+            if (newAssignee && newAssignee === oldAssignee && newAssignee !== currentUserId) {
+                console.log('Creating task update notification:', {
+                    assigneeId: newAssignee,
+                    currentUserId,
+                    taskName: taskForm.name
+                })
+                const notificationResult = await notifyTaskUpdated({
+                    assigneeId: newAssignee,
+                    taskName: taskForm.name,
+                    entityType,
+                    entityId,
+                    updatedBy: currentUserId,
+                    metadata: {},
+                    showToast: false
+                })
+                console.log('Task update notification result:', notificationResult)
+            }
             
             setTaskForm({
                 name: '',
@@ -342,17 +471,18 @@ const TasksManager = ({ entityType, entityId }) => {
                     </h2>
                     <div className="flex items-center space-x-2">
                         <UsersAvatarGroup 
-                            users={members.map(memberId => getUserById(memberId)).filter(Boolean)}
+                            users={(() => {
+                                // Get all unique members from all sections
+                                const allMembers = new Set()
+                                sections.forEach(section => {
+                                    if (section.members && Array.isArray(section.members)) {
+                                        section.members.forEach(memberId => allMembers.add(memberId))
+                                    }
+                                })
+                                return Array.from(allMembers).map(memberId => getUserById(memberId)).filter(Boolean)
+                            })()}
                             avatarProps={{ size: 24 }}
                         />
-                        <Button
-                            size="sm"
-                            variant="twoTone"
-                            icon={<HiOutlineUserAdd />}
-                            onClick={() => setIsAddMembersOpen(true)}
-                        >
-                            Add members
-                        </Button>
                     </div>
                 </div>
                 <Button
@@ -403,6 +533,19 @@ const TasksManager = ({ entityType, entityId }) => {
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="twoTone"
+                                                                icon={<HiOutlineUserAdd />}
+                                                                onClick={() => {
+                                                                    setSelectedSectionForMembers(section)
+                                                                    setMembers(section.members || [])
+                                                                    setIsAddMembersOpen(true)
+                                                                }}
+                                                                className="mr-2"
+                                                            >
+                                                                Members
+                                                            </Button>
                                                             <Button
                                                                 size="sm"
                                                                 variant="twoTone"
@@ -682,11 +825,18 @@ const TasksManager = ({ entityType, entityId }) => {
             </Dialog>
 
             {/* Add Members Dialog */}
-            <Dialog isOpen={isAddMembersOpen} onClose={() => setIsAddMembersOpen(false)} width={500}>
+            <Dialog isOpen={isAddMembersOpen} onClose={() => {
+                setIsAddMembersOpen(false)
+                setSelectedSectionForMembers(null)
+            }} width={500}>
                 <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-2">Add people</h3>
+                    <h3 className="text-lg font-semibold mb-2">
+                        {selectedSectionForMembers ? `Add people to "${selectedSectionForMembers.name}"` : 'Add people'}
+                    </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                        Invite existing team member to this project.
+                        {selectedSectionForMembers 
+                            ? `Invite existing team member to this section.`
+                            : 'Invite existing team member to all sections.'}
                     </p>
                     
                     <div className="space-y-4">
@@ -744,7 +894,38 @@ const TasksManager = ({ entityType, entityId }) => {
                         <div className="flex justify-end">
                             <Button
                                 variant="solid"
-                                onClick={() => setIsAddMembersOpen(false)}
+                                onClick={async () => {
+                                    try {
+                                        if (selectedSectionForMembers) {
+                                            // Save members to specific section
+                                            await updateDoc(
+                                                doc(db, `${entityType}s`, entityId, 'sections', selectedSectionForMembers.id),
+                                                {
+                                                    members: members,
+                                                    updatedAt: new Date()
+                                                }
+                                            )
+                                            console.log('Members saved to section:', selectedSectionForMembers.name, members)
+                                        } else {
+                                            // Save members to all sections (global)
+                                            const updatePromises = sections.map(section =>
+                                                updateDoc(
+                                                    doc(db, `${entityType}s`, entityId, 'sections', section.id),
+                                                    {
+                                                        members: members,
+                                                        updatedAt: new Date()
+                                                    }
+                                                )
+                                            )
+                                            await Promise.all(updatePromises)
+                                            console.log('Members saved to all sections:', members)
+                                        }
+                                        setIsAddMembersOpen(false)
+                                        setSelectedSectionForMembers(null)
+                                    } catch (error) {
+                                        console.error('Error saving members:', error)
+                                    }
+                                }}
                                 className="w-full"
                             >
                                 Done
