@@ -2,6 +2,8 @@ import { db } from '@/configs/firebase.config'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { useSessionUser } from '@/store/authStore'
 import { getAuth } from 'firebase/auth'
+import { notifyActivityAdded, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
+import { getDoc, doc } from 'firebase/firestore'
 
 export const getCurrentActor = () => {
     try {
@@ -39,6 +41,36 @@ export async function logActivity(entityType, entityId, payload) {
     }
     try {
         await addDoc(collection(db, `${entityType}s`, entityId, 'activities'), data)
+        
+        // Notify users about new activity
+        const currentUserId = getCurrentUserId()
+        if (currentUserId && payload?.message) {
+            try {
+                // Get entity name
+                const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                const entityData = entityDoc.data()
+                const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
+                
+                // Get users to notify
+                const userIds = await getUsersToNotify(entityType, entityId)
+                
+                if (userIds.length > 0) {
+                    await notifyActivityAdded({
+                        userIds,
+                        entityType,
+                        entityId,
+                        entityName,
+                        activityMessage: payload.message,
+                        activityType: payload.type || 'info',
+                        createdBy: currentUserId,
+                        metadata: payload.metadata || {}
+                    })
+                }
+            } catch (notifyError) {
+                console.error('Error notifying about activity:', notifyError)
+                // Don't fail the activity logging if notification fails
+            }
+        }
     } catch (e) {
         console.error('logActivity failed', e)
     }

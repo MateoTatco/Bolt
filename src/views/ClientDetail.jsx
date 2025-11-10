@@ -9,6 +9,9 @@ import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboar
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import { APP_NAME } from '@/constants/app.constant'
 import logActivity from '@/utils/activityLogger'
+import { notifyStatusChanged, notifyEntityUpdated, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
+import EntityMembersManager from '@/components/shared/EntityMembersManager'
+import EntityMembersDisplay from '@/components/shared/EntityMembersDisplay'
 
 const ClientDetail = () => {
     const { clientId } = useParams()
@@ -332,11 +335,24 @@ const ClientDetail = () => {
                         <div className="space-y-12">
                             {/* Client Overview - Seamless */}
                             <div className="space-y-6">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                                        Client Overview
-                                    </h2>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                            Client Overview
+                                        </h2>
+                                    </div>
+                                    <EntityMembersManager
+                                        entityType="client"
+                                        entityId={client.id}
+                                        entityName={client.clientName}
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                    <EntityMembersDisplay
+                                        entityType="client"
+                                        entityId={client.id}
+                                    />
                                 </div>
                                 <div className="prose prose-lg max-w-none dark:prose-invert leading-relaxed text-gray-700 dark:text-gray-300">
                                     <div 
@@ -434,6 +450,23 @@ const ClientDetail = () => {
                                                         Object.keys(next).forEach((k)=>{
                                                             if (String(prev[k]) !== String(next[k])) changes[k] = [prev[k], next[k]]
                                                         })
+                                                        
+                                                        // Get users to notify
+                                                        const userIds = await getUsersToNotify('client', client.id)
+                                                        const currentUserId = getCurrentUserId()
+                                                        
+                                                        // Notify on entity update (if there are changes and users to notify)
+                                                        if (Object.keys(changes).length > 0 && currentUserId && userIds.length > 0) {
+                                                            await notifyEntityUpdated({
+                                                                userIds,
+                                                                entityType: 'client',
+                                                                entityId: client.id,
+                                                                entityName: client.clientName,
+                                                                updatedBy: currentUserId,
+                                                                changes
+                                                            })
+                                                        }
+                                                        
                                                         await logActivity('client', client.id, { type: 'update', message: 'updated client information', metadata: { changes } })
                                                     } catch (e) {
                                                         console.error('Error updating client:', e)

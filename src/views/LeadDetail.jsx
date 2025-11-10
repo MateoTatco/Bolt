@@ -10,7 +10,9 @@ import { HiOutlineArrowLeft, HiOutlineUser, HiOutlineCalendar, HiOutlineClipboar
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import { APP_NAME } from '@/constants/app.constant'
 import logActivity from '@/utils/activityLogger'
-import { notifyStatusChanged, notifyEntityUpdated, getCurrentUserId } from '@/utils/notificationHelper'
+import { notifyStatusChanged, notifyEntityUpdated, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
+import EntityMembersManager from '@/components/shared/EntityMembersManager'
+import EntityMembersDisplay from '@/components/shared/EntityMembersDisplay'
 
 const LeadDetail = () => {
     const { leadId } = useParams()
@@ -352,11 +354,24 @@ const LeadDetail = () => {
                         <div className="space-y-12">
                             {/* Lead Overview - Seamless */}
                             <div className="space-y-6">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                                        Lead Overview
-                                    </h2>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                            Lead Overview
+                                        </h2>
+                                    </div>
+                                    <EntityMembersManager
+                                        entityType="lead"
+                                        entityId={lead.id}
+                                        entityName={lead.companyName}
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                    <EntityMembersDisplay
+                                        entityType="lead"
+                                        entityId={lead.id}
+                                    />
                                 </div>
                                 <div className="prose prose-lg max-w-none dark:prose-invert leading-relaxed text-gray-700 dark:text-gray-300">
                                     <div 
@@ -482,19 +497,32 @@ const LeadDetail = () => {
                                                         const statusChanged = prev.status !== next.status
                                                         const currentUserId = getCurrentUserId()
                                                         
-                                                        // Notify on status change (for now, we'll notify all users - can be refined later)
-                                                        if (statusChanged && currentUserId) {
-                                                            // TODO: Get actual users to notify (team members, watchers, etc.)
-                                                            // For now, skip notification as we don't have a user list
-                                                            // await notifyStatusChanged({
-                                                            //     userIds: [/* users to notify */],
-                                                            //     entityType: 'lead',
-                                                            //     entityId: lead.id,
-                                                            //     entityName: lead.companyName,
-                                                            //     oldStatus: prev.status,
-                                                            //     newStatus: next.status,
-                                                            //     changedBy: currentUserId
-                                                            // })
+                                                        // Get users to notify
+                                                        const userIds = await getUsersToNotify('lead', lead.id)
+                                                        
+                                                        // Notify on status change
+                                                        if (statusChanged && currentUserId && userIds.length > 0) {
+                                                            await notifyStatusChanged({
+                                                                userIds,
+                                                                entityType: 'lead',
+                                                                entityId: lead.id,
+                                                                entityName: lead.companyName,
+                                                                oldStatus: prev.status || 'N/A',
+                                                                newStatus: next.status || 'N/A',
+                                                                changedBy: currentUserId
+                                                            })
+                                                        }
+                                                        
+                                                        // Notify on entity update (if there are changes and users to notify)
+                                                        if (Object.keys(changes).length > 0 && currentUserId && userIds.length > 0) {
+                                                            await notifyEntityUpdated({
+                                                                userIds,
+                                                                entityType: 'lead',
+                                                                entityId: lead.id,
+                                                                entityName: lead.companyName,
+                                                                updatedBy: currentUserId,
+                                                                changes
+                                                            })
                                                         }
                                                         
                                                         await logActivity('lead', lead.id, { type: 'update', message: 'updated lead information', metadata: { changes } })

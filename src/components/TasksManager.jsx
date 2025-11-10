@@ -232,12 +232,7 @@ const TasksManager = ({ entityType, entityId }) => {
             
             // Notify assignee if task is assigned
             if (taskForm.assignee) {
-                console.log('Creating task assignment notification:', {
-                    assigneeId: taskForm.assignee,
-                    currentUserId,
-                    taskName: taskForm.name
-                })
-                const notificationResult = await notifyTaskAssigned({
+                await notifyTaskAssigned({
                     assigneeId: taskForm.assignee,
                     taskName: taskForm.name,
                     entityType,
@@ -246,7 +241,6 @@ const TasksManager = ({ entityType, entityId }) => {
                     metadata: { sectionName: selectedSection.name },
                     showToast: taskForm.assignee === currentUserId // Show toast if assigning to self
                 })
-                console.log('Task assignment notification result:', notificationResult)
             }
             
             setTaskForm({
@@ -280,12 +274,7 @@ const TasksManager = ({ entityType, entityId }) => {
                 // Notify the assignee (or creator if no assignee)
                 const notifyUserId = task.assignee || task.createdBy || currentUserId
                 if (notifyUserId) {
-                    console.log('Creating task completion notification:', {
-                        notifyUserId,
-                        currentUserId,
-                        taskName: task.name
-                    })
-                    const notificationResult = await notifyTaskCompleted({
+                    await notifyTaskCompleted({
                         userId: notifyUserId,
                         taskName: task.name,
                         entityType,
@@ -294,7 +283,6 @@ const TasksManager = ({ entityType, entityId }) => {
                         metadata: {},
                         showToast: notifyUserId === currentUserId // Show toast if completing own task
                     })
-                    console.log('Task completion notification result:', notificationResult)
                 }
             }
             
@@ -324,13 +312,7 @@ const TasksManager = ({ entityType, entityId }) => {
             
             // Notify if assignee changed
             if (newAssignee && newAssignee !== oldAssignee) {
-                console.log('Creating task assignment change notification:', {
-                    newAssignee,
-                    oldAssignee,
-                    currentUserId,
-                    taskName: taskForm.name
-                })
-                const notificationResult = await notifyTaskAssigned({
+                await notifyTaskAssigned({
                     assigneeId: newAssignee,
                     taskName: taskForm.name,
                     entityType,
@@ -339,17 +321,11 @@ const TasksManager = ({ entityType, entityId }) => {
                     metadata: {},
                     showToast: newAssignee === currentUserId
                 })
-                console.log('Task assignment change notification result:', notificationResult)
             }
             
             // Notify old assignee if they were removed
             if (oldAssignee && oldAssignee !== newAssignee && oldAssignee !== currentUserId) {
-                console.log('Creating task assignment removal notification:', {
-                    oldAssignee,
-                    currentUserId,
-                    taskName: taskForm.name
-                })
-                const notificationResult = await notifyTaskUpdated({
+                await notifyTaskUpdated({
                     assigneeId: oldAssignee,
                     taskName: taskForm.name,
                     entityType,
@@ -358,17 +334,11 @@ const TasksManager = ({ entityType, entityId }) => {
                     metadata: { change: 'assignment_removed' },
                     showToast: false
                 })
-                console.log('Task assignment removal notification result:', notificationResult)
             }
             
             // Notify current assignee if task was updated (but not assignment change)
             if (newAssignee && newAssignee === oldAssignee && newAssignee !== currentUserId) {
-                console.log('Creating task update notification:', {
-                    assigneeId: newAssignee,
-                    currentUserId,
-                    taskName: taskForm.name
-                })
-                const notificationResult = await notifyTaskUpdated({
+                await notifyTaskUpdated({
                     assigneeId: newAssignee,
                     taskName: taskForm.name,
                     entityType,
@@ -377,7 +347,6 @@ const TasksManager = ({ entityType, entityId }) => {
                     metadata: {},
                     showToast: false
                 })
-                console.log('Task update notification result:', notificationResult)
             }
             
             setTaskForm({
@@ -905,7 +874,6 @@ const TasksManager = ({ entityType, entityId }) => {
                                                     updatedAt: new Date()
                                                 }
                                             )
-                                            console.log('Members saved to section:', selectedSectionForMembers.name, members)
                                         } else {
                                             // Save members to all sections (global)
                                             const updatePromises = sections.map(section =>
@@ -918,7 +886,6 @@ const TasksManager = ({ entityType, entityId }) => {
                                                 )
                                             )
                                             await Promise.all(updatePromises)
-                                            console.log('Members saved to all sections:', members)
                                         }
                                         setIsAddMembersOpen(false)
                                         setSelectedSectionForMembers(null)

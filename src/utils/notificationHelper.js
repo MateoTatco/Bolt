@@ -4,6 +4,8 @@ import { NOTIFICATION_TYPES, ENTITY_TYPES } from '@/constants/notification.const
 import { getAuth } from 'firebase/auth'
 import toast from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
+import { db } from '@/configs/firebase.config'
+import { collection, getDocs, getDoc, doc } from 'firebase/firestore'
 
 /**
  * Check if a notification type is enabled for a user
@@ -66,7 +68,6 @@ export async function createNotification({
     // Check user preferences before creating notification
     const isEnabled = await isNotificationEnabled(userId, type)
     if (!isEnabled) {
-        console.log('Notification skipped due to user preferences:', { userId, type, title })
         return { success: true, skipped: true, reason: 'User preference disabled' }
     }
 
@@ -84,8 +85,6 @@ export async function createNotification({
 
         if (!result.success) {
             console.error('Failed to create notification:', result.error, { userId, type, title })
-        } else {
-            console.log('Notification created successfully:', { userId, type, title })
         }
 
         return result
@@ -357,13 +356,213 @@ export function getCurrentUserId() {
 
 /**
  * Get users to notify for an entity
- * This is a placeholder - in the future, this could check entity assignments,
- * watchers, or team members
+ * Fetches members from entity-level members array and all sections
+ * @param {string} entityType - Entity type (lead, client, project)
+ * @param {string} entityId - Entity ID
+ * @returns {Promise<string[]>} Array of user IDs to notify
  */
-export function getUsersToNotify(entityType, entityId) {
-    // For now, return empty array - this should be implemented based on
-    // entity assignments, watchers, or team members
-    // TODO: Implement based on entity-specific logic
-    return []
+export async function getUsersToNotify(entityType, entityId) {
+    if (!entityType || !entityId) {
+        return []
+    }
+
+    try {
+        const memberIds = new Set()
+        
+        // First, check for entity-level members (stored directly on the entity document)
+        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+        if (entityDoc.exists()) {
+            const entityData = entityDoc.data()
+            if (entityData.members && Array.isArray(entityData.members)) {
+                entityData.members.forEach(memberId => {
+                    if (memberId) {
+                        memberIds.add(memberId)
+                    }
+                })
+            }
+        }
+        
+        // Also get members from all sections (for backward compatibility)
+        const sectionsRef = collection(db, `${entityType}s`, entityId, 'sections')
+        const sectionsSnapshot = await getDocs(sectionsRef)
+        
+        sectionsSnapshot.forEach(doc => {
+            const sectionData = doc.data()
+            if (sectionData.members && Array.isArray(sectionData.members)) {
+                sectionData.members.forEach(memberId => {
+                    if (memberId) {
+                        memberIds.add(memberId)
+                    }
+                })
+            }
+        })
+        
+        return Array.from(memberIds)
+    } catch (error) {
+        console.error('Error getting users to notify:', error)
+        return []
+    }
+}
+
+/**
+ * Create notification for entity creation
+ */
+export async function notifyEntityCreated({
+    userIds,
+    entityType,
+    entityId,
+    entityName,
+    createdBy,
+    metadata = {}
+}) {
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return { success: false, error: 'User IDs required' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.ENTITY_CREATED,
+                title: `New ${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Created`,
+                message: `${entityName} has been created`,
+                entityType,
+                entityId,
+                relatedUserId: createdBy,
+                metadata: {
+                    entityName,
+                    ...metadata
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for entity deletion
+ */
+export async function notifyEntityDeleted({
+    userIds,
+    entityType,
+    entityId,
+    entityName,
+    deletedBy,
+    metadata = {}
+}) {
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return { success: false, error: 'User IDs required' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.ENTITY_DELETED,
+                title: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Deleted`,
+                message: `${entityName} has been deleted`,
+                entityType,
+                entityId,
+                relatedUserId: deletedBy,
+                metadata: {
+                    entityName,
+                    ...metadata
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for attachment deletion
+ */
+export async function notifyAttachmentDeleted({
+    userIds,
+    entityType,
+    entityId,
+    entityName,
+    fileName,
+    deletedBy,
+    metadata = {}
+}) {
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return { success: false, error: 'User IDs required' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.ATTACHMENT_DELETED,
+                title: 'Attachment Deleted',
+                message: `File "${fileName}" has been deleted from ${entityName}`,
+                entityType,
+                entityId,
+                relatedUserId: deletedBy,
+                metadata: {
+                    entityName,
+                    fileName,
+                    ...metadata
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for activity added
+ */
+export async function notifyActivityAdded({
+    userIds,
+    entityType,
+    entityId,
+    entityName,
+    activityMessage,
+    activityType,
+    createdBy,
+    metadata = {}
+}) {
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return { success: false, error: 'User IDs required' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.ACTIVITY_ADDED,
+                title: 'New Activity',
+                message: activityMessage || `New activity on ${entityName}`,
+                entityType,
+                entityId,
+                relatedUserId: createdBy,
+                metadata: {
+                    entityName,
+                    activityMessage,
+                    activityType,
+                    ...metadata
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
 }
 

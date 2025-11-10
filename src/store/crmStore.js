@@ -5,6 +5,8 @@ import { EnhancedFirebaseService } from '@/services/EnhancedFirebaseService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import { db } from '@/configs/firebase.config'
+import { notifyEntityCreated, notifyEntityDeleted, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
+import { getAllUserIds } from '@/utils/userHelper'
 import { collection, onSnapshot, doc, query, orderBy, where } from 'firebase/firestore'
 
 export const useCrmStore = create((set, get) => ({
@@ -104,9 +106,17 @@ export const useCrmStore = create((set, get) => ({
             // Add to history for rollback
             get().addToHistory('create_lead', { id: 'temp', data: leadData })
             
-            const response = await FirebaseDbService.leads.create(leadData)
+            // Get all user IDs to set as default members
+            const allUserIds = await getAllUserIds()
+            const leadDataWithMembers = {
+                ...leadData,
+                members: allUserIds // Set all users as default members
+            }
+            
+            const response = await FirebaseDbService.leads.create(leadDataWithMembers)
             if (response.success) {
                 const newLead = response.data
+                const currentUserId = getCurrentUserId()
                 
                 set((state) => ({
                     leads: [...state.leads, newLead],
@@ -115,6 +125,17 @@ export const useCrmStore = create((set, get) => ({
                 
                 // Cache data for offline use
                 get().cacheData()
+                
+                // Notify all users about new lead creation
+                if (currentUserId && allUserIds.length > 0) {
+                    await notifyEntityCreated({
+                        userIds: allUserIds,
+                        entityType: 'lead',
+                        entityId: newLead.id,
+                        entityName: leadData.companyName || 'Lead',
+                        createdBy: currentUserId
+                    })
+                }
                 
                 toast.push(
                     React.createElement(
@@ -326,6 +347,11 @@ export const useCrmStore = create((set, get) => ({
                 })
             }
             
+            // Get users to notify before deletion (we need sections before they're deleted)
+            const userIds = await getUsersToNotify('lead', id)
+            const currentUserId = getCurrentUserId()
+            const leadName = originalLead?.companyName || 'Lead'
+            
             console.log('Deleting lead:', id)
             const response = await FirebaseDbService.leads.delete(id)
             console.log('Delete response:', response)
@@ -338,6 +364,17 @@ export const useCrmStore = create((set, get) => ({
                 
                 // Cache data for offline use
                 get().cacheData()
+                
+                // Notify users about lead deletion
+                if (userIds.length > 0 && currentUserId) {
+                    await notifyEntityDeleted({
+                        userIds,
+                        entityType: 'lead',
+                        entityId: id,
+                        entityName: leadName,
+                        deletedBy: currentUserId
+                    })
+                }
                 
                 toast.push(
                     React.createElement(
@@ -395,14 +432,33 @@ export const useCrmStore = create((set, get) => ({
     addClient: async (clientData) => {
         set({ loading: true, error: null })
         try {
-            const response = await FirebaseDbService.clients.create(clientData)
+            // Get all user IDs to set as default members
+            const allUserIds = await getAllUserIds()
+            const clientDataWithMembers = {
+                ...clientData,
+                members: allUserIds // Set all users as default members
+            }
+            
+            const response = await FirebaseDbService.clients.create(clientDataWithMembers)
             if (response.success) {
                 const newClient = response.data
+                const currentUserId = getCurrentUserId()
                 
                 set((state) => ({
                     clients: [...state.clients, newClient],
                     loading: false
                 }))
+                
+                // Notify all users about new client creation
+                if (currentUserId && allUserIds.length > 0) {
+                    await notifyEntityCreated({
+                        userIds: allUserIds,
+                        entityType: 'client',
+                        entityId: newClient.id,
+                        entityName: clientData.clientName || 'Client',
+                        createdBy: currentUserId
+                    })
+                }
                 
                 toast.push(
                     React.createElement(
@@ -477,12 +533,31 @@ export const useCrmStore = create((set, get) => ({
     deleteClient: async (id) => {
         set({ loading: true, error: null })
         try {
+            // Get the client before deletion for notification
+            const originalClient = get().clients.find(c => c.id === id)
+            const clientName = originalClient?.clientName || 'Client'
+            
+            // Get users to notify before deletion
+            const userIds = await getUsersToNotify('client', id)
+            const currentUserId = getCurrentUserId()
+            
             const response = await FirebaseDbService.clients.delete(id)
             if (response.success) {
                 set((state) => ({
                     clients: state.clients.filter((c) => c.id !== id),
                     loading: false
                 }))
+                
+                // Notify users about client deletion
+                if (userIds.length > 0 && currentUserId) {
+                    await notifyEntityDeleted({
+                        userIds,
+                        entityType: 'client',
+                        entityId: id,
+                        entityName: clientName,
+                        deletedBy: currentUserId
+                    })
+                }
                 
                 toast.push(
                     React.createElement(

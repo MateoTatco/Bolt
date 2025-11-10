@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Dialog, Input, Select, Tag, Tooltip, Avatar, Alert, Dropdown } from '@/components/ui'
 import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft } from 'react-icons/hi'
 import { db, storage } from '@/configs/firebase.config'
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs } from 'firebase/firestore'
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs, getDoc } from 'firebase/firestore'
 import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import logActivity from '@/utils/activityLogger'
-import { notifyAttachmentAdded, getCurrentUserId } from '@/utils/notificationHelper'
+import { notifyAttachmentAdded, notifyAttachmentDeleted, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
@@ -169,19 +169,32 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 })
                 
                 // Notify users about new attachment
-                // TODO: Get actual users to notify (team members, watchers, etc.)
-                // For now, skip notification as we don't have a user list
-                // const currentUserId = getCurrentUserId()
-                // if (currentUserId) {
-                //     await notifyAttachmentAdded({
-                //         userIds: [/* users to notify */],
-                //         entityType,
-                //         entityId,
-                //         entityName: '', // Would need to fetch entity name
-                //         fileName: file.name,
-                //         uploadedBy: currentUserId
-                //     })
-                // }
+                const currentUserId = getCurrentUserId()
+                if (currentUserId) {
+                    try {
+                        // Get entity name
+                        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                        const entityData = entityDoc.data()
+                        const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
+                        
+                        // Get users to notify
+                        const userIds = await getUsersToNotify(entityType, entityId)
+                        
+                        if (userIds.length > 0) {
+                            await notifyAttachmentAdded({
+                                userIds,
+                                entityType,
+                                entityId,
+                                entityName,
+                                fileName: file.name,
+                                uploadedBy: currentUserId
+                            })
+                        }
+                    } catch (notifyError) {
+                        console.error('Error notifying about attachment:', notifyError)
+                        // Don't fail the upload if notification fails
+                    }
+                }
             }
         } catch (e) {
             console.error('Upload failed:', e)
@@ -276,6 +289,34 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     type: 'delete',
                     message: `deleted file ${confirmDelete.name}`,
                 })
+                
+                // Notify users about attachment deletion
+                const currentUserId = getCurrentUserId()
+                if (currentUserId) {
+                    try {
+                        // Get entity name
+                        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                        const entityData = entityDoc.data()
+                        const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
+                        
+                        // Get users to notify
+                        const userIds = await getUsersToNotify(entityType, entityId)
+                        
+                        if (userIds.length > 0) {
+                            await notifyAttachmentDeleted({
+                                userIds,
+                                entityType,
+                                entityId,
+                                entityName,
+                                fileName: confirmDelete.name,
+                                deletedBy: currentUserId
+                            })
+                        }
+                    } catch (notifyError) {
+                        console.error('Error notifying about attachment deletion:', notifyError)
+                        // Don't fail the deletion if notification fails
+                    }
+                }
             }
         } catch (e) {
             console.error('Delete failed:', e)

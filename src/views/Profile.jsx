@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
-import { Card, Button, Input, Form, FormItem, FormContainer, Avatar, Switcher } from '@/components/ui'
+import { Card, Button, Input, Form, FormItem, FormContainer, Avatar, Switcher, Select } from '@/components/ui'
 import PasswordInput from '@/components/shared/PasswordInput'
 import { useSessionUser } from '@/store/authStore'
 import { PiUserDuotone, PiLockDuotone, PiBellDuotone } from 'react-icons/pi'
@@ -42,6 +42,34 @@ const Profile = () => {
     // Notification preferences state
     const [notificationPreferences, setNotificationPreferences] = useState({})
     const [isSavingPreferences, setIsSavingPreferences] = useState(false)
+    
+    // Time-based notification settings
+    const timeOptions = [
+        { value: '15m', label: '15 minutes before' },
+        { value: '30m', label: '30 minutes before' },
+        { value: '1h', label: '1 hour before' },
+        { value: '2h', label: '2 hours before' },
+        { value: '4h', label: '4 hours before' },
+        { value: '6h', label: '6 hours before' },
+        { value: '12h', label: '12 hours before' },
+        { value: '1d', label: '1 day before' },
+        { value: '2d', label: '2 days before' },
+        { value: '3d', label: '3 days before' },
+        { value: '1w', label: '1 week before' },
+        { value: '2w', label: '2 weeks before' },
+    ]
+    
+    const overdueTimeOptions = [
+        { value: '0h', label: 'Immediately when overdue' },
+        { value: '1h', label: '1 hour after overdue' },
+        { value: '2h', label: '2 hours after overdue' },
+        { value: '4h', label: '4 hours after overdue' },
+        { value: '6h', label: '6 hours after overdue' },
+        { value: '12h', label: '12 hours after overdue' },
+        { value: '1d', label: '1 day after overdue' },
+        { value: '2d', label: '2 days after overdue' },
+        { value: '1w', label: '1 week after overdue' },
+    ]
 
     // Load user profile from Firestore on mount (only once)
     useEffect(() => {
@@ -73,13 +101,20 @@ const Profile = () => {
                         
                         // Load notification preferences
                         if (profileData.notificationPreferences) {
-                            setNotificationPreferences(profileData.notificationPreferences)
+                            const prefs = profileData.notificationPreferences
+                            // Ensure time settings exist
+                            if (!prefs.task_due_soon_time) prefs.task_due_soon_time = '1d'
+                            if (!prefs.task_overdue_time) prefs.task_overdue_time = '0h'
+                            setNotificationPreferences(prefs)
                         } else {
-                            // Default: all enabled
+                            // Default: all enabled with default time settings
                             const defaultPreferences = {}
                             Object.values(NOTIFICATION_TYPES).forEach(type => {
                                 defaultPreferences[type] = true
                             })
+                            // Default time settings
+                            defaultPreferences.task_due_soon_time = '1d' // 1 day before
+                            defaultPreferences.task_overdue_time = '0h' // Immediately
                             setNotificationPreferences(defaultPreferences)
                         }
                         
@@ -782,26 +817,66 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Due Soon</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is approaching its due date</p>
+                                            <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="font-medium text-gray-900 dark:text-gray-100">Task Due Soon</p>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is approaching its due date</p>
+                                                    </div>
+                                                    <Switcher
+                                                        checked={notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false}
+                                                        onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_DUE_SOON, checked)}
+                                                    />
                                                 </div>
-                                                <Switcher
-                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false}
-                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_DUE_SOON, checked)}
-                                                />
+                                                {notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false && (
+                                                    <div className="pl-4 border-l-2 border-primary/20">
+                                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                                                            Notify me:
+                                                        </label>
+                                                        <Select
+                                                            size="sm"
+                                                            options={timeOptions}
+                                                            value={timeOptions.find(opt => opt.value === (notificationPreferences.task_due_soon_time || '1d'))}
+                                                            onChange={(option) => {
+                                                                setNotificationPreferences(prev => ({
+                                                                    ...prev,
+                                                                    task_due_soon_time: option.value
+                                                                }))
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Overdue</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task becomes overdue</p>
+                                            <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="font-medium text-gray-900 dark:text-gray-100">Task Overdue</p>
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task becomes overdue</p>
+                                                    </div>
+                                                    <Switcher
+                                                        checked={notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false}
+                                                        onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_OVERDUE, checked)}
+                                                    />
                                                 </div>
-                                                <Switcher
-                                                    checked={notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false}
-                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.TASK_OVERDUE, checked)}
-                                                />
+                                                {notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false && (
+                                                    <div className="pl-4 border-l-2 border-primary/20">
+                                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                                                            Notify me:
+                                                        </label>
+                                                        <Select
+                                                            size="sm"
+                                                            options={overdueTimeOptions}
+                                                            value={overdueTimeOptions.find(opt => opt.value === (notificationPreferences.task_overdue_time || '0h'))}
+                                                            onChange={(option) => {
+                                                                setNotificationPreferences(prev => ({
+                                                                    ...prev,
+                                                                    task_overdue_time: option.value
+                                                                }))
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

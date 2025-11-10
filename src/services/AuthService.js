@@ -14,9 +14,23 @@ export async function apiSignIn(data) {
             const profileResult = await FirebaseDbService.users.getById(userId)
             if (profileResult.success && profileResult.data) {
                 userProfile = profileResult.data
+            } else {
+                // User doesn't exist in Firestore, create it
+                await FirebaseDbService.users.upsert(userId, {
+                    email: result.user.email,
+                    userName: result.user.displayName || email.split('@')[0] || '',
+                    firstName: '',
+                    phoneNumber: '',
+                    avatar: result.user.photoURL || '',
+                })
+                // Reload the profile
+                const newProfileResult = await FirebaseDbService.users.getById(userId)
+                if (newProfileResult.success && newProfileResult.data) {
+                    userProfile = newProfileResult.data
+                }
             }
         } catch (error) {
-            console.warn('Could not load user profile from Firestore:', error)
+            console.warn('Could not load/create user profile from Firestore:', error)
         }
         
         return {

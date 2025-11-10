@@ -8,6 +8,8 @@ import AttachmentsManager from '@/components/Attachments/AttachmentsManager'
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import { useProjectsStore } from '@/store/projectsStore'
 import logActivity from '@/utils/activityLogger'
+import EntityMembersManager from '@/components/shared/EntityMembersManager'
+import EntityMembersDisplay from '@/components/shared/EntityMembersDisplay'
 
 const marketOptions = [
     { value: 'OKC', label: 'OKC' },
@@ -428,9 +430,22 @@ const ProjectDetail = () => {
                         <div className="space-y-12">
                             {/* Project Overview (read-only) */}
                             <div className="space-y-6">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Project Overview</h2>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Project Overview</h2>
+                                    </div>
+                                    <EntityMembersManager
+                                        entityType="project"
+                                        entityId={project.id}
+                                        entityName={project.ProjectName || project.projectName || 'Project'}
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                    <EntityMembersDisplay
+                                        entityType="project"
+                                        entityId={project.id}
+                                    />
                                 </div>
                                 <Card>
                                     <div className="p-6 prose prose-lg max-w-none dark:prose-invert">
