@@ -350,7 +350,7 @@ const LeadDetail = () => {
                         </Alert>
                     )}
                     
-                    {activeTab === 'overview' && (
+                    {activeTab === 'overview' && lead && (
                         <div className="space-y-12">
                             {/* Lead Overview - Seamless */}
                             <div className="space-y-6">
@@ -361,18 +361,22 @@ const LeadDetail = () => {
                                             Lead Overview
                                         </h2>
                                     </div>
-                                    <EntityMembersManager
-                                        entityType="lead"
-                                        entityId={lead.id}
-                                        entityName={lead.companyName}
-                                    />
+                                    {lead && (
+                                        <EntityMembersManager
+                                            entityType="lead"
+                                            entityId={lead.id}
+                                            entityName={lead.companyName}
+                                        />
+                                    )}
                                 </div>
-                                <div className="mb-4">
-                                    <EntityMembersDisplay
-                                        entityType="lead"
-                                        entityId={lead.id}
-                                    />
-                                </div>
+                                {lead && (
+                                    <div className="mb-4">
+                                        <EntityMembersDisplay
+                                            entityType="lead"
+                                            entityId={lead.id}
+                                        />
+                                    </div>
+                                )}
                                 <div className="prose prose-lg max-w-none dark:prose-invert leading-relaxed text-gray-700 dark:text-gray-300">
                                     <div 
                                         key={editedContent}

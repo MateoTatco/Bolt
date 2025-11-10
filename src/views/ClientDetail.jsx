@@ -331,7 +331,7 @@ const ClientDetail = () => {
                         </Alert>
                     )}
                     
-                    {activeTab === 'overview' && (
+                    {activeTab === 'overview' && client && (
                         <div className="space-y-12">
                             {/* Client Overview - Seamless */}
                             <div className="space-y-6">
@@ -342,18 +342,22 @@ const ClientDetail = () => {
                                             Client Overview
                                         </h2>
                                     </div>
-                                    <EntityMembersManager
-                                        entityType="client"
-                                        entityId={client.id}
-                                        entityName={client.clientName}
-                                    />
+                                    {client && (
+                                        <EntityMembersManager
+                                            entityType="client"
+                                            entityId={client.id}
+                                            entityName={client.clientName}
+                                        />
+                                    )}
                                 </div>
-                                <div className="mb-4">
-                                    <EntityMembersDisplay
-                                        entityType="client"
-                                        entityId={client.id}
-                                    />
-                                </div>
+                                {client && (
+                                    <div className="mb-4">
+                                        <EntityMembersDisplay
+                                            entityType="client"
+                                            entityId={client.id}
+                                        />
+                                    </div>
+                                )}
                                 <div className="prose prose-lg max-w-none dark:prose-invert leading-relaxed text-gray-700 dark:text-gray-300">
                                     <div 
                                         key={editedContent}
