@@ -130,6 +130,40 @@ const TasksManager = ({ entityType, entityId }) => {
         }
     }, [entityType, entityId])
 
+    // Normalize task assignees: convert stored names/emails to UIDs if found
+    useEffect(() => {
+        if (!tasks.length || !availableUsers.length || !entityId) return
+        try {
+            const userIds = new Set(availableUsers.map(u => u.id))
+            const nameToId = new Map(availableUsers.map(u => [u.name, u.id]))
+            const emailToId = new Map(availableUsers.filter(u => u.email).map(u => [u.email, u.id]))
+            
+            const updates = tasks
+                .filter(t => typeof t.assignee === 'string' && t.assignee)
+                .filter(t => !userIds.has(t.assignee)) // already a UID → skip
+                .map(t => {
+                    const byName = nameToId.get(t.assignee)
+                    const byEmail = emailToId.get(t.assignee)
+                    const resolvedId = byName || byEmail || null
+                    return resolvedId ? { taskId: t.id, assignee: resolvedId } : null
+                })
+                .filter(Boolean)
+            
+            if (updates.length === 0) return
+            
+            Promise.all(
+                updates.map(u => 
+                    updateDoc(doc(db, `${entityType}s`, entityId, 'tasks', u.taskId), {
+                        assignee: u.assignee,
+                        updatedAt: new Date()
+                    })
+                )
+            ).catch(() => {})
+        } catch {
+            // no-op; normalization is best-effort
+        }
+    }, [tasks, availableUsers, entityType, entityId])
+
     // Handle drag and drop
     const handleDragEnd = async (result) => {
         const { destination, source, type } = result

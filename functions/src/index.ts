@@ -48,9 +48,8 @@ async function shouldNotifyUser(
         const notificationTime = new Date(taskDueDate.getTime() - timeOffset);
         
         if (notificationType === 'task_due_soon') {
-            // Notify if current time is within 1 hour of notification time
-            const timeDiff = Math.abs(now.getTime() - notificationTime.getTime());
-            return timeDiff <= 60 * 60 * 1000; // 1 hour window
+            // Notify any time after threshold but before due date (prevents missing the 1-hour window)
+            return now >= notificationTime && now < taskDueDate;
         } else if (notificationType === 'task_overdue') {
             // Notify if task is overdue and we've passed the notification time
             return now >= taskDueDate && now >= notificationTime;
