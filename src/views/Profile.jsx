@@ -557,11 +557,12 @@ const Profile = () => {
         ...(avatar ? { src: avatar } : { icon: <PiUserDuotone /> }),
         size: 120,
         shape: 'circle',
+        className: 'w-20 h-20 md:w-[120px] md:h-[120px]',
     }
 
     return (
         <div className="flex min-h-screen bg-white dark:bg-gray-900">
-            {/* Left Sidebar */}
+            {/* Left Sidebar - Desktop Only */}
             <div className="hidden lg:block w-64 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm">
                 <div className="p-6">
                     <Button 
@@ -595,16 +596,50 @@ const Profile = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-h-screen">
-                <div className="flex-1 p-6">
+            <div className="flex-1 flex flex-col min-h-screen w-full lg:w-auto">
+                {/* Mobile Navigation Bar */}
+                <div className="lg:hidden bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+                    <div className="flex items-center justify-between p-4">
+                        <Button 
+                            variant="plain" 
+                            icon={<HiOutlineArrowLeft />} 
+                            onClick={() => navigate(-1)}
+                            className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                        >
+                            Back
+                        </Button>
+                        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Profile Settings</h1>
+                        <div className="w-12"></div> {/* Spacer for centering */}
+                    </div>
+                    <div className="flex border-t border-gray-200 dark:border-gray-700">
+                        {sidebarItems.map((item) => (
+                            <button
+                                key={item.key}
+                                onClick={() => setActiveTab(item.key)}
+                                className={`flex-1 flex flex-col items-center justify-center py-3 px-2 transition-all duration-200 ${
+                                    activeTab === item.key 
+                                        ? 'bg-primary text-white border-b-2 border-primary' 
+                                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                <span className="text-xl mb-1">{item.icon}</span>
+                                <span className="text-xs font-medium">{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex-1 p-4 md:p-6">
                     {activeTab === 'profile' && (
-                        <Card className="p-6">
-                            <h1 className="text-2xl font-bold mb-6">Personal Information</h1>
+                        <Card className="p-4 md:p-6">
+                            <h1 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">Personal Information</h1>
                             
                             {/* Avatar Section */}
-                            <div className="flex items-center gap-4 mb-8">
-                                <Avatar {...avatarProps} />
-                                <div className="flex gap-2">
+                            <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6 md:mb-8">
+                                <div className="flex justify-center md:justify-start">
+                                    <Avatar {...avatarProps} />
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -616,12 +651,16 @@ const Profile = () => {
                                     <Button
                                         variant="solid"
                                         onClick={() => fileInputRef.current?.click()}
+                                        className="w-full sm:w-auto"
+                                        size="sm"
                                     >
                                         + Upload Image
                                     </Button>
                                     <Button
                                         variant="twoTone"
                                         onClick={handleRemoveImage}
+                                        className="w-full sm:w-auto"
+                                        size="sm"
                                     >
                                         Remove
                                     </Button>
@@ -637,6 +676,7 @@ const Profile = () => {
                                                 value={formData.firstName}
                                                 onChange={(e) => handleInputChange('firstName', e.target.value)}
                                                 placeholder="Enter first name"
+                                                size="sm"
                                             />
                                         </FormItem>
 
@@ -645,6 +685,7 @@ const Profile = () => {
                                                 value={formData.userName}
                                                 onChange={(e) => handleInputChange('userName', e.target.value)}
                                                 placeholder="Enter user name"
+                                                size="sm"
                                             />
                                         </FormItem>
                                     </div>
@@ -655,6 +696,7 @@ const Profile = () => {
                                             value={formData.email}
                                             onChange={(e) => handleInputChange('email', e.target.value)}
                                             placeholder="Enter email"
+                                            size="sm"
                                         />
                                     </FormItem>
 
@@ -664,6 +706,7 @@ const Profile = () => {
                                             value={formData.phoneNumber}
                                             onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
                                             placeholder="Enter phone number"
+                                            size="sm"
                                         />
                                     </FormItem>
 
@@ -672,6 +715,8 @@ const Profile = () => {
                                             type="button"
                                             variant="solid"
                                             onClick={(e) => handleSave(e)}
+                                            className="w-full sm:w-auto"
+                                            size="sm"
                                         >
                                             Save
                                         </Button>
@@ -682,11 +727,11 @@ const Profile = () => {
                     )}
 
                     {activeTab === 'security' && (
-                        <div className="space-y-8">
+                        <div className="space-y-6 md:space-y-8">
                             {/* Password Section */}
-                            <Card className="p-6">
-                                <h1 className="text-2xl font-bold text-primary mb-2">Password</h1>
-                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                            <Card className="p-4 md:p-6">
+                                <h1 className="text-xl md:text-2xl font-bold text-primary mb-2">Password</h1>
+                                <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4 md:mb-6">
                                     Remember, your password is your digital key to your account. Keep it safe, keep it secure!
                                 </p>
                                 
@@ -697,6 +742,7 @@ const Profile = () => {
                                                 value={passwordData.currentPassword}
                                                 onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
                                                 placeholder="Enter current password"
+                                                size="sm"
                                             />
                                         </FormItem>
 
@@ -705,6 +751,7 @@ const Profile = () => {
                                                 value={passwordData.newPassword}
                                                 onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
                                                 placeholder="Enter new password"
+                                                size="sm"
                                             />
                                         </FormItem>
 
@@ -713,6 +760,7 @@ const Profile = () => {
                                                 value={passwordData.confirmPassword}
                                                 onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
                                                 placeholder="Confirm new password"
+                                                size="sm"
                                             />
                                         </FormItem>
 
@@ -723,6 +771,8 @@ const Profile = () => {
                                                     variant="solid"
                                                     onClick={handleUpdatePassword}
                                                     loading={isUpdatingPassword}
+                                                    className="w-full sm:w-auto"
+                                                    size="sm"
                                                 >
                                                     Update
                                                 </Button>
@@ -733,14 +783,14 @@ const Profile = () => {
                             </Card>
 
                             {/* 2-Step Verification Section */}
-                            <Card className="p-6">
-                                <h1 className="text-2xl font-bold mb-2">2-Step verification</h1>
-                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                            <Card className="p-4 md:p-6">
+                                <h1 className="text-xl md:text-2xl font-bold mb-2">2-Step verification</h1>
+                                <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4 md:mb-6">
                                     Your account holds great value to hackers. Enable two-step verification to safeguard your account!
                                 </p>
                                 
-                                <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <div className="flex-shrink-0">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                    <div className="flex-shrink-0 mx-auto sm:mx-0">
                                         <div className="w-16 h-16 rounded-full border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center bg-white dark:bg-gray-900">
                                             <img
                                                 src="/img/others/google.png"
@@ -749,7 +799,7 @@ const Profile = () => {
                                             />
                                         </div>
                                     </div>
-                                    <div className="flex-1">
+                                    <div className="flex-1 text-center sm:text-left">
                                         <h3 className="font-bold text-gray-900 dark:text-gray-100 mb-1">
                                             Google Authenticator
                                         </h3>
@@ -757,11 +807,12 @@ const Profile = () => {
                                             Using Google Authenticator app generates time-sensitive codes for secure logins.
                                         </p>
                                     </div>
-                                    <div className="flex-shrink-0">
+                                    <div className="flex-shrink-0 w-full sm:w-auto">
                                         <Button
                                             variant="outline"
-                                            className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 dark:text-green-400 dark:border-green-500"
+                                            className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 dark:text-green-400 dark:border-green-500 w-full sm:w-auto"
                                             disabled
+                                            size="sm"
                                         >
                                             Coming Soon
                                         </Button>
@@ -772,22 +823,22 @@ const Profile = () => {
                     )}
 
                     {activeTab === 'notification' && (
-                        <Card className="p-6">
-                            <h1 className="text-2xl font-bold mb-2">Notification Preferences</h1>
-                            <p className="text-gray-600 dark:text-gray-400 mb-6">
+                        <Card className="p-4 md:p-6">
+                            <h1 className="text-xl md:text-2xl font-bold mb-2">Notification Preferences</h1>
+                            <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4 md:mb-6">
                                 Choose which notifications you want to receive. You can customize your preferences for different types of activities.
                             </p>
                             
                             <Form onSubmit={handleSaveNotificationPreferences}>
                                 <FormContainer>
                                     {/* Task Notifications */}
-                                    <div className="mb-8">
-                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Task Notifications</h2>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Assigned</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is assigned to you</p>
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Task Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Task Assigned</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a task is assigned to you</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.TASK_ASSIGNED] !== false}
@@ -795,10 +846,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Completed</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is completed</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Task Completed</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a task is completed</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.TASK_COMPLETED] !== false}
@@ -806,10 +857,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Task Updated</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is updated</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Task Updated</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a task is updated</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.TASK_UPDATED] !== false}
@@ -817,11 +868,11 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="font-medium text-gray-900 dark:text-gray-100">Task Due Soon</p>
-                                                        <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task is approaching its due date</p>
+                                            <div className="p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Task Due Soon</p>
+                                                        <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a task is approaching its due date</p>
                                                     </div>
                                                     <Switcher
                                                         checked={notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false}
@@ -829,13 +880,15 @@ const Profile = () => {
                                                     />
                                                 </div>
                                                 {notificationPreferences[NOTIFICATION_TYPES.TASK_DUE_SOON] !== false && (
-                                                    <div className="pl-4 border-l-2 border-primary/20">
-                                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                                                    <div className="pl-2 md:pl-4 border-l-2 border-primary/20">
+                                                        <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
                                                             Notify me:
                                                         </label>
                                                         <Select
                                                             size="sm"
                                                             options={timeOptions}
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
                                                             value={timeOptions.find(opt => opt.value === (notificationPreferences.task_due_soon_time || '1d'))}
                                                             onChange={(option) => {
                                                                 setNotificationPreferences(prev => ({
@@ -848,11 +901,11 @@ const Profile = () => {
                                                 )}
                                             </div>
                                             
-                                            <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="font-medium text-gray-900 dark:text-gray-100">Task Overdue</p>
-                                                        <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a task becomes overdue</p>
+                                            <div className="p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Task Overdue</p>
+                                                        <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a task becomes overdue</p>
                                                     </div>
                                                     <Switcher
                                                         checked={notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false}
@@ -860,13 +913,15 @@ const Profile = () => {
                                                     />
                                                 </div>
                                                 {notificationPreferences[NOTIFICATION_TYPES.TASK_OVERDUE] !== false && (
-                                                    <div className="pl-4 border-l-2 border-primary/20">
-                                                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                                                    <div className="pl-2 md:pl-4 border-l-2 border-primary/20">
+                                                        <label className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
                                                             Notify me:
                                                         </label>
                                                         <Select
                                                             size="sm"
                                                             options={overdueTimeOptions}
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
                                                             value={overdueTimeOptions.find(opt => opt.value === (notificationPreferences.task_overdue_time || '0h'))}
                                                             onChange={(option) => {
                                                                 setNotificationPreferences(prev => ({
@@ -882,13 +937,13 @@ const Profile = () => {
                                     </div>
 
                                     {/* Entity Notifications */}
-                                    <div className="mb-8">
-                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Entity Notifications</h2>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Created</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a new lead, client, or project is created</p>
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Entity Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Entity Created</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a new lead, client, or project is created</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_CREATED] !== false}
@@ -896,10 +951,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Updated</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is updated</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Entity Updated</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is updated</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_UPDATED] !== false}
@@ -907,10 +962,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Status Changed</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when the status of a lead, client, or project changes</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Status Changed</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when the status of a lead, client, or project changes</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_STATUS_CHANGED] !== false}
@@ -918,10 +973,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Entity Deleted</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is deleted</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Entity Deleted</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a lead, client, or project is deleted</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ENTITY_DELETED] !== false}
@@ -932,13 +987,13 @@ const Profile = () => {
                                     </div>
 
                                     {/* Attachment Notifications */}
-                                    <div className="mb-8">
-                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Attachment Notifications</h2>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Attachment Added</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a file is uploaded</p>
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Attachment Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Attachment Added</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a file is uploaded</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ATTACHMENT_ADDED] !== false}
@@ -946,10 +1001,10 @@ const Profile = () => {
                                                 />
                                             </div>
                                             
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Attachment Deleted</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a file is deleted</p>
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Attachment Deleted</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a file is deleted</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ATTACHMENT_DELETED] !== false}
@@ -960,13 +1015,13 @@ const Profile = () => {
                                     </div>
 
                                     {/* Activity Notifications */}
-                                    <div className="mb-8">
-                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Activity Notifications</h2>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">Activity Added</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when a new activity is logged</p>
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Activity Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Activity Added</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a new activity is logged</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.ACTIVITY_ADDED] !== false}
@@ -977,13 +1032,13 @@ const Profile = () => {
                                     </div>
 
                                     {/* System Notifications */}
-                                    <div className="mb-8">
-                                        <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">System Notifications</h2>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div>
-                                                    <p className="font-medium text-gray-900 dark:text-gray-100">System Notifications</p>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about important system updates and announcements</p>
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">System Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">System Notifications</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified about important system updates and announcements</p>
                                                 </div>
                                                 <Switcher
                                                     checked={notificationPreferences[NOTIFICATION_TYPES.SYSTEM] !== false}
@@ -1000,6 +1055,8 @@ const Profile = () => {
                                                 variant="solid"
                                                 onClick={handleSaveNotificationPreferences}
                                                 loading={isSavingPreferences}
+                                                className="w-full sm:w-auto"
+                                                size="sm"
                                             >
                                                 Save Preferences
                                             </Button>
