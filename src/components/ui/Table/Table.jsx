@@ -84,7 +84,13 @@ const Table = (props) => {
             )}
             <div 
                 ref={tableWrapperRef}
-                className={classNames(overflow && 'overflow-x-auto')}
+                className={classNames(
+                    overflow && 'overflow-x-auto',
+                    'scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent'
+                )}
+                style={{
+                    WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
+                }}
             >
                 <Component className={tableClass} {...rest} ref={ref}>
                     {children}

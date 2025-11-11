@@ -1,10 +1,10 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Checkbox } from '@/components/ui'
+import { Button, Card, Input, Select, DatePicker, Tag, Tooltip, Dialog, Form, FormItem, FormContainer, Switcher, Checkbox, Dropdown } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
-import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus } from 'react-icons/hi'
+import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus, HiOutlineDotsHorizontal } from 'react-icons/hi'
 import FirebaseTest from '@/components/FirebaseTest'
 import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
@@ -211,6 +211,7 @@ const Home = () => {
 
     // UI state for collapsible sections
     const [showMoreFilters, setShowMoreFilters] = useState(false)
+    const [showFiltersMobile, setShowFiltersMobile] = useState(false)
     
     // Filter visibility preferences (per-user, stored in Firestore)
     const defaultFilterVisibility = {
@@ -687,20 +688,41 @@ const Home = () => {
                     const detailPath = `/leads/${item.id}`
                     const editPath = `/leads/${item.id}?tab=settings`
                     return (
-                    <div className="flex items-center gap-2">
-                        <Tooltip title="View">
+                    <>
+                        {/* Desktop: Show all buttons */}
+                        <div className="hidden md:flex items-center gap-2">
+                            <Tooltip title="View">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
-                        </Tooltip>
-                        <Tooltip title="Edit">
+                            </Tooltip>
+                            <Tooltip title="Edit">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
-                        </Tooltip>
+                            </Tooltip>
                             <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
                                 <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'lead')} className={item.favorite ? 'text-yellow-500' : ''} />
-                        </Tooltip>
-                        <Tooltip title="Delete">
+                            </Tooltip>
+                            <Tooltip title="Delete">
                                 <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteLead(item.id)} className="text-red-600 hover:text-red-700" />
-                        </Tooltip>
-                    </div>
+                            </Tooltip>
+                        </div>
+                        {/* Mobile: Show dropdown menu */}
+                        <div className="md:hidden">
+                            <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
+                                <Dropdown.Item onClick={() => navigate(detailPath)}>
+                                    <HiOutlineEye className="mr-2" /> View
+                                </Dropdown.Item>
+                                <Dropdown.Item onClick={() => navigate(editPath)}>
+                                    <HiOutlinePencil className="mr-2" /> Edit
+                                </Dropdown.Item>
+                                <Dropdown.Item onClick={() => toggleFavorite(item.id, 'lead')}>
+                                    <HiOutlineStar className={`mr-2 ${item.favorite ? 'text-yellow-500' : ''}`} /> 
+                                    {item.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                                </Dropdown.Item>
+                                <Dropdown.Item onClick={() => handleDeleteLead(item.id)} className="text-red-600">
+                                    <HiOutlineTrash className="mr-2" /> Delete
+                                </Dropdown.Item>
+                            </Dropdown>
+                        </div>
+                    </>
                     )
                 },
             },
@@ -759,20 +781,41 @@ const Home = () => {
                     const detailPath = `/clients/${item.id}`
                     const editPath = `/clients/${item.id}?tab=settings`
                     return (
-                        <div className="flex items-center gap-2">
-                            <Tooltip title="View">
-                                <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
-                            </Tooltip>
-                            <Tooltip title="Edit">
-                                <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
-                            </Tooltip>
-                            <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
-                                <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'client')} className={item.favorite ? 'text-yellow-500' : ''} />
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                                <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteClient(item.id)} className="text-red-600 hover:text-red-700" />
-                            </Tooltip>
-                        </div>
+                        <>
+                            {/* Desktop: Show all buttons */}
+                            <div className="hidden md:flex items-center gap-2">
+                                <Tooltip title="View">
+                                    <Button size="sm" variant="twoTone" icon={<HiOutlineEye />} onClick={() => navigate(detailPath)} />
+                                </Tooltip>
+                                <Tooltip title="Edit">
+                                    <Button size="sm" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(editPath)} />
+                                </Tooltip>
+                                <Tooltip title={item.favorite ? 'Remove from favorites' : 'Add to favorites'}>
+                                    <Button size="sm" variant={item.favorite ? 'solid' : 'twoTone'} icon={<HiOutlineStar />} onClick={() => toggleFavorite(item.id, 'client')} className={item.favorite ? 'text-yellow-500' : ''} />
+                                </Tooltip>
+                                <Tooltip title="Delete">
+                                    <Button size="sm" variant="twoTone" icon={<HiOutlineTrash />} onClick={() => handleDeleteClient(item.id)} className="text-red-600 hover:text-red-700" />
+                                </Tooltip>
+                            </div>
+                            {/* Mobile: Show dropdown menu */}
+                            <div className="md:hidden">
+                                <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
+                                    <Dropdown.Item onClick={() => navigate(detailPath)}>
+                                        <HiOutlineEye className="mr-2" /> View
+                                    </Dropdown.Item>
+                                    <Dropdown.Item onClick={() => navigate(editPath)}>
+                                        <HiOutlinePencil className="mr-2" /> Edit
+                                    </Dropdown.Item>
+                                    <Dropdown.Item onClick={() => toggleFavorite(item.id, 'client')}>
+                                        <HiOutlineStar className={`mr-2 ${item.favorite ? 'text-yellow-500' : ''}`} /> 
+                                        {item.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                                    </Dropdown.Item>
+                                    <Dropdown.Item onClick={() => handleDeleteClient(item.id)} className="text-red-600">
+                                        <HiOutlineTrash className="mr-2" /> Delete
+                                    </Dropdown.Item>
+                                </Dropdown>
+                            </div>
+                        </>
                     )
                 },
             },
@@ -1299,13 +1342,14 @@ const Home = () => {
                 </>
             )}
             
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
                 <h1 className="text-2xl font-bold">CRM</h1>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <Button
                         variant="twoTone"
                         icon={<HiOutlinePlus />}
                         onClick={handleCreateClick}
+                        className="w-full sm:w-auto"
                     >
                         Create
                     </Button>
@@ -1313,6 +1357,7 @@ const Home = () => {
                         variant="solid"
                         icon={<HiOutlineUpload />}
                         onClick={() => setIsBulkManagerOpen(true)}
+                        className="w-full sm:w-auto"
                     >
                         Bulk Import / Export
                     </Button>
@@ -1364,104 +1409,219 @@ const Home = () => {
             </div>
 
             <Card>
-                <div className="p-6 space-y-4">
+                <div className="p-4 md:p-6 space-y-4">
                     {/* Filters */}
-                    <div className="flex items-start gap-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 flex-1">
-                            <Input
-                                placeholder="Search leads"
-                                value={localSearchValue}
-                                onChange={(e) => {
-                                    const value = e.target.value
-                                    // Update local state immediately for smooth typing
-                                    setLocalSearchValue(value)
-                                    
-                                    // Debounce the actual filter application
-                                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                                    searchDebounceRef.current = setTimeout(() => {
-                                    setPageIndex(1)
-                                        setFilters({ search: value })
-                                    }, 300)
-                                }}
-                            />
-                            {/* Type Select removed; replaced by top toggle */}
-                            {filterVisibility.status && (
-                                <Select
-                                    placeholder="Status"
-                                    isClearable
-                                    isMulti
-                                    options={leadStatusOptions}
-                                    value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
-                                    onChange={(opt) => {
-                                        setPageIndex(1)
-                                        setFilters({ status: opt && opt.length > 0 ? opt : null })
+                    {/* Mobile: Search bar only with toggle */}
+                    <div className="md:hidden space-y-3">
+                        <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                                <Input
+                                    placeholder="Search leads"
+                                    value={localSearchValue}
+                                    onChange={(e) => {
+                                        const value = e.target.value
+                                        setLocalSearchValue(value)
+                                        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                        searchDebounceRef.current = setTimeout(() => {
+                                            setPageIndex(1)
+                                            setFilters({ search: value })
+                                        }, 300)
                                     }}
                                 />
-                            )}
-                            {filterVisibility.methodOfContact && (
-                                <Select
-                                    placeholder="Method"
-                                    isClearable
-                                    isMulti
-                                    options={methodOfContactOptions}
-                                    value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
-                                    onChange={(opt) => {
-                                        setPageIndex(1)
-                                        setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
-                                    }}
-                                />
-                            )}
-                            {filterVisibility.responded && (
-                                <Select
-                                    placeholder="Responded"
-                                    isClearable
-                                    options={respondedOptions}
-                                    value={filters.responded}
-                                    onChange={(opt) => {
-                                        setPageIndex(1)
-                                        setFilters({ responded: opt || null })
-                                    }}
-                                />
-                            )}
-                            {filterVisibility.dateRange && (
-                                <DatePicker.DatePickerRange
-                                    placeholder={['From', 'To']}
-                                    value={[filters.dateFrom || null, filters.dateTo || null]}
-                                    onChange={(vals) => {
-                                        // Debounce date range updates; also reset preset to custom
-                                        if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
-                                        dateDebounceRef.current = setTimeout(() => {
-                                            const arr = Array.isArray(vals) ? vals : [null, null]
-                                            const [from, to] = arr
-                                            setDatePreset('none')
-                                        setPageIndex(1)
-                                        setFilters({
-                                            dateFrom: from || null,
-                                            dateTo: to || null,
-                                        })
-                                        }, 200)
-                                    }}
-                                />
-                            )}
-                            {filterVisibility.datePreset && (
-                                <Select
-                                    placeholder="Date presets"
-                                    isClearable={false}
-                                    options={datePresetOptions}
-                                    value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
-                                    onChange={(opt) => applyDatePreset(opt?.value || 'none')}
-                                />
-                            )}
-                        </div>
-                        {/* More Filters Toggle Button - Better aligned */}
-                        <div className="flex items-center pt-0">
+                            </div>
                             <Button 
                                 size="sm" 
                                 variant="twoTone" 
-                                onClick={() => setShowMoreFilters(!showMoreFilters)}
+                                onClick={() => setShowFiltersMobile(!showFiltersMobile)}
                             >
-                                {showMoreFilters ? 'Less' : 'More'} Filters
+                                {showFiltersMobile ? 'Hide' : 'Show'} Filters
                             </Button>
+                        </div>
+                        {/* Additional filters - collapsible on mobile */}
+                        <div 
+                            className={`
+                                ${showFiltersMobile ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'} 
+                                transition-all duration-300 ease-in-out
+                            `}
+                            style={{ overflow: showFiltersMobile ? 'visible' : 'hidden' }}
+                        >
+                            <div className="grid grid-cols-1 gap-4 pt-2">
+                                {filterVisibility.status && (
+                                    <Select
+                                        placeholder="Status"
+                                        isClearable
+                                        isMulti
+                                        options={leadStatusOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ status: opt && opt.length > 0 ? opt : null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.methodOfContact && (
+                                    <Select
+                                        placeholder="Method"
+                                        isClearable
+                                        isMulti
+                                        options={methodOfContactOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.responded && (
+                                    <Select
+                                        placeholder="Responded"
+                                        isClearable
+                                        options={respondedOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={filters.responded}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ responded: opt || null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.dateRange && (
+                                    <div className="relative" style={{ zIndex: 9999 }}>
+                                        <DatePicker.DatePickerRange
+                                            placeholder={['From', 'To']}
+                                            value={[filters.dateFrom || null, filters.dateTo || null]}
+                                            onChange={(vals) => {
+                                                if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                                                dateDebounceRef.current = setTimeout(() => {
+                                                    const arr = Array.isArray(vals) ? vals : [null, null]
+                                                    const [from, to] = arr
+                                                    setDatePreset('none')
+                                                    setPageIndex(1)
+                                                    setFilters({
+                                                        dateFrom: from || null,
+                                                        dateTo: to || null,
+                                                    })
+                                                }, 200)
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                                {filterVisibility.datePreset && (
+                                    <Select
+                                        placeholder="Date presets"
+                                        isClearable={false}
+                                        options={datePresetOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Desktop: Original grid layout */}
+                    <div className="hidden md:block">
+                        <div className="flex items-start gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 flex-1">
+                                <Input
+                                    placeholder="Search leads"
+                                    value={localSearchValue}
+                                    onChange={(e) => {
+                                        const value = e.target.value
+                                        setLocalSearchValue(value)
+                                        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                        searchDebounceRef.current = setTimeout(() => {
+                                            setPageIndex(1)
+                                            setFilters({ search: value })
+                                        }, 300)
+                                    }}
+                                />
+                                {filterVisibility.status && (
+                                    <Select
+                                        placeholder="Status"
+                                        isClearable
+                                        isMulti
+                                        options={leadStatusOptions}
+                                        value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ status: opt && opt.length > 0 ? opt : null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.methodOfContact && (
+                                    <Select
+                                        placeholder="Method"
+                                        isClearable
+                                        isMulti
+                                        options={methodOfContactOptions}
+                                        value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.responded && (
+                                    <Select
+                                        placeholder="Responded"
+                                        isClearable
+                                        options={respondedOptions}
+                                        value={filters.responded}
+                                        onChange={(opt) => {
+                                            setPageIndex(1)
+                                            setFilters({ responded: opt || null })
+                                        }}
+                                    />
+                                )}
+                                {filterVisibility.dateRange && (
+                                    <div className="relative" style={{ zIndex: 9999 }}>
+                                        <DatePicker.DatePickerRange
+                                            placeholder={['From', 'To']}
+                                            value={[filters.dateFrom || null, filters.dateTo || null]}
+                                            onChange={(vals) => {
+                                                if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                                                dateDebounceRef.current = setTimeout(() => {
+                                                    const arr = Array.isArray(vals) ? vals : [null, null]
+                                                    const [from, to] = arr
+                                                    setDatePreset('none')
+                                                    setPageIndex(1)
+                                                    setFilters({
+                                                        dateFrom: from || null,
+                                                        dateTo: to || null,
+                                                    })
+                                                }, 200)
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                                {filterVisibility.datePreset && (
+                                    <Select
+                                        placeholder="Date presets"
+                                        isClearable={false}
+                                        options={datePresetOptions}
+                                        value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                                        onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                                    />
+                                )}
+                            </div>
+                            {/* More Filters Toggle Button - desktop only */}
+                            <div className="flex items-center pt-0">
+                                <Button 
+                                    size="sm" 
+                                    variant="twoTone" 
+                                    onClick={() => setShowMoreFilters(!showMoreFilters)}
+                                >
+                                    {showMoreFilters ? 'Less' : 'More'} Filters
+                                </Button>
+                            </div>
                         </div>
                     </div>
                     

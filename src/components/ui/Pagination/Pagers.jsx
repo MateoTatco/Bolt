@@ -7,6 +7,7 @@ import {
 } from 'react-icons/hi'
 
 const PAGER_COUNT = 7
+const MOBILE_PAGER_COUNT = 3 // Max pages to show on mobile (current + 1-2 around it + last)
 
 const NextMore = ({ className, onArrow }) => {
     const [quickNextArrowIcon, setQuickNextArrowIcon] = useState(false)
@@ -145,6 +146,18 @@ const Pagers = (props) => {
 
         return pagerArray
     }, [showPrevMore, showNextMore, currentPage, pageCount])
+    
+    // Mobile pages: show only current page + 1-2 around it (max 3 pages total, excluding first and last)
+    const getMobilePages = useMemo(() => {
+        if (pageCount <= 3) return []
+        const pages = []
+        const start = Math.max(2, currentPage - 1)
+        const end = Math.min(pageCount - 1, currentPage + 1)
+        for (let i = start; i <= end; i++) {
+            pages.push(i)
+        }
+        return pages
+    }, [currentPage, pageCount])
 
     const getPagerClass = (index) => {
         return classNames(
@@ -164,36 +177,56 @@ const Pagers = (props) => {
                     1
                 </li>
             )}
-            {showPrevMore && (
-                <PrevMore
-                    className={classNames(
-                        pagerClass.default,
-                        pagerClass.inactive,
-                    )}
-                    onArrow={(arrow) => onArrowClick(arrow)}
-                />
-            )}
-            {getPages.map((pager, index) => {
-                return (
-                    <li
-                        key={index}
-                        className={getPagerClass(pager)}
-                        role="presentation"
-                        onClick={(e) => onPagerClick(pager, e)}
-                    >
-                        {pager}
-                    </li>
-                )
-            })}
-            {showNextMore && (
-                <NextMore
-                    className={classNames(
-                        pagerClass.default,
-                        pagerClass.inactive,
-                    )}
-                    onArrow={(arrow) => onArrowClick(arrow)}
-                />
-            )}
+            {/* Desktop: Show full pagination */}
+            <span className="hidden md:inline-flex">
+                {showPrevMore && (
+                    <PrevMore
+                        className={classNames(
+                            pagerClass.default,
+                            pagerClass.inactive,
+                        )}
+                        onArrow={(arrow) => onArrowClick(arrow)}
+                    />
+                )}
+                {getPages.map((pager, index) => {
+                    return (
+                        <li
+                            key={index}
+                            className={getPagerClass(pager)}
+                            role="presentation"
+                            onClick={(e) => onPagerClick(pager, e)}
+                        >
+                            {pager}
+                        </li>
+                    )
+                })}
+                {showNextMore && (
+                    <NextMore
+                        className={classNames(
+                            pagerClass.default,
+                            pagerClass.inactive,
+                        )}
+                        onArrow={(arrow) => onArrowClick(arrow)}
+                    />
+                )}
+            </span>
+            {/* Mobile: Show only 2-3 pages around current */}
+            <span className="md:hidden">
+                {getMobilePages.map((pager, index) => {
+                    // Only show if not already showing first or last
+                    if (pager === 1 || pager === pageCount) return null
+                    return (
+                        <li
+                            key={index}
+                            className={getPagerClass(pager)}
+                            role="presentation"
+                            onClick={(e) => onPagerClick(pager, e)}
+                        >
+                            {pager}
+                        </li>
+                    )
+                })}
+            </span>
             {pageCount > 1 && (
                 <li
                     className={getPagerClass(pageCount)}

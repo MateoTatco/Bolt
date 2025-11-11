@@ -55,7 +55,7 @@
   }
 
   .picker {
-    @apply z-40;
+    @apply z-[9999];
   }
 
   .picker-panel {
