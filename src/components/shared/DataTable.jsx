@@ -231,8 +231,10 @@ function DataTable(props) {
                                         key={header.id}
                                         colSpan={header.colSpan}
                                         className={classNames(
+                                            'whitespace-nowrap text-sm', // keep headers on one line, slightly smaller
                                             isActionsColumn && 'sticky right-0 z-10 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700'
                                         )}
+                                        style={{ width: header.column.getSize?.() }}
                                     >
                                         {header.isPlaceholder ? null : (
                                             <div

@@ -11,6 +11,8 @@ import BulkDataManager from '@/components/BulkDataManager'
 import { migrateMarketOptions, resetAndMigrateLeads } from '@/utils/migrateMarketOptions'
 import { removeClientNumberFromClients, resetAndMigrateClients } from '@/utils/removeClientNumber'
 import { migrateTasksMockData, resetAndMigrateTasks, clearTasksData } from '@/utils/migrateTasksMockData'
+import { getAuth } from 'firebase/auth'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 const Home = () => {
     const navigate = useNavigate()
@@ -209,6 +211,73 @@ const Home = () => {
 
     // UI state for collapsible sections
     const [showMoreFilters, setShowMoreFilters] = useState(false)
+    
+    // Filter visibility preferences (per-user, stored in Firestore)
+    const defaultFilterVisibility = {
+        status: true,
+        methodOfContact: true,
+        responded: true,
+        dateRange: true,
+        datePreset: true
+    }
+    const [filterVisibility, setFilterVisibility] = useState(defaultFilterVisibility)
+    const [isLoadingFilterPrefs, setIsLoadingFilterPrefs] = useState(true)
+
+    // Load filter visibility preferences from Firestore
+    useEffect(() => {
+        const loadFilterPreferences = async () => {
+            try {
+                const auth = getAuth()
+                const currentUser = auth.currentUser
+                if (!currentUser) {
+                    setIsLoadingFilterPrefs(false)
+                    return
+                }
+
+                const result = await FirebaseDbService.users.getById(currentUser.uid)
+                if (result.success && result.data?.filterPreferences?.crm) {
+                    setFilterVisibility({
+                        ...defaultFilterVisibility,
+                        ...result.data.filterPreferences.crm
+                    })
+                }
+            } catch (error) {
+                console.error('Error loading filter preferences:', error)
+            } finally {
+                setIsLoadingFilterPrefs(false)
+            }
+        }
+
+        loadFilterPreferences()
+    }, [])
+
+    // Save filter visibility preferences to Firestore
+    const saveFilterPreferences = async (newVisibility) => {
+        try {
+            const auth = getAuth()
+            const currentUser = auth.currentUser
+            if (!currentUser) return
+
+            const result = await FirebaseDbService.users.getById(currentUser.uid)
+            const existingPrefs = result.success && result.data?.filterPreferences ? result.data.filterPreferences : {}
+            
+            await FirebaseDbService.users.update(currentUser.uid, {
+                filterPreferences: {
+                    ...existingPrefs,
+                    crm: newVisibility
+                }
+            })
+        } catch (error) {
+            console.error('Error saving filter preferences:', error)
+        }
+    }
+
+    // Update filter visibility and save
+    const handleFilterVisibilityChange = (filterKey, isVisible) => {
+        const newVisibility = { ...filterVisibility, [filterKey]: isVisible }
+        setFilterVisibility(newVisibility)
+        saveFilterPreferences(newVisibility)
+    }
     
     // Confirmation dialog state
     const [confirmDialog, setConfirmDialog] = useState({
@@ -505,7 +574,7 @@ const Home = () => {
             {
                 header: 'Company Name',
                 accessorKey: 'companyName',
-                size: 220,
+                size: 260,
                 meta: { key: 'companyName' },
                 cell: (props) => {
                     const item = props.row.original
@@ -522,7 +591,7 @@ const Home = () => {
             {
                 header: 'Contact',
                 accessorKey: 'leadContact',
-                size: 200,
+                size: 220,
                 meta: { key: 'leadContact' },
                 cell: (props) => {
                     const value = props.row.original.leadContact || '-'
@@ -1297,81 +1366,103 @@ const Home = () => {
             <Card>
                 <div className="p-6 space-y-4">
                     {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                        <Input
-                            placeholder="Search leads"
-                            value={localSearchValue}
-                            onChange={(e) => {
-                                const value = e.target.value
-                                // Update local state immediately for smooth typing
-                                setLocalSearchValue(value)
-                                
-                                // Debounce the actual filter application
-                                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                                searchDebounceRef.current = setTimeout(() => {
-                                setPageIndex(1)
-                                    setFilters({ search: value })
-                                }, 300)
-                            }}
-                        />
-                        {/* Type Select removed; replaced by top toggle */}
-                        <Select
-                            placeholder="Status"
-                            isClearable
-                            isMulti
-                            options={leadStatusOptions}
-                            value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ status: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="Method"
-                            isClearable
-                            isMulti
-                            options={methodOfContactOptions}
-                            value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="Responded"
-                            isClearable
-                            options={respondedOptions}
-                            value={filters.responded}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ responded: opt || null })
-                            }}
-                        />
-                        <DatePicker.DatePickerRange
-                            placeholder={['From', 'To']}
-                            value={[filters.dateFrom || null, filters.dateTo || null]}
-                            onChange={(vals) => {
-                                // Debounce date range updates; also reset preset to custom
-                                if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
-                                dateDebounceRef.current = setTimeout(() => {
-                                    const arr = Array.isArray(vals) ? vals : [null, null]
-                                    const [from, to] = arr
-                                    setDatePreset('none')
-                                setPageIndex(1)
-                                setFilters({
-                                    dateFrom: from || null,
-                                    dateTo: to || null,
-                                })
-                                }, 200)
-                            }}
-                        />
-                        <Select
-                            placeholder="Date presets"
-                            isClearable={false}
-                            options={datePresetOptions}
-                            value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
-                            onChange={(opt) => applyDatePreset(opt?.value || 'none')}
-                        />
+                    <div className="flex items-start gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 flex-1">
+                            <Input
+                                placeholder="Search leads"
+                                value={localSearchValue}
+                                onChange={(e) => {
+                                    const value = e.target.value
+                                    // Update local state immediately for smooth typing
+                                    setLocalSearchValue(value)
+                                    
+                                    // Debounce the actual filter application
+                                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                    searchDebounceRef.current = setTimeout(() => {
+                                    setPageIndex(1)
+                                        setFilters({ search: value })
+                                    }, 300)
+                                }}
+                            />
+                            {/* Type Select removed; replaced by top toggle */}
+                            {filterVisibility.status && (
+                                <Select
+                                    placeholder="Status"
+                                    isClearable
+                                    isMulti
+                                    options={leadStatusOptions}
+                                    value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ status: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.methodOfContact && (
+                                <Select
+                                    placeholder="Method"
+                                    isClearable
+                                    isMulti
+                                    options={methodOfContactOptions}
+                                    value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ methodOfContact: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.responded && (
+                                <Select
+                                    placeholder="Responded"
+                                    isClearable
+                                    options={respondedOptions}
+                                    value={filters.responded}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ responded: opt || null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.dateRange && (
+                                <DatePicker.DatePickerRange
+                                    placeholder={['From', 'To']}
+                                    value={[filters.dateFrom || null, filters.dateTo || null]}
+                                    onChange={(vals) => {
+                                        // Debounce date range updates; also reset preset to custom
+                                        if (dateDebounceRef.current) clearTimeout(dateDebounceRef.current)
+                                        dateDebounceRef.current = setTimeout(() => {
+                                            const arr = Array.isArray(vals) ? vals : [null, null]
+                                            const [from, to] = arr
+                                            setDatePreset('none')
+                                        setPageIndex(1)
+                                        setFilters({
+                                            dateFrom: from || null,
+                                            dateTo: to || null,
+                                        })
+                                        }, 200)
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.datePreset && (
+                                <Select
+                                    placeholder="Date presets"
+                                    isClearable={false}
+                                    options={datePresetOptions}
+                                    value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
+                                    onChange={(opt) => applyDatePreset(opt?.value || 'none')}
+                                />
+                            )}
+                        </div>
+                        {/* More Filters Toggle Button - Better aligned */}
+                        <div className="flex items-center pt-0">
+                            <Button 
+                                size="sm" 
+                                variant="twoTone" 
+                                onClick={() => setShowMoreFilters(!showMoreFilters)}
+                            >
+                                {showMoreFilters ? 'Less' : 'More'} Filters
+                            </Button>
+                        </div>
                     </div>
                     
                     {/* Clear All Filters Button */}
@@ -1392,20 +1483,55 @@ const Home = () => {
                         </div>
                     )}
                     
-                    {/* More Filters Toggle Button */}
-                    <div className="flex justify-end mt-3">
-                        <Button 
-                            size="sm" 
-                            variant="twoTone" 
-                            onClick={() => setShowMoreFilters(!showMoreFilters)}
-                        >
-                            {showMoreFilters ? 'Less' : 'More'} Filters
-                        </Button>
-                    </div>
-
                 {/* Collapsible advanced filters */}
                 {showMoreFilters && (
                     <div className="mt-4 space-y-4">
+                        {/* Filter Visibility Controls */}
+                        <Card className="p-4">
+                            <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                Filter Visibility
+                                <Tag className="text-xs">
+                                    {currentType === 'client' ? 'Client filters' : 'Lead filters'}
+                                </Tag>
+                            </h6>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <label className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={filterVisibility.status !== false}
+                                        onChange={(checked) => handleFilterVisibilityChange('status', checked)}
+                                    />
+                                    <span>Status</span>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={filterVisibility.methodOfContact !== false}
+                                        onChange={(checked) => handleFilterVisibilityChange('methodOfContact', checked)}
+                                    />
+                                    <span>Method of Contact</span>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={filterVisibility.responded !== false}
+                                        onChange={(checked) => handleFilterVisibilityChange('responded', checked)}
+                                    />
+                                    <span>Responded</span>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={filterVisibility.dateRange !== false}
+                                        onChange={(checked) => handleFilterVisibilityChange('dateRange', checked)}
+                                    />
+                                    <span>Date Range</span>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={filterVisibility.datePreset !== false}
+                                        onChange={(checked) => handleFilterVisibilityChange('datePreset', checked)}
+                                    />
+                                    <span>Date Presets</span>
+                                </label>
+                            </div>
+                        </Card>
                         {/* Column visibility & order controls */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Card className="p-4">

@@ -5,6 +5,8 @@ import DataTable from '@/components/shared/DataTable'
 import { useProjectsStore } from '@/store/projectsStore'
 import ProjectsBulkDataManager from '@/components/ProjectsBulkDataManager'
 import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus } from 'react-icons/hi'
+import { getAuth } from 'firebase/auth'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 // Project options
 const marketOptions = [
@@ -163,6 +165,74 @@ const ProjectsList = () => {
     
     // UI state for collapsible sections
     const [showMoreFilters, setShowMoreFilters] = useState(false)
+    
+    // Filter visibility preferences (per-user, stored in Firestore)
+    const defaultFilterVisibility = {
+        market: true,
+        projectStatus: true,
+        projectProbability: true,
+        projectManager: true,
+        superintendent: true
+    }
+    const [filterVisibility, setFilterVisibility] = useState(defaultFilterVisibility)
+    const [isLoadingFilterPrefs, setIsLoadingFilterPrefs] = useState(true)
+
+    // Load filter visibility preferences from Firestore
+    useEffect(() => {
+        const loadFilterPreferences = async () => {
+            try {
+                const auth = getAuth()
+                const currentUser = auth.currentUser
+                if (!currentUser) {
+                    setIsLoadingFilterPrefs(false)
+                    return
+                }
+
+                const result = await FirebaseDbService.users.getById(currentUser.uid)
+                if (result.success && result.data?.filterPreferences?.masterTracker) {
+                    setFilterVisibility({
+                        ...defaultFilterVisibility,
+                        ...result.data.filterPreferences.masterTracker
+                    })
+                }
+            } catch (error) {
+                console.error('Error loading filter preferences:', error)
+            } finally {
+                setIsLoadingFilterPrefs(false)
+            }
+        }
+
+        loadFilterPreferences()
+    }, [])
+
+    // Save filter visibility preferences to Firestore
+    const saveFilterPreferences = async (newVisibility) => {
+        try {
+            const auth = getAuth()
+            const currentUser = auth.currentUser
+            if (!currentUser) return
+
+            const result = await FirebaseDbService.users.getById(currentUser.uid)
+            const existingPrefs = result.success && result.data?.filterPreferences ? result.data.filterPreferences : {}
+            
+            await FirebaseDbService.users.update(currentUser.uid, {
+                filterPreferences: {
+                    ...existingPrefs,
+                    masterTracker: newVisibility
+                }
+            })
+        } catch (error) {
+            console.error('Error saving filter preferences:', error)
+        }
+    }
+
+    // Update filter visibility and save
+    const handleFilterVisibilityChange = (filterKey, isVisible) => {
+        const newVisibility = { ...filterVisibility, [filterKey]: isVisible }
+        setFilterVisibility(newVisibility)
+        saveFilterPreferences(newVisibility)
+    }
+    
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
@@ -516,7 +586,7 @@ const ProjectsList = () => {
         {
             header: 'Project Number',
             accessorKey: 'ProjectNumber',
-            size: 120,
+            size: 140,
             meta: { key: 'ProjectNumber' },
             cell: (props) => {
                 const value = props.row.original.ProjectNumber
@@ -526,7 +596,7 @@ const ProjectsList = () => {
         {
             header: 'Project',
             accessorKey: 'ProjectName',
-            size: 250,
+            size: 300,
             meta: { key: 'ProjectName' },
             cell: (props) => {
                 const item = props.row.original
@@ -546,14 +616,14 @@ const ProjectsList = () => {
         {
             header: 'City',
             accessorKey: 'city',
-            size: 120,
+            size: 140,
             meta: { key: 'city' },
             cell: (props) => <span>{props.row.original.city || '-'}</span>,
         },
         {
             header: 'PM',
             accessorKey: 'ProjectManager',
-            size: 150,
+            size: 170,
             meta: { key: 'ProjectManager' },
             cell: (props) => {
                 const value = props.row.original.ProjectManager || '-'
@@ -719,78 +789,100 @@ const ProjectsList = () => {
             <Card>
                 <div className="p-6 space-y-4">
                     {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                        <Input
-                            placeholder="Search by Project Number, Name, City, State, PM..."
-                            value={localSearchValue}
-                            onChange={(e) => {
-                                const value = e.target.value
-                                // Update local state immediately for smooth typing
-                                setLocalSearchValue(value)
-                                
-                                // Debounce the actual filter application
-                                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                                searchDebounceRef.current = setTimeout(() => {
-                                    setPageIndex(1)
-                                    setFilters({ search: value })
-                                }, 300)
-                            }}
-                        />
-                        <Select
-                            placeholder="Market"
-                            isClearable
-                            isMulti
-                            options={marketOptions}
-                            value={Array.isArray(filters.market) ? filters.market : (filters.market ? [filters.market] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ market: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="Status"
-                            isClearable
-                            isMulti
-                            options={projectStatusOptions}
-                            value={Array.isArray(filters.projectStatus) ? filters.projectStatus : (filters.projectStatus ? [filters.projectStatus] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ projectStatus: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="Probability"
-                            isClearable
-                            isMulti
-                            options={projectProbabilityOptions}
-                            value={Array.isArray(filters.projectProbability) ? filters.projectProbability : (filters.projectProbability ? [filters.projectProbability] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ projectProbability: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="PM"
-                            isClearable
-                            isMulti
-                            options={projectManagerOptions}
-                            value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ projectManager: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
-                        <Select
-                            placeholder="Super Assigned"
-                            isClearable
-                            isMulti
-                            options={superintendentOptions}
-                            value={Array.isArray(filters.superintendent) ? filters.superintendent : (filters.superintendent ? [filters.superintendent] : null)}
-                            onChange={(opt) => {
-                                setPageIndex(1)
-                                setFilters({ superintendent: opt && opt.length > 0 ? opt : null })
-                            }}
-                        />
+                    <div className="flex items-start gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 flex-1">
+                            <Input
+                                placeholder="Search by Project Number, Name, City, State, PM..."
+                                value={localSearchValue}
+                                onChange={(e) => {
+                                    const value = e.target.value
+                                    // Update local state immediately for smooth typing
+                                    setLocalSearchValue(value)
+                                    
+                                    // Debounce the actual filter application
+                                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+                                    searchDebounceRef.current = setTimeout(() => {
+                                        setPageIndex(1)
+                                        setFilters({ search: value })
+                                    }, 300)
+                                }}
+                            />
+                            {filterVisibility.market && (
+                                <Select
+                                    placeholder="Market"
+                                    isClearable
+                                    isMulti
+                                    options={marketOptions}
+                                    value={Array.isArray(filters.market) ? filters.market : (filters.market ? [filters.market] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ market: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.projectStatus && (
+                                <Select
+                                    placeholder="Status"
+                                    isClearable
+                                    isMulti
+                                    options={projectStatusOptions}
+                                    value={Array.isArray(filters.projectStatus) ? filters.projectStatus : (filters.projectStatus ? [filters.projectStatus] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ projectStatus: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.projectProbability && (
+                                <Select
+                                    placeholder="Probability"
+                                    isClearable
+                                    isMulti
+                                    options={projectProbabilityOptions}
+                                    value={Array.isArray(filters.projectProbability) ? filters.projectProbability : (filters.projectProbability ? [filters.projectProbability] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ projectProbability: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.projectManager && (
+                                <Select
+                                    placeholder="PM"
+                                    isClearable
+                                    isMulti
+                                    options={projectManagerOptions}
+                                    value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ projectManager: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                            {filterVisibility.superintendent && (
+                                <Select
+                                    placeholder="Super Assigned"
+                                    isClearable
+                                    isMulti
+                                    options={superintendentOptions}
+                                    value={Array.isArray(filters.superintendent) ? filters.superintendent : (filters.superintendent ? [filters.superintendent] : null)}
+                                    onChange={(opt) => {
+                                        setPageIndex(1)
+                                        setFilters({ superintendent: opt && opt.length > 0 ? opt : null })
+                                    }}
+                                />
+                            )}
+                        </div>
+                        {/* More Filters Toggle Button - Better aligned */}
+                        <div className="flex items-center pt-0">
+                            <Button 
+                                size="sm" 
+                                variant="twoTone" 
+                                onClick={() => setShowMoreFilters(!showMoreFilters)}
+                            >
+                                {showMoreFilters ? 'Less' : 'More'} Filters
+                            </Button>
+                        </div>
                     </div>
                     
                     {/* Clear All Filters Button */}
@@ -811,20 +903,53 @@ const ProjectsList = () => {
                         </div>
                     )}
                     
-                    {/* More Filters Toggle Button */}
-                    <div className="flex justify-end mt-3">
-                        <Button 
-                            size="sm" 
-                            variant="twoTone" 
-                            onClick={() => setShowMoreFilters(!showMoreFilters)}
-                        >
-                            {showMoreFilters ? 'Less' : 'More'} Filters
-                        </Button>
-                    </div>
-                    
                     {/* Collapsible advanced filters */}
                     {showMoreFilters && (
                         <div className="mt-4 space-y-4">
+                            {/* Filter Visibility Controls */}
+                            <Card className="p-4">
+                                <h6 className="font-semibold mb-3 flex items-center gap-2">
+                                    Filter Visibility
+                                    <Tag className="text-xs">Project filters</Tag>
+                                </h6>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.market !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('market', checked)}
+                                        />
+                                        <span>Market</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.projectStatus !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('projectStatus', checked)}
+                                        />
+                                        <span>Status</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.projectProbability !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('projectProbability', checked)}
+                                        />
+                                        <span>Probability</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.projectManager !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('projectManager', checked)}
+                                        />
+                                        <span>PM</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.superintendent !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('superintendent', checked)}
+                                        />
+                                        <span>Super Assigned</span>
+                                    </label>
+                                </div>
+                            </Card>
                             {/* Column visibility & order controls */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Card className="p-4">
