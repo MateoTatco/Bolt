@@ -142,8 +142,8 @@ function Select(props) {
                     borderRadius,
                     boxShadow,
                     ...provided
-                }) => ({ ...provided, zIndex: 9999 }),
-                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                }) => ({ ...provided, zIndex: 30 }),
+                menuPortal: (provided) => ({ ...provided, zIndex: 30 }),
                 ...styles,
             }}
             components={{

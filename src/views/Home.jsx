@@ -1491,7 +1491,7 @@ const Home = () => {
                                     />
                                 )}
                                 {filterVisibility.dateRange && (
-                                    <div className="relative" style={{ zIndex: 9999 }}>
+                                    <div className="relative">
                                         <DatePicker.DatePickerRange
                                             placeholder={['From', 'To']}
                                             value={[filters.dateFrom || null, filters.dateTo || null]}
@@ -1582,7 +1582,7 @@ const Home = () => {
                                     />
                                 )}
                                 {filterVisibility.dateRange && (
-                                    <div className="relative" style={{ zIndex: 9999 }}>
+                                    <div className="relative">
                                         <DatePicker.DatePickerRange
                                             placeholder={['From', 'To']}
                                             value={[filters.dateFrom || null, filters.dateTo || null]}
@@ -1843,8 +1843,8 @@ const Home = () => {
 
             {/* Multi-Step Create Wizard */}
             <Dialog isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); resetWizard(); }} width={800}>
-                <div className="p-6">
-                    <div className="flex items-center justify-between mb-6">
+                <div className="p-6 flex flex-col max-h-[90vh] md:max-h-none md:block">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-6">
                         <h5 className="text-xl font-semibold">Create {createType === 'lead' ? 'Lead' : 'Client'}</h5>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-500">Step {wizardStep} of {createType === 'lead' ? '3' : '2'}</span>
@@ -1860,6 +1860,8 @@ const Home = () => {
                             </div>
                         </div>
                     </div>
+                    
+                    <div className="flex-1 overflow-y-auto md:overflow-visible md:flex-none">
                     
                     {/* Step 1: Basic Information */}
                     {wizardStep === 1 && (
@@ -2109,8 +2111,10 @@ const Home = () => {
                         </div>
                     )}
                     
+                    </div>
+                    
                     {/* Navigation buttons */}
-                    <div className="flex justify-between mt-8">
+                    <div className="flex justify-between mt-8 md:mt-8 border-t border-gray-200 dark:border-gray-700 md:border-t-0 pt-4 md:pt-0 flex-shrink-0 md:flex-none">
                         <div>
                             {wizardStep > 1 && (
                                 <Button variant="twoTone" onClick={prevWizardStep}>
@@ -2150,7 +2154,7 @@ const Home = () => {
                             )}
                         </div>
                     </div>
-        </div>
+                </div>
             </Dialog>
 
             {/* Confirmation Dialog */}

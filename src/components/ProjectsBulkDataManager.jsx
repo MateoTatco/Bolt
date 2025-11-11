@@ -233,10 +233,10 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
 
     return (
         <Dialog isOpen={isOpen} onClose={onClose} width={800}>
-            <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
+            <div className="p-6 flex flex-col max-h-[90vh] md:max-h-none md:block">
+                <div className="flex items-center justify-between mb-6 flex-col md:flex-row gap-4 md:gap-0">
                     <h3 className="text-lg font-semibold">Bulk Data Manager - Projects</h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full md:w-auto">
                         <Button
                             variant={activeTab === 'import' ? 'solid' : 'twoTone'}
                             size="sm"
@@ -261,6 +261,8 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
                         </Button>
                     </div>
                 </div>
+                
+                <div className="flex-1 overflow-y-auto md:overflow-visible md:flex-none">
 
                 {activeTab === 'import' && (
                     <div className="space-y-4">
@@ -355,7 +357,7 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 mt-4 md:mt-4 border-t border-gray-200 dark:border-gray-700 md:border-t-0 pt-4 md:pt-0">
                             <Button variant="outline" onClick={onClose}>Cancel</Button>
                             <Button
                                 variant="solid"
@@ -408,7 +410,7 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 mt-4 md:mt-4 border-t border-gray-200 dark:border-gray-700 md:border-t-0 pt-4 md:pt-0">
                             <Button variant="outline" onClick={onClose}>Cancel</Button>
                             <Button
                                 variant="solid"
@@ -452,7 +454,7 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 mt-4 md:mt-4 border-t border-gray-200 dark:border-gray-700 md:border-t-0 pt-4 md:pt-0">
                             <Button variant="outline" onClick={onClose}>Cancel</Button>
                             <Button
                                 variant="solid"
@@ -466,6 +468,7 @@ const ProjectsBulkDataManager = ({ isOpen, onClose }) => {
                         </div>
                     </div>
                 )}
+                </div>
             </div>
         </Dialog>
     )
