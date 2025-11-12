@@ -8,7 +8,9 @@
       dark:border-gray-700
       rounded-xl
       transition 
-      duration-150;
+      duration-150
+      min-h-[38px]
+      max-h-[38px];
   }
 
   .select-control-focused {
@@ -22,6 +24,7 @@
 
   .select-value-container {
     @apply items-center flex-1 flex-wrap relative overflow-hidden px-3 py-2 gap-y-2;
+    max-height: 38px;
   }
 
   .select-input-container {
