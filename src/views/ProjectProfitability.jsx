@@ -7,6 +7,8 @@ import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { ProcoreService } from '@/services/ProcoreService'
 import { components } from 'react-select'
+import { useSessionUser } from '@/store/authStore'
+import { ADMIN } from '@/constants/roles.constant'
 
 // Custom ValueContainer to show selected value or count badge
 const CustomValueContainer = ({ children, ...props }) => {
@@ -206,7 +208,6 @@ const generateMockProjects = () => {
         'Bidding',
         'Course of Construction',
     ]
-    const profitCenterYears = ['2024', '2025', '2026', null]
     const contractStatuses = ['Active', 'Pending', 'Completed', 'Cancelled']
 
     for (let i = 0; i < 20; i++) {
@@ -224,7 +225,6 @@ const generateMockProjects = () => {
             projectManager: projectManagers[i % projectManagers.length],
             projectSystem: projectSystems[i % projectSystems.length],
             projectStatus: projectStatuses[i % projectStatuses.length],
-            profitCenterYear: profitCenterYears[i % profitCenterYears.length],
             totalContractValue: contractValue,
             estCostAtCompletion: estCost,
             initialEstimatedProfit: initialProfit,
@@ -256,11 +256,6 @@ const projectStageOptions = [
     { value: 'Bidding', label: 'Bidding' },
     { value: 'Course of Construction', label: 'Course of Construction' },
 ]
-const profitCenterYearOptions = [
-    { value: '2024', label: '2024' },
-    { value: '2025', label: '2025' },
-    { value: '2026', label: '2026' },
-]
 const projectSystemOptions = [
     { value: 'Red Team', label: 'Red Team' },
     { value: 'Procore', label: 'Procore' },
@@ -277,12 +272,15 @@ const projectManagerOptions = [
 ]
 
 const ProjectProfitability = () => {
+    // Check if user is admin
+    const user = useSessionUser((state) => state.user)
+    const isAdmin = user?.authority?.includes(ADMIN) || false
+    
     const [projects, setProjects] = useState([])
     const [filters, setFilters] = useState({
         search: '',
         project: null,
         projectStage: null,
-        profitCenterYear: null,
         projectSystem: null,
         projectManager: null,
     })
@@ -304,7 +302,14 @@ const ProjectProfitability = () => {
     const [useMockData, setUseMockData] = useState(false)
     const [isTestingPrimeContracts, setIsTestingPrimeContracts] = useState(false)
     const [isTestingProjectStatusSnapshots, setIsTestingProjectStatusSnapshots] = useState(false)
+    const [isTestingAllFinancialEndpoints, setIsTestingAllFinancialEndpoints] = useState(false)
+    const [isTestingAllVariations, setIsTestingAllVariations] = useState(false)
+    const [isTestingCostEndpoints, setIsTestingCostEndpoints] = useState(false)
+    const [isTestingArchiveDateEndpoints, setIsTestingArchiveDateEndpoints] = useState(false)
+    const [isTestingBudgetViewsEndpoints, setIsTestingBudgetViewsEndpoints] = useState(false)
+    const [isTestingProjectManagerEndpoints, setIsTestingProjectManagerEndpoints] = useState(false)
     const [isClearingTokens, setIsClearingTokens] = useState(false)
+    const [isFetchingData, setIsFetchingData] = useState(false)
 
     // Column visibility and order (like Master Tracker) - includes all columns
     const defaultColumnKeys = [
@@ -313,7 +318,6 @@ const ProjectProfitability = () => {
         'projectManager',
         'projectSystem',
         'projectStatus',
-        'profitCenterYear',
         'totalContractValue',
         'estCostAtCompletion',
         'initialEstimatedProfit',
@@ -662,6 +666,41 @@ const ProjectProfitability = () => {
         }
     }
 
+    // Fetch Procore data manually
+    const handleFetchData = async () => {
+        setIsFetchingData(true)
+        setError(null)
+        
+        try {
+            console.log('🔄 Fetching Procore projects...')
+            // Fetch all projects (no limit for production - 100+ projects)
+            const procoreData = await ProcoreService.getAllProjectsProfitability()
+            console.log('Fetched Procore projects:', procoreData?.length || 0)
+            
+            if (procoreData && procoreData.length > 0) {
+                console.log('✅ Successfully loaded', procoreData.length, 'projects from Procore')
+                setProjects(procoreData)
+                setUseMockData(false)
+                
+                // Update project options
+                const uniqueProcoreProjects = [...new Set(procoreData.map(p => p.projectName))].map(name => ({
+                    value: name,
+                    label: name,
+                }))
+                setProjectOptions(uniqueProcoreProjects)
+                setIsAuthorized(true)
+            } else {
+                console.warn('⚠️ No projects returned from Procore')
+                setError('No projects found. Please check your Procore permissions.')
+            }
+        } catch (fetchError) {
+            console.error('Error fetching Procore projects:', fetchError)
+            setError(`Failed to fetch projects: ${fetchError.message || 'Unknown error'}`)
+        } finally {
+            setIsFetchingData(false)
+        }
+    }
+
     // TEMPORARY: Test Prime Contracts endpoint
     const handleTestPrimeContracts = async () => {
         setIsTestingPrimeContracts(true)
@@ -734,6 +773,268 @@ const ProjectProfitability = () => {
         }
     }
 
+    // COMPREHENSIVE TEST: Try ALL possible endpoint variations
+    const handleTestAllVariations = async () => {
+        setIsTestingAllVariations(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('🧪 Testing ALL Endpoint Variations...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testAllVariations(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Comprehensive test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 Total attempts:', result.totalAttempts)
+                console.log('👤 User project roles:', result.userProjectRoles)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
+                    } else {
+                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                const rolesInfo = result.userProjectRoles?.length > 0 
+                    ? `\n\n👤 Your project roles: ${result.userProjectRoles.length} role(s) found`
+                    : '\n\n⚠️ No project roles found - you may need to be assigned to this project'
+                
+                alert(`✅ Comprehensive test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}${rolesInfo}\n\nCheck browser console and Firebase logs for full details.`)
+            } else {
+                console.error('❌ All endpoint variations failed:', result.allAttempts)
+                const rolesInfo = result.userProjectRoles?.length > 0 
+                    ? `\n\n👤 Your project roles: ${result.userProjectRoles.length} role(s) found`
+                    : '\n\n⚠️ No project roles found - you may need to be assigned to this project'
+                setError('All endpoint attempts failed. Check console for details.')
+                alert(`❌ All ${result.totalAttempts} endpoint variations failed!${rolesInfo}\n\nThis suggests a permissions issue. Check console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing all variations:', error)
+            setError(`Failed to test all variations: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingAllVariations(false)
+        }
+    }
+
+    // TEST: Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)
+    const handleTestCostEndpoints = async () => {
+        setIsTestingCostEndpoints(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('💰 Testing ALL Cost Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testCostEndpoints(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Cost endpoints test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 Total attempts:', result.totalAttempts)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
+                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
+                            console.log(`   Available fields:`, attempt.dataStructure)
+                        }
+                    } else {
+                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                alert(`✅ Cost endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for full data structures.`)
+            } else {
+                console.error('❌ All cost endpoint attempts failed:', result.allAttempts)
+                setError('All cost endpoint attempts failed. Check console for details.')
+                alert(`❌ All ${result.totalAttempts} cost endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing cost endpoints:', error)
+            setError(`Failed to test cost endpoints: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingCostEndpoints(false)
+        }
+    }
+
+    // TEST: Test ALL archive date endpoints
+    const handleTestArchiveDateEndpoints = async () => {
+        setIsTestingArchiveDateEndpoints(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('📅 Testing ALL Archive Date Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testArchiveDateEndpoints(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Archive date endpoints test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 Total attempts:', result.totalAttempts)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
+                        if (attempt.archiveFields) {
+                            console.log(`   Archive fields found:`, attempt.archiveFields)
+                        }
+                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
+                            console.log(`   Available fields:`, attempt.dataStructure)
+                        }
+                    } else {
+                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                alert(`✅ Archive date endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for archive date fields.`)
+            } else {
+                console.error('❌ All archive date endpoint attempts failed:', result.allAttempts)
+                setError('All archive date endpoint attempts failed. Check console for details.')
+                alert(`❌ All ${result.totalAttempts} archive date endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing archive date endpoints:', error)
+            setError(`Failed to test archive date endpoints: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingArchiveDateEndpoints(false)
+        }
+    }
+
+    // TEST: Test ALL Budget Views endpoints for Est Cost At Completion
+    const handleTestBudgetViewsEndpoints = async () => {
+        setIsTestingBudgetViewsEndpoints(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('📊 Testing ALL Budget Views Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testBudgetViewsEndpoints(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Budget Views endpoints test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 Total attempts:', result.totalAttempts)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
+                        if (attempt.costFields) {
+                            console.log(`   Est Cost At Completion fields found:`, attempt.costFields)
+                        }
+                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
+                            console.log(`   Available fields:`, attempt.dataStructure)
+                        }
+                    } else {
+                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                alert(`✅ Budget Views endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for Est Cost At Completion fields.`)
+            } else {
+                console.error('❌ All Budget Views endpoint attempts failed:', result.allAttempts)
+                setError('All Budget Views endpoint attempts failed. Check console for details.')
+                alert(`❌ All ${result.totalAttempts} Budget Views endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing Budget Views endpoints:', error)
+            setError(`Failed to test Budget Views endpoints: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingBudgetViewsEndpoints(false)
+        }
+    }
+
+    // TEST: Test ALL Project Manager endpoints
+    const handleTestProjectManagerEndpoints = async () => {
+        setIsTestingProjectManagerEndpoints(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('👤 Testing ALL Project Manager Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testProjectManagerEndpoints(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Project Manager endpoints test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 Total attempts:', result.totalAttempts)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
+                        if (attempt.managerFields) {
+                            console.log(`   Project Manager fields found:`, attempt.managerFields)
+                        }
+                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
+                            console.log(`   Available fields:`, attempt.dataStructure)
+                        }
+                    } else {
+                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                alert(`✅ Project Manager endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for Project Manager fields.`)
+            } else {
+                console.error('❌ All Project Manager endpoint attempts failed:', result.allAttempts)
+                setError('All Project Manager endpoint attempts failed. Check console for details.')
+                alert(`❌ All ${result.totalAttempts} Project Manager endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing Project Manager endpoints:', error)
+            setError(`Failed to test Project Manager endpoints: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingProjectManagerEndpoints(false)
+        }
+    }
+
+    // TEMPORARY: Test All Financial Endpoints
+    const handleTestAllFinancialEndpoints = async () => {
+        setIsTestingAllFinancialEndpoints(true)
+        setError(null)
+        
+        try {
+            const projectIdToTest = projects.length > 0 ? projects[0].id : null
+            console.log('🧪 Testing All Financial Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
+            const result = await ProcoreService.testAllFinancialEndpoints(projectIdToTest)
+            
+            if (result.success) {
+                console.log('✅ Test completed!')
+                console.log('📊 Successful endpoints:', result.successfulEndpoints)
+                console.log('📋 All attempts:', result.allAttempts)
+                
+                result.allAttempts.forEach(attempt => {
+                    if (attempt.success) {
+                        console.log(`✅ ${attempt.endpoint}:`, attempt.data)
+                    } else {
+                        console.log(`❌ ${attempt.endpoint}: ${attempt.error} (Status: ${attempt.status})`)
+                    }
+                })
+                
+                alert(`✅ Test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s):\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for details.`)
+            } else {
+                console.error('❌ All endpoints failed:', result.allAttempts)
+                setError('All endpoint attempts failed. Check console for details.')
+                alert(`❌ All endpoints failed!\n\nCheck console and Firebase logs for details.`)
+            }
+        } catch (error) {
+            console.error('❌ Error testing endpoints:', error)
+            setError(`Failed to test endpoints: ${error.message}`)
+            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
+        } finally {
+            setIsTestingAllFinancialEndpoints(false)
+        }
+    }
+
     // Clear Procore tokens (for switching between sandbox/production)
     const handleClearTokens = async () => {
         if (!confirm('Are you sure you want to clear your Procore tokens? You will need to re-authorize.')) {
@@ -793,7 +1094,7 @@ const ProjectProfitability = () => {
 
     // Filter projects
     const filteredProjects = useMemo(() => {
-        const { search, project, projectStage, profitCenterYear, projectSystem, projectManager } = filters
+        const { search, project, projectStage, projectSystem, projectManager } = filters
         
         return projects
             .filter((proj) => {
@@ -816,14 +1117,6 @@ const ProjectProfitability = () => {
                         if (projectStage.length > 0 && !projectStage.some(s => s.value === proj.projectStatus)) return false
                     } else if (projectStage.value) {
                         if (proj.projectStatus !== projectStage.value) return false
-                    }
-                }
-                
-                if (profitCenterYear) {
-                    if (Array.isArray(profitCenterYear)) {
-                        if (profitCenterYear.length > 0 && !profitCenterYear.some(y => y.value === String(proj.profitCenterYear))) return false
-                    } else if (profitCenterYear.value) {
-                        if (String(proj.profitCenterYear) !== profitCenterYear.value) return false
                     }
                 }
                 
@@ -862,7 +1155,7 @@ const ProjectProfitability = () => {
             (acc, proj) => {
                 acc.totalContractValue += proj.totalContractValue || 0
                 acc.totalProjectedProfit += proj.currentProjectedProfit || 0
-                acc.jobToDateCost += (proj.estCostAtCompletion || 0) * ((proj.percentCompleteCost || 0) / 100)
+                acc.jobToDateCost += proj.jobToDateCost || 0 // Use jobToDateCost directly from Procore data
                 return acc
             },
             { totalContractValue: 0, totalProjectedProfit: 0, jobToDateCost: 0 }
@@ -967,16 +1260,6 @@ const ProjectProfitability = () => {
             },
         },
         {
-            header: 'Profit Center Year',
-            accessorKey: 'profitCenterYear',
-            size: 160,
-            meta: { key: 'profitCenterYear' },
-            cell: (props) => {
-                const value = props.row.original.profitCenterYear
-                return <span>{value || '-'}</span>
-            },
-        },
-        {
             header: 'Total Contract Value',
             accessorKey: 'totalContractValue',
             size: 180,
@@ -987,7 +1270,7 @@ const ProjectProfitability = () => {
             },
         },
         {
-            header: 'Est. Cost At Completion',
+            header: 'Est. Cost At Completion*',
             accessorKey: 'estCostAtCompletion',
             size: 200,
             meta: { key: 'estCostAtCompletion' },
@@ -997,7 +1280,7 @@ const ProjectProfitability = () => {
             },
         },
         {
-            header: 'Initial Estimated Profit',
+            header: 'Initial Estimated Profit*',
             accessorKey: 'initialEstimatedProfit',
             size: 200,
             meta: { key: 'initialEstimatedProfit' },
@@ -1092,7 +1375,7 @@ const ProjectProfitability = () => {
             },
         },
         {
-            header: 'Remaining Cost',
+            header: 'Remaining Cost*',
             accessorKey: 'remainingCost',
             size: 160,
             meta: { key: 'remainingCost' },
@@ -1166,7 +1449,7 @@ const ProjectProfitability = () => {
             },
         },
         {
-            header: 'Archive Date',
+            header: 'Archive Date*',
             accessorKey: 'archiveDate',
             size: 160,
             meta: { key: 'archiveDate' },
@@ -1243,7 +1526,6 @@ const ProjectProfitability = () => {
             search: '',
             project: null,
             projectStage: null,
-            profitCenterYear: null,
             projectSystem: null,
             projectManager: null,
         })
@@ -1292,41 +1574,31 @@ const ProjectProfitability = () => {
                             <span className="text-sm text-green-600 dark:text-green-400 font-medium">
                                 ✓ Connected to Procore
                             </span>
-                            {/* TEMPORARY: Test Prime Contracts button */}
                             <Button
-                                variant="outlined"
-                                color="orange"
-                                size="sm"
-                                loading={isTestingPrimeContracts}
-                                onClick={handleTestPrimeContracts}
-                                title="Temporary test button - Test Prime Contracts endpoint"
-                            >
-                                {isTestingPrimeContracts ? 'Testing...' : '🧪 Test Prime Contracts'}
-                            </Button>
-                            {/* TEMPORARY: Test Project Status Snapshots button */}
-                            <Button
-                                variant="outlined"
+                                variant="solid"
                                 color="blue"
                                 size="sm"
-                                loading={isTestingProjectStatusSnapshots}
-                                onClick={handleTestProjectStatusSnapshots}
-                                title="Temporary test button - Test Project Status Snapshots endpoint (for Job To Date Cost)"
+                                loading={isFetchingData}
+                                onClick={handleFetchData}
+                                title="Fetch latest project data from Procore"
                             >
-                                {isTestingProjectStatusSnapshots ? 'Testing...' : '📊 Test Snapshots'}
+                                {isFetchingData ? 'Fetching...' : '🔄 Fetch Data'}
                             </Button>
                         </div>
                     )}
                     {/* Clear Tokens button - visible when authorized or when there might be old tokens */}
-                    <Button
-                        variant="outlined"
-                        color="red"
-                        size="sm"
-                        loading={isClearingTokens}
-                        onClick={handleClearTokens}
-                        title="Clear Procore tokens (useful when switching between sandbox/production)"
-                    >
-                        {isClearingTokens ? 'Clearing...' : '🗑️ Clear Tokens'}
-                    </Button>
+                    {isAuthorized && (
+                        <Button
+                            variant="outlined"
+                            color="red"
+                            size="sm"
+                            loading={isClearingTokens}
+                            onClick={handleClearTokens}
+                            title="Clear Procore tokens (useful when switching between sandbox/production)"
+                        >
+                            {isClearingTokens ? 'Clearing...' : '🗑️ Clear Tokens'}
+                        </Button>
+                    )}
                 </div>
             </div>
             
@@ -1469,28 +1741,6 @@ const ProjectProfitability = () => {
                                     controlShouldRenderValue={false}
                                     hideSelectedOptions={false}
                                 />
-                                <Select
-                                    placeholder="Profit Center Year"
-                                    isClearable
-                                    isMulti
-                                    options={profitCenterYearOptions}
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    value={Array.isArray(filters.profitCenterYear) ? filters.profitCenterYear : (filters.profitCenterYear ? [filters.profitCenterYear] : null)}
-                                    onChange={(opt) => {
-                                        setPageIndex(1)
-                                        setFilters(prev => ({ ...prev, profitCenterYear: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
                                 {filterVisibility.projectSystem && (
                                     <Select
                                         placeholder="Project System"
@@ -1592,26 +1842,6 @@ const ProjectProfitability = () => {
                                     controlShouldRenderValue={false}
                                     hideSelectedOptions={false}
                                 />
-                                <Select
-                                    placeholder="Profit Center Year"
-                                    isClearable
-                                    isMulti
-                                    options={profitCenterYearOptions}
-                                    value={Array.isArray(filters.profitCenterYear) ? filters.profitCenterYear : (filters.profitCenterYear ? [filters.profitCenterYear] : null)}
-                                    onChange={(opt) => {
-                                        setPageIndex(1)
-                                        setFilters(prev => ({ ...prev, profitCenterYear: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
                                 {filterVisibility.projectSystem && (
                                     <Select
                                         placeholder="Project System"
@@ -1666,7 +1896,6 @@ const ProjectProfitability = () => {
                     {(filters.search || 
                         (filters.project && (Array.isArray(filters.project) ? filters.project.length > 0 : filters.project.value)) ||
                         (filters.projectStage && (Array.isArray(filters.projectStage) ? filters.projectStage.length > 0 : filters.projectStage.value)) ||
-                        (filters.profitCenterYear && (Array.isArray(filters.profitCenterYear) ? filters.profitCenterYear.length > 0 : filters.profitCenterYear.value)) ||
                         (filters.projectSystem && (Array.isArray(filters.projectSystem) ? filters.projectSystem.length > 0 : filters.projectSystem.value)) ||
                         (filters.projectManager && (Array.isArray(filters.projectManager) ? filters.projectManager.length > 0 : filters.projectManager.value))) && (
                         <div className="flex justify-end">
@@ -1906,6 +2135,71 @@ const ProjectProfitability = () => {
                     />
                 </Card>
             </div>
+
+            {/* Legend for columns marked with asterisk */}
+            <Card className="mt-6 p-4 bg-gray-50 dark:bg-gray-800">
+                <h6 className="font-semibold mb-2 text-sm">Legend</h6>
+                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                    <p><strong>* Est. Cost At Completion:</strong> Using Budget Line Items + Commitments as alternative. Budget Views endpoint is not available in Procore API.</p>
+                    <p><strong>* Initial Estimated Profit:</strong> Calculated from Est. Cost At Completion (see above).</p>
+                    <p><strong>* Remaining Cost:</strong> Calculated from Est. Cost At Completion (see above).</p>
+                    <p><strong>* Archive Date:</strong> Endpoint not found in Procore API. Field may be empty until API endpoint is identified.</p>
+                </div>
+            </Card>
+
+            {/* Admin-Only Test Functions - Only visible to admin users */}
+            {isAdmin && isAuthorized && (
+                <Card className="mt-6 p-4 border-2 border-dashed border-purple-300 dark:border-purple-700">
+                    <h6 className="font-semibold mb-3 text-sm text-purple-600 dark:text-purple-400">
+                        🔧 Admin Tools - Endpoint Testing
+                    </h6>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+                        These test functions help identify working Procore API endpoints. Use them to troubleshoot data issues.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            variant="outlined"
+                            color="purple"
+                            size="sm"
+                            loading={isTestingCostEndpoints}
+                            onClick={handleTestCostEndpoints}
+                            title="Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)"
+                        >
+                            {isTestingCostEndpoints ? 'Testing...' : '💰 Test Cost Endpoints'}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="purple"
+                            size="sm"
+                            loading={isTestingArchiveDateEndpoints}
+                            onClick={handleTestArchiveDateEndpoints}
+                            title="Test ALL archive date endpoints"
+                        >
+                            {isTestingArchiveDateEndpoints ? 'Testing...' : '📅 Test Archive Date Endpoints'}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="purple"
+                            size="sm"
+                            loading={isTestingBudgetViewsEndpoints}
+                            onClick={handleTestBudgetViewsEndpoints}
+                            title="Test ALL Budget Views endpoints for Est Cost At Completion"
+                        >
+                            {isTestingBudgetViewsEndpoints ? 'Testing...' : '📊 Test Budget Views Endpoints'}
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="purple"
+                            size="sm"
+                            loading={isTestingProjectManagerEndpoints}
+                            onClick={handleTestProjectManagerEndpoints}
+                            title="Test ALL Project Manager endpoints"
+                        >
+                            {isTestingProjectManagerEndpoints ? 'Testing...' : '👤 Test Project Manager Endpoints'}
+                        </Button>
+                    </div>
+                </Card>
+            )}
         </div>
     )
 }

@@ -145,12 +145,14 @@ export const ProcoreService = {
     /**
      * Get all projects with profitability data
      * This is the main function for the Project Profitability page
+     * @param {Object} options - Optional parameters
+     * @param {number} options.maxProjects - Maximum number of projects to process (default: 10)
      * @returns {Promise<Array>} Array of projects with profitability data
      */
-    async getAllProjectsProfitability() {
+    async getAllProjectsProfitability(options = {}) {
         try {
             const getAllFunction = httpsCallable(functions, 'procoreGetAllProjectsProfitability')
-            const result = await getAllFunction()
+            const result = await getAllFunction(options)
             return result.data.data || []
         } catch (error) {
             console.error('Error fetching all projects profitability:', error)
@@ -182,6 +184,93 @@ export const ProcoreService = {
      * @param {string} projectId - Optional project ID (uses first project if not provided)
      * @returns {Promise<Object>} Project Status Snapshots data
      */
+    async testAllVariations(projectId = null) {
+        try {
+            const testAllVariations = httpsCallable(functions, 'procoreTestAllVariations')
+            const result = await testAllVariations({ projectId })
+            return result.data
+        } catch (error) {
+            console.error('Error testing all variations:', error)
+            throw error
+        }
+    },
+
+    /**
+     * TEST FUNCTION: Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)
+     * @param {string} projectId - Optional project ID (uses first project if not provided)
+     * @returns {Promise<Object>} Cost endpoints test results
+     */
+    async testCostEndpoints(projectId = null) {
+        try {
+            const testCostEndpoints = httpsCallable(functions, 'procoreTestCostEndpoints')
+            const result = await testCostEndpoints({ projectId })
+            return result.data
+        } catch (error) {
+            console.error('Error testing cost endpoints:', error)
+            throw error
+        }
+    },
+
+    /**
+     * TEST FUNCTION: Test ALL archive date endpoints
+     * @param {string} projectId - Optional project ID (uses first project if not provided)
+     * @returns {Promise<Object>} Archive date endpoints test results
+     */
+    async testArchiveDateEndpoints(projectId = null) {
+        try {
+            const testArchiveDateEndpoints = httpsCallable(functions, 'procoreTestArchiveDateEndpoints')
+            const result = await testArchiveDateEndpoints({ projectId })
+            return result.data
+        } catch (error) {
+            console.error('Error testing archive date endpoints:', error)
+            throw error
+        }
+    },
+
+    /**
+     * TEST FUNCTION: Test ALL Budget Views endpoints for Est Cost At Completion
+     * @param {string} projectId - Optional project ID (uses first project if not provided)
+     * @returns {Promise<Object>} Budget Views endpoints test results
+     */
+    async testBudgetViewsEndpoints(projectId = null) {
+        try {
+            const testBudgetViewsEndpoints = httpsCallable(functions, 'procoreTestBudgetViewsEndpoints')
+            const result = await testBudgetViewsEndpoints({ projectId })
+            return result.data
+        } catch (error) {
+            console.error('Error testing Budget Views endpoints:', error)
+            throw error
+        }
+    },
+
+    /**
+     * TEST FUNCTION: Test ALL Project Manager endpoints
+     * @param {string} projectId - Optional project ID (uses first project if not provided)
+     * @returns {Promise<Object>} Project Manager endpoints test results
+     */
+    async testProjectManagerEndpoints(projectId = null) {
+        try {
+            const testProjectManagerEndpoints = httpsCallable(functions, 'procoreTestProjectManagerEndpoints')
+            const result = await testProjectManagerEndpoints({ projectId })
+            return result.data
+        } catch (error) {
+            console.error('Error testing Project Manager endpoints:', error)
+            throw error
+        }
+    },
+
+    async testAllFinancialEndpoints(projectId = null) {
+        try {
+            const testFunction = httpsCallable(functions, 'procoreTestAllFinancialEndpoints')
+            const result = await testFunction({ projectId })
+            console.log('All Financial Endpoints test result:', result.data)
+            return result.data
+        } catch (error) {
+            console.error('Error testing All Financial Endpoints:', error)
+            throw error
+        }
+    },
+
     async testProjectStatusSnapshots(projectId = null) {
         try {
             const testFunction = httpsCallable(functions, 'procoreTestProjectStatusSnapshots')

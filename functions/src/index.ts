@@ -942,7 +942,11 @@ export const procoreGetProjectProfitability = functions
 export const procoreGetAllProjectsProfitability = functions
     .region('us-central1')
     .runWith({
-        timeoutSeconds: 120,
+        timeoutSeconds: 540, // Maximum timeout (9 minutes) for Gen 1 Functions
+        // Note: For 100+ projects, this may timeout. Options:
+        // 1. Upgrade to Gen 2 Functions (supports up to 60 minutes)
+        // 2. Implement batch processing (process in chunks of 20-30 projects)
+        // 3. Use Cloud Tasks for background processing
         memory: '512MB',
     })
     .https
@@ -960,6 +964,11 @@ export const procoreGetAllProjectsProfitability = functions
                 'No valid Procore access token. Please authorize the application.'
             );
         }
+        
+        // Declare progress tracking variables outside try block for catch block access
+        let progressRef: admin.firestore.DocumentReference | null = null;
+        let progressRefCreated = false;
+        let progressDocId: string | null = null;
         
         try {
             // Helper function to add delay between API calls to avoid rate limiting
@@ -1006,11 +1015,45 @@ export const procoreGetAllProjectsProfitability = functions
                 const firstProject = projects[0];
                 console.log('Available fields in first project:', Object.keys(firstProject));
                 console.log('First project full structure:', JSON.stringify(firstProject, null, 2));
+                // Log archive-related fields from project list
+                console.log('Archive-related fields in project list:', {
+                    archived_at: firstProject.archived_at,
+                    archive_date: firstProject.archive_date,
+                    archived: firstProject.archived,
+                    status: firstProject.status,
+                    status_name: firstProject.status_name,
+                    active: firstProject.active,
+                    updated_at: firstProject.updated_at,
+                    closed_at: firstProject.closed_at,
+                    closed_date: firstProject.closed_date
+                });
             }
             
             // Process projects sequentially with delays to avoid rate limiting
-            // Limit to first 20 projects initially to avoid hitting rate limits
-            const projectsToProcess = projects.slice(0, 20);
+            // Allow configurable limit via data parameter, default to all projects (no limit)
+            // For production: process all projects (100+), user can wait for completion
+            const maxProjects = data?.maxProjects || projects.length; // Default to all projects
+            const projectsToProcess = projects.slice(0, maxProjects);
+            console.log(`Processing ${projectsToProcess.length} of ${projects.length} total projects (limit: ${maxProjects === projects.length ? 'none (all projects)' : maxProjects})`);
+            
+            // Create progress tracking document in Firestore
+            progressDocId = `procore_sync_${userId}_${Date.now()}`;
+            progressRef = admin.firestore().collection('procoreSyncProgress').doc(progressDocId);
+            
+            try {
+                await progressRef.set({
+                    userId,
+                    totalProjects: projectsToProcess.length,
+                    processedProjects: 0,
+                    status: 'processing',
+                    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                progressRefCreated = true;
+            } catch (progressError) {
+                console.warn('Could not create progress document, continuing without progress tracking:', progressError);
+            }
+            
             const projectsWithData: any[] = [];
             
             for (let i = 0; i < projectsToProcess.length; i++) {
@@ -1019,7 +1062,7 @@ export const procoreGetAllProjectsProfitability = functions
                 
                 // Add delay between projects to avoid rate limiting (except for first project)
                 if (i > 0) {
-                    await delay(200); // 200ms delay between projects
+                    await delay(50); // Reduced delay: 50ms between projects
                 }
                 
                 try {
@@ -1042,7 +1085,19 @@ export const procoreGetAllProjectsProfitability = functions
                             ));
                             projectDetail = detailResponse.data;
                             console.log(`Project ${project.id} detail fields:`, Object.keys(projectDetail || {}));
-                            await delay(100); // Small delay after each API call
+                            // Log archive-related fields for debugging
+                            if (projectDetail) {
+                                console.log(`Project ${project.id} archive-related fields:`, {
+                                    archived_at: projectDetail.archived_at,
+                                    archive_date: projectDetail.archive_date,
+                                    archived: projectDetail.archived,
+                                    status: projectDetail.status,
+                                    status_name: projectDetail.status_name,
+                                    active: projectDetail.active,
+                                    updated_at: projectDetail.updated_at
+                                });
+                            }
+                            await delay(50); // Reduced delay: 50ms after each API call
                         } catch (detailError: any) {
                             console.warn(`Could not fetch details for project ${project.id}:`, detailError.response?.status || detailError.message);
                             // Continue with basic project data if detail fetch fails
@@ -1077,7 +1132,7 @@ export const procoreGetAllProjectsProfitability = functions
                                     },
                                 }
                             ));
-                            await delay(100);
+                            await delay(50);
                             
                             // Prime Contracts response is wrapped in { data: [...] }
                             const primeContracts = primeContractsResponse.data?.data || primeContractsResponse.data || [];
@@ -1095,9 +1150,10 @@ export const procoreGetAllProjectsProfitability = functions
                                 // Log all available fields
                                 console.log(`[${project.id}] Prime Contract available fields:`, Object.keys(primaryContract));
                                 
-                                // Map fields based on Power BI Formula Reference Chart
-                                // Total Contract Value: ProjectRevisedContractAmount from /prime_contract
+                                // Map fields - Prime Contracts has 'grand_total' field for contract value
+                                // Total Contract Value: Use grand_total from Prime Contract
                                 totalContractValueFromPrime = parseFloat(
+                                    primaryContract.grand_total ||
                                     primaryContract.revised_contract_amount || 
                                     primaryContract.project_revised_contract_amount ||
                                     primaryContract.pending_revised_contract_amount ||
@@ -1107,6 +1163,8 @@ export const procoreGetAllProjectsProfitability = functions
                                 ) || 0;
                                 
                                 // Total Invoiced: Owner Invoices Amount from /prime_contract
+                                // Note: Prime Contracts may not have invoiced amount directly
+                                // We'll get this from Payment Applications g702.contract_sum_to_date
                                 totalInvoiced = parseFloat(
                                     primaryContract.owner_invoices_amount ||
                                     primaryContract.owner_invoice_amount || 
@@ -1118,6 +1176,7 @@ export const procoreGetAllProjectsProfitability = functions
                                 
                                 // RevisedContractAmount for balance calculation
                                 const revisedContractAmount = parseFloat(
+                                    primaryContract.grand_total ||
                                     primaryContract.revised_contract_amount || 
                                     primaryContract.project_revised_contract_amount ||
                                     primaryContract.total_amount || 
@@ -1152,152 +1211,199 @@ export const procoreGetAllProjectsProfitability = functions
                         
                         // Extract financial data from project detail
                         // Use Prime Contract value if available, otherwise use project total_value
-                        const totalValue = totalContractValueFromPrime > 0 
+                        // Note: This will be updated after Payment Applications is fetched if g702 has contract value
+                        let totalValue = totalContractValueFromPrime > 0 
                             ? totalContractValueFromPrime 
                             : (projectDetail?.total_value ? parseFloat(projectDetail.total_value) : 0);
                         
-                        // Fetch Budget Views for Est Cost Of Completion (based on Power BI mapping)
-                        // Sum of Est Cost of Completion Amounts From Procore Budget Views
+                        // Fetch Est Cost At Completion
+                        // NOTE: Per Formula Reference Chart, this should come from "Budget Views" endpoint,
+                        // but Budget Views endpoints return 404 (not available in API). Using alternative approach:
+                        // 1. Budget Line Items v2.0 (if available) - sums estimated_cost_at_completion from line items
+                        // 2. Commitments (fallback) - sums total_amount from individual commitment details
+                        // This is the best available alternative since Budget Views endpoint doesn't exist.
                         let estCostAtCompletion = 0;
                         let jobToDateCost = 0; // For calculating remaining costs
-                        console.log(`[${project.id}] Starting Budget Views fetch...`);
+                        console.log(`[${project.id}] Starting Budget Line Items fetch...`);
                         try {
-                            // First, get available budget views
-                            const budgetViewsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${project.id}/project_status_snapshots/budget_views`;
-                            console.log(`[${project.id}] Fetching Budget Views from: ${budgetViewsUrl}`);
-                            const budgetViewsResponse = await retryOnRateLimit(() => axios.get(
-                                budgetViewsUrl,
+                            // Try Budget Line Items endpoint: /rest/v2.0/companies/{company_id}/projects/{project_id}/budget_line_items
+                            // Note: This may return 404 for some projects, in which case we fall back to Commitments
+                            const budgetLineItemsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${project.id}/budget_line_items`;
+                            console.log(`[${project.id}] Fetching Budget Line Items from: ${budgetLineItemsUrl}`);
+                            const budgetLineItemsResponse = await retryOnRateLimit(() => axios.get(
+                                budgetLineItemsUrl,
                                 {
                                     headers: {
                                         'Authorization': `Bearer ${accessToken}`,
                                         'Procore-Company-Id': PROCORE_CONFIG.companyId,
                                     },
+                                    params: {
+                                        per_page: 1000, // Get all line items to sum
+                                    },
                                 }
                             ));
-                            await delay(100);
+                            await delay(50);
                             
-                            const budgetViews = budgetViewsResponse.data?.data || budgetViewsResponse.data || [];
+                            const budgetLineItems = budgetLineItemsResponse.data?.data || budgetLineItemsResponse.data || [];
                             
-                            if (Array.isArray(budgetViews) && budgetViews.length > 0) {
-                                // Get the latest project status snapshot for the first budget view
-                                const budgetViewId = budgetViews[0].id;
-                                const snapshotsResponse = await retryOnRateLimit(() => axios.get(
-                                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${project.id}/budget_view/${budgetViewId}/project_status_snapshots`,
-                                    {
-                                        headers: {
-                                            'Authorization': `Bearer ${accessToken}`,
-                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                        },
-                                        params: {
-                                            per_page: 1,
-                                            sort: '-created_at', // Most recent first
-                                        },
-                                    }
-                                ));
-                                await delay(100);
+                            if (Array.isArray(budgetLineItems) && budgetLineItems.length > 0) {
+                                console.log(`[${project.id}] Budget Line Items: Found ${budgetLineItems.length} items`);
                                 
-                                const snapshots = snapshotsResponse.data?.data || snapshotsResponse.data || [];
-                                if (Array.isArray(snapshots) && snapshots.length > 0) {
-                                    const latestSnapshot = snapshots[0];
-                                    // Extract Est Cost Of Completion and Job To Date Cost
-                                    estCostAtCompletion = parseFloat(latestSnapshot.est_cost_of_completion || latestSnapshot.estimated_cost_at_completion || '0') || 0;
-                                    jobToDateCost = parseFloat(latestSnapshot.job_to_date_cost || latestSnapshot.project_budget_job_to_date_costs || '0') || 0;
-                                    console.log(`[${project.id}] Budget Views: Success - Est Cost: ${estCostAtCompletion}, Job To Date: ${jobToDateCost}`);
-                                } else {
-                                    console.log(`[${project.id}] Budget Views: No snapshots found`);
-                                }
+                                // Sum up cost data from line items
+                                budgetLineItems.forEach((item: any) => {
+                                    // Sum estimated cost at completion
+                                    const estCost = parseFloat(item.estimated_cost_at_completion || item.est_cost_at_completion || item.total_cost || '0') || 0;
+                                    estCostAtCompletion += estCost;
+                                    
+                                    // Sum job to date cost
+                                    const jtdCost = parseFloat(item.job_to_date_cost || item.jtd_cost || item.cost_to_date || '0') || 0;
+                                    jobToDateCost += jtdCost;
+                                });
+                                
+                                console.log(`[${project.id}] Budget Line Items: Success - Est Cost: ${estCostAtCompletion}, Job To Date: ${jobToDateCost}`);
                             } else {
-                                console.log(`[${project.id}] Budget Views: No budget views available`);
+                                console.log(`[${project.id}] Budget Line Items: Empty array returned`);
                             }
                         } catch (budgetError: any) {
-                            // Budget views may not be available (403/404)
+                            // Budget Line Items may not be available (403/404)
                             const status = budgetError.response?.status;
                             if (status === 403) {
-                                console.warn(`[${project.id}] Budget Views: 403 Forbidden (no access)`);
+                                console.warn(`[${project.id}] Budget Line Items: 403 Forbidden (no access)`);
                             } else if (status === 404) {
-                                console.warn(`[${project.id}] Budget Views: 404 Not Found`);
+                                console.warn(`[${project.id}] Budget Line Items: 404 Not Found`);
                             } else {
-                                console.warn(`[${project.id}] Budget Views: Error ${status || 'unknown'}:`, budgetError.message);
+                                console.warn(`[${project.id}] Budget Line Items: Error ${status || 'unknown'}:`, budgetError.message);
                             }
                         }
                         
-                        // Fetch Owner Invoices for Percent Complete (Revenue) and Customer Retainage (based on Power BI mapping)
-                        // Most recent invoice: % complete and Total Retainage
-                        // Note: Owner Invoices might be under Prime Contracts or a separate endpoint
+                        // Fetch Payment Applications for Percent Complete (Revenue) and Customer Retainage
+                        // Payment Applications v1.0 is a working endpoint (from test results)
+                        // This may contain invoice-like data with percent complete and retainage
                         let percentCompleteRevenue = 0;
                         let customerRetainage = 0;
-                        console.log(`[${project.id}] Starting Owner Invoices fetch...`);
+                        console.log(`[${project.id}] Starting Payment Applications fetch...`);
                         try {
-                            // Try to get owner invoices from Prime Contract first (if available in the contract object)
-                            if (primeContractsData && primeContractsData.length > 0) {
+                            // Use Payment Applications v1.0 endpoint: /rest/v1.0/payment_applications
+                            const paymentApplicationsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/payment_applications`;
+                            console.log(`[${project.id}] Fetching Payment Applications from: ${paymentApplicationsUrl}`);
+                            const paymentApplicationsResponse = await retryOnRateLimit(() => axios.get(
+                                paymentApplicationsUrl,
+                                {
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                    params: {
+                                        project_id: project.id, // Required query parameter
+                                        per_page: 1,
+                                        sort: '-created_at', // Most recent first
+                                    },
+                                }
+                            ));
+                            await delay(50);
+                            
+                            const paymentApplications = paymentApplicationsResponse.data?.data || paymentApplicationsResponse.data || [];
+                            
+                            if (Array.isArray(paymentApplications) && paymentApplications.length > 0) {
+                                const latestPaymentApp = paymentApplications[0];
+                                console.log(`[${project.id}] Payment Application structure:`, JSON.stringify(latestPaymentApp, null, 2));
+                                console.log(`[${project.id}] Payment Application available fields:`, Object.keys(latestPaymentApp));
+                                
+                                // Extract percent complete and retainage from payment application
+                                // percent_complete is at root level
+                                percentCompleteRevenue = parseFloat(
+                                    latestPaymentApp.percent_complete || 
+                                    latestPaymentApp.percentage_complete || 
+                                    latestPaymentApp.percent_complete_revenue ||
+                                    latestPaymentApp.completion_percentage ||
+                                    '0'
+                                ) || 0;
+                                
+                                // Customer retainage is nested in g702 object
+                                // Check g702 object first (this is where it actually is)
+                                if (latestPaymentApp.g702) {
+                                    customerRetainage = parseFloat(
+                                        latestPaymentApp.g702.completed_work_retainage_amount ||
+                                        latestPaymentApp.g702.total_retainage ||
+                                        '0'
+                                    ) || 0;
+                                }
+                                
+                                // Fallback to root level fields if g702 doesn't have it
+                                if (customerRetainage === 0) {
+                                    customerRetainage = parseFloat(
+                                        latestPaymentApp.total_retainage || 
+                                        latestPaymentApp.retainage_amount || 
+                                        latestPaymentApp.retainage ||
+                                        latestPaymentApp.customer_retainage ||
+                                        '0'
+                                    ) || 0;
+                                }
+                                
+                                // Use Payment Applications g702 data for contract value and invoiced amounts
+                                if (latestPaymentApp.g702) {
+                                    // Use original_contract_sum as contract value if Prime Contract doesn't have it
+                                    if (totalContractValueFromPrime === 0 && latestPaymentApp.g702.original_contract_sum) {
+                                        totalContractValueFromPrime = parseFloat(latestPaymentApp.g702.original_contract_sum) || 0;
+                                        // Update totalValue as well
+                                        totalValue = totalContractValueFromPrime;
+                                        console.log(`[${project.id}] Updated Contract Value from Payment Applications g702: ${totalContractValueFromPrime}`);
+                                    }
+                                    
+                                    // Use contract_sum_to_date as total invoiced (this is cumulative invoiced amount)
+                                    if (totalInvoiced === 0 && latestPaymentApp.g702.contract_sum_to_date) {
+                                        totalInvoiced = parseFloat(latestPaymentApp.g702.contract_sum_to_date) || 0;
+                                    } else if (latestPaymentApp.g702.contract_sum_to_date) {
+                                        // Use the latest contract_sum_to_date (it's cumulative, so latest is most accurate)
+                                        totalInvoiced = parseFloat(latestPaymentApp.g702.contract_sum_to_date) || 0;
+                                    }
+                                    
+                                    // Recalculate balance if we have new data
+                                    if (totalContractValueFromPrime > 0 && totalInvoiced > 0) {
+                                        balanceLeftOnContract = totalContractValueFromPrime - totalInvoiced;
+                                        console.log(`[${project.id}] Recalculated Balance from Payment Applications - Contract: ${totalContractValueFromPrime}, Invoiced: ${totalInvoiced}, Balance: ${balanceLeftOnContract}`);
+                                    }
+                                }
+                                
+                                // Fallback: use total_amount_paid as total invoiced if g702 doesn't have it
+                                if (totalInvoiced === 0 && latestPaymentApp.total_amount_paid) {
+                                    totalInvoiced = parseFloat(latestPaymentApp.total_amount_paid) || 0;
+                                }
+                                
+                                // Final balance recalculation after all Payment Applications data
+                                if (totalContractValueFromPrime > 0 && totalInvoiced > 0) {
+                                    balanceLeftOnContract = totalContractValueFromPrime - totalInvoiced;
+                                }
+                                
+                                console.log(`[${project.id}] Payment Application - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
+                            } else {
+                                console.log(`[${project.id}] No payment applications found`);
+                            }
+                            
+                            // Also try to get data from Prime Contract if available
+                            if (primeContractsData && primeContractsData.length > 0 && (percentCompleteRevenue === 0 || customerRetainage === 0)) {
                                 const primaryContract = primeContractsData[0];
                                 // Check if invoice data is nested in the contract
                                 if (primaryContract.owner_invoices && Array.isArray(primaryContract.owner_invoices) && primaryContract.owner_invoices.length > 0) {
                                     const latestInvoice = primaryContract.owner_invoices[0];
-                                    percentCompleteRevenue = parseFloat(latestInvoice.percent_complete || latestInvoice.percentage_complete || '0') || 0;
-                                    customerRetainage = parseFloat(latestInvoice.total_retainage || latestInvoice.retainage_amount || '0') || 0;
-                                    console.log(`Project ${project.id} Owner Invoice (from Prime Contract) - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
+                                    if (percentCompleteRevenue === 0) {
+                                        percentCompleteRevenue = parseFloat(latestInvoice.percent_complete || latestInvoice.percentage_complete || '0') || 0;
+                                    }
+                                    if (customerRetainage === 0) {
+                                        customerRetainage = parseFloat(latestInvoice.total_retainage || latestInvoice.retainage_amount || '0') || 0;
+                                    }
+                                    console.log(`[${project.id}] Owner Invoice (from Prime Contract) - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
                                 }
                             }
-                            
-                            // If not found in Prime Contract, try /invoices endpoint (per Formula Reference Chart)
-                            // Customer Retainage: Total Retainage from most recent invoice from /invoices
-                            if (percentCompleteRevenue === 0 && customerRetainage === 0) {
-                                try {
-                                    // According to Formula Reference Chart: /invoices (not /owner_invoices)
-                                    const invoicesResponse = await retryOnRateLimit(() => axios.get(
-                                        `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/invoices`,
-                                        {
-                                            headers: {
-                                                'Authorization': `Bearer ${accessToken}`,
-                                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                            },
-                                            params: {
-                                                project_id: project.id, // Required query parameter
-                                                per_page: 1,
-                                                sort: '-created_at', // Most recent first
-                                            },
-                                        }
-                                    ));
-                                    await delay(100);
-                                    
-                                    const invoices = invoicesResponse.data?.data || invoicesResponse.data || [];
-                                    if (Array.isArray(invoices) && invoices.length > 0) {
-                                        const latestInvoice = invoices[0];
-                                        console.log(`[${project.id}] Invoice structure:`, JSON.stringify(latestInvoice, null, 2));
-                                        console.log(`[${project.id}] Invoice available fields:`, Object.keys(latestInvoice));
-                                        
-                                        percentCompleteRevenue = parseFloat(latestInvoice.percent_complete || latestInvoice.percentage_complete || latestInvoice.percent_complete_revenue || '0') || 0;
-                                        customerRetainage = parseFloat(latestInvoice.total_retainage || latestInvoice.retainage_amount || latestInvoice.retainage || '0') || 0;
-                                        console.log(`[${project.id}] Invoice (from /invoices endpoint) - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
-                                    } else {
-                                        console.log(`[${project.id}] No invoices found`);
-                                    }
-                                } catch (invoiceEndpointError: any) {
-                                    // Endpoint might not exist or user doesn't have access
-                                    const status = invoiceEndpointError.response?.status;
-                                    if (status === 403) {
-                                        console.warn(`[${project.id}] Invoices: 403 Forbidden (no access)`);
-                                    } else if (status === 404) {
-                                        console.warn(`[${project.id}] Invoices: 404 Not Found`);
-                                    } else if (status) {
-                                        console.warn(`[${project.id}] Invoices: Error ${status}:`, invoiceEndpointError.message);
-                                    } else {
-                                        console.warn(`[${project.id}] Invoices: Error:`, invoiceEndpointError.message);
-                                    }
-                                }
-                            } else {
-                                console.log(`[${project.id}] Owner Invoices: No Prime Contracts data, skipping endpoint check`);
-                            }
-                        } catch (invoiceError: any) {
-                            // Invoices may not be available
-                            const status = invoiceError.response?.status;
+                        } catch (paymentAppError: any) {
+                            // Payment Applications may not be available
+                            const status = paymentAppError.response?.status;
                             if (status === 403) {
-                                console.warn(`[${project.id}] Owner Invoices: 403 Forbidden (no access)`);
+                                console.warn(`[${project.id}] Payment Applications: 403 Forbidden (no access)`);
                             } else if (status === 404) {
-                                console.warn(`[${project.id}] Owner Invoices: 404 Not Found`);
-                            } else if (status) {
-                                console.warn(`[${project.id}] Owner Invoices: Error ${status}:`, invoiceError.message);
+                                console.warn(`[${project.id}] Payment Applications: 404 Not Found`);
+                            } else {
+                                console.warn(`[${project.id}] Payment Applications: Error ${status || 'unknown'}:`, paymentAppError.message);
                             }
                         }
                         
@@ -1322,16 +1428,74 @@ export const procoreGetAllProjectsProfitability = functions
                                     },
                                 }
                             ));
-                            await delay(100);
+                            await delay(50);
                             
                             const requisitions = requisitionsResponse.data?.data || requisitionsResponse.data || [];
                             if (Array.isArray(requisitions) && requisitions.length > 0) {
+                                // Log first requisition structure to see what fields are available
+                                if (requisitions.length > 0) {
+                                    console.log(`[${project.id}] First Requisition structure:`, JSON.stringify(requisitions[0], null, 2));
+                                    console.log(`[${project.id}] First Requisition available fields:`, Object.keys(requisitions[0]));
+                                }
+                                
+                                // Sort requisitions by billing_date (most recent first) to get latest cumulative total
+                                const sortedRequisitions = [...requisitions].sort((a: any, b: any) => {
+                                    const dateA = a.billing_date ? new Date(a.billing_date).getTime() : 0;
+                                    const dateB = b.billing_date ? new Date(b.billing_date).getTime() : 0;
+                                    return dateB - dateA; // Most recent first
+                                });
+                                
                                 requisitions.forEach((req: any) => {
-                                    // Sum Completed Work Retainage Amount
-                                    const retainage = parseFloat(req.completed_work_retainage_amount || req.retainage_amount || '0') || 0;
+                                    // Check summary object first (retainage might be nested there)
+                                    let retainage = 0;
+                                    
+                                    if (req.summary) {
+                                        // Extract vendor retainage
+                                        retainage = parseFloat(
+                                            req.summary.completed_work_retainage_amount ||
+                                            req.summary.retainage_amount ||
+                                            req.summary.total_retainage ||
+                                            '0'
+                                        ) || 0;
+                                    }
+                                    
+                                    // Fallback to root level fields
+                                    if (retainage === 0) {
+                                        retainage = parseFloat(
+                                            req.completed_work_retainage_amount || 
+                                            req.retainage_amount || 
+                                            req.total_retainage ||
+                                            '0'
+                                        ) || 0;
+                                    }
+                                    
                                     vendorRetainage += retainage;
                                 });
-                                console.log(`[${project.id}] Requisitions: Success - Found ${requisitions.length} requisitions, Vendor Retainage: ${vendorRetainage}`);
+                                
+                                // For Job To Date Cost, use the latest requisition's total_completed_and_stored_to_date
+                                // (it's cumulative, so latest = total to date)
+                                if (sortedRequisitions.length > 0 && sortedRequisitions[0].summary) {
+                                    const latestTotal = parseFloat(
+                                        sortedRequisitions[0].summary.total_completed_and_stored_to_date ||
+                                        '0'
+                                    ) || 0;
+                                    
+                                    if (latestTotal > 0) {
+                                        jobToDateCost = latestTotal; // Use cumulative total from latest requisition
+                                        console.log(`[${project.id}] Using latest requisition's total_completed_and_stored_to_date: ${latestTotal}`);
+                                    } else {
+                                        // Fallback: sum current_payment_due from all requisitions
+                                        sortedRequisitions.forEach((req: any) => {
+                                            if (req.summary) {
+                                                const paymentDue = parseFloat(req.summary.current_payment_due || '0') || 0;
+                                                jobToDateCost += paymentDue;
+                                            }
+                                        });
+                                        console.log(`[${project.id}] Fallback: Summing current_payment_due from all requisitions: ${jobToDateCost}`);
+                                    }
+                                }
+                                
+                                console.log(`[${project.id}] Requisitions: Success - Found ${requisitions.length} requisitions, Vendor Retainage: ${vendorRetainage}, Job To Date Cost: ${jobToDateCost}`);
                             } else {
                                 console.log(`[${project.id}] Requisitions: Empty array returned (no requisitions)`);
                             }
@@ -1347,8 +1511,117 @@ export const procoreGetAllProjectsProfitability = functions
                             }
                         }
                         
+                        // Contract Payments endpoint returns 404, so we're using Requisitions for Job To Date Cost instead
+                        
+                        // Fetch Commitments for Est Cost At Completion (fallback when Budget Line Items returns 404)
+                        // NOTE: This is a fallback approach since Budget Views endpoint (per reference chart) is not available.
+                        // We sum total_amount from individual commitment details to get Est Cost At Completion.
+                        console.log(`[${project.id}] Starting Commitments fetch (fallback for Est Cost At Completion)...`);
+                        try {
+                            const commitmentsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/commitments`;
+                            console.log(`[${project.id}] Fetching Commitments from: ${commitmentsUrl}`);
+                            const commitmentsResponse = await retryOnRateLimit(() => axios.get(
+                                commitmentsUrl,
+                                {
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                    params: {
+                                        project_id: project.id,
+                                        per_page: 1000, // Get all commitments to sum
+                                    },
+                                }
+                            ));
+                            await delay(50);
+                            
+                            const commitments = commitmentsResponse.data?.data || commitmentsResponse.data || [];
+                            if (Array.isArray(commitments) && commitments.length > 0) {
+                                console.log(`[${project.id}] Commitments: Found ${commitments.length} commitment(s)`);
+                                
+                                // Log first commitment structure
+                                if (commitments.length > 0) {
+                                    console.log(`[${project.id}] First Commitment structure:`, JSON.stringify(commitments[0], null, 2));
+                                    console.log(`[${project.id}] First Commitment available fields:`, Object.keys(commitments[0]));
+                                }
+                                
+                                // Fetch individual commitment details to get amount
+                                // The list endpoint doesn't have amounts, but detail endpoint does
+                                console.log(`[${project.id}] Fetching details for ${commitments.length} commitments...`);
+                                for (const commitment of commitments) { // Fetch ALL commitments to get complete Est Cost
+                                    try {
+                                        const commitmentDetailUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/commitments/${commitment.id}`;
+                                        const commitmentDetailResponse = await retryOnRateLimit(() => axios.get(
+                                            commitmentDetailUrl,
+                                            {
+                                                headers: {
+                                                    'Authorization': `Bearer ${accessToken}`,
+                                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                                },
+                                                params: {
+                                                    project_id: project.id,
+                                                },
+                                            }
+                                        ));
+                                        await delay(50);
+                                        
+                                        const commitmentDetail = commitmentDetailResponse.data;
+                                        
+                                        // Check for amount fields in detail - use total_amount or grand_total
+                                        const commitmentAmount = parseFloat(
+                                            commitmentDetail.total_amount ||
+                                            commitmentDetail.grand_total ||
+                                            commitmentDetail.amount ||
+                                            commitmentDetail.committed_amount ||
+                                            commitmentDetail.estimated_cost ||
+                                            '0'
+                                        ) || 0;
+                                        
+                                        if (commitmentAmount > 0) {
+                                            estCostAtCompletion += commitmentAmount;
+                                            console.log(`[${project.id}] Commitment ${commitment.id} (${commitment.title || commitment.number}): ${commitmentAmount}`);
+                                        }
+                                    } catch (detailError: any) {
+                                        // If detail fetch fails, log but continue
+                                        const status = detailError.response?.status;
+                                        if (status === 403) {
+                                            console.warn(`[${project.id}] Commitment ${commitment.id} detail: 403 Forbidden`);
+                                        } else if (status === 404) {
+                                            console.warn(`[${project.id}] Commitment ${commitment.id} detail: 404 Not Found`);
+                                        } else {
+                                            console.warn(`[${project.id}] Commitment ${commitment.id} detail: Error ${status || 'unknown'}`);
+                                        }
+                                    }
+                                }
+                                
+                                console.log(`[${project.id}] Commitments: Est Cost At Completion from commitments: ${estCostAtCompletion}`);
+                            } else {
+                                console.log(`[${project.id}] Commitments: Empty array returned`);
+                            }
+                        } catch (commitmentsError: any) {
+                            const status = commitmentsError.response?.status;
+                            if (status === 403) {
+                                console.warn(`[${project.id}] Commitments: 403 Forbidden (no access)`);
+                            } else if (status === 404) {
+                                console.warn(`[${project.id}] Commitments: 404 Not Found`);
+                            } else {
+                                console.warn(`[${project.id}] Commitments: Error ${status || 'unknown'}:`, commitmentsError.message);
+                            }
+                        }
+                        
+                        // Final balance recalculation after all data is fetched
+                        // Use totalValue (which may have been updated from Payment Applications) or totalContractValueFromPrime
+                        const finalContractValue = totalContractValueFromPrime > 0 ? totalContractValueFromPrime : totalValue;
+                        if (finalContractValue > 0 && totalInvoiced > 0) {
+                            balanceLeftOnContract = finalContractValue - totalInvoiced;
+                            console.log(`[${project.id}] Final Balance Calculation - Contract: ${finalContractValue}, Invoiced: ${totalInvoiced}, Balance: ${balanceLeftOnContract}`);
+                        } else {
+                            console.log(`[${project.id}] Cannot calculate balance - Contract: ${finalContractValue}, Invoiced: ${totalInvoiced}`);
+                        }
+                        
                         // Fetch Project Roles for Project Manager (based on Power BI mapping)
-                        let projectManager = project.project_manager?.name || project.manager_name || project.created_by?.email || '';
+                        // Initialize with empty string - will be populated from Project Roles endpoint
+                        let projectManager = '';
                         console.log(`[${project.id}] Starting Project Roles fetch...`);
                         try {
                             // Correct endpoint: /rest/v1.0/project_roles with project_id as query parameter
@@ -1366,21 +1639,29 @@ export const procoreGetAllProjectsProfitability = functions
                                     },
                                 }
                             ));
-                            await delay(100);
+                            await delay(50);
                             
                             const projectRoles = projectRolesResponse.data?.data || projectRolesResponse.data || [];
                             if (Array.isArray(projectRoles) && projectRoles.length > 0) {
-                                // Find Project Manager role
-                                const pmRole = projectRoles.find((role: any) => 
-                                    role.role_name?.toLowerCase().includes('manager') || 
-                                    role.role?.toLowerCase().includes('manager') ||
-                                    role.name?.toLowerCase().includes('manager')
-                                );
-                                if (pmRole && pmRole.user?.name) {
-                                    projectManager = pmRole.user.name;
-                                    console.log(`[${project.id}] Project Roles: Success - Found PM: ${projectManager}`);
+                                // Find Project Manager role - try multiple variations
+                                const pmRole = projectRoles.find((role: any) => {
+                                    const roleName = (role.role_name || role.role || '').toLowerCase();
+                                    return roleName.includes('project manager') || 
+                                           roleName === 'project manager' ||
+                                           roleName.includes('manager');
+                                });
+                                
+                                if (pmRole) {
+                                    // Based on test results: Project Roles v1.0 returns name directly on the role object
+                                    // Structure: { id, name: 'Simon Cox (Tatco Construction)', role: 'Project Manager', ... }
+                                    projectManager = pmRole.name || 
+                                                   pmRole.user?.name || 
+                                                   pmRole.user?.full_name || 
+                                                   pmRole.user?.display_name ||
+                                                   '';
+                                    console.log(`[${project.id}] Project Roles: Success - Found PM role: ${pmRole.role}, Name: ${projectManager}`);
                                 } else {
-                                    console.log(`[${project.id}] Project Roles: Success - Found ${projectRoles.length} roles, but no PM role found`);
+                                    console.log(`[${project.id}] Project Roles: Success - Found ${projectRoles.length} roles, but no PM role found. Available roles:`, projectRoles.map((r: any) => r.role || r.role_name || 'unknown'));
                                 }
                             } else {
                                 console.log(`[${project.id}] Project Roles: Empty array returned (no roles)`);
@@ -1478,16 +1759,20 @@ export const procoreGetAllProjectsProfitability = functions
                             id: project.id?.toString() || `procore-${project.id}`,
                             projectName: project.name || projectDetail?.name || 'Unknown Project',
                             projectNumber: project.number || project.project_number || projectDetail?.project_number || '',
-                            projectManager: projectManager || project.project_manager?.name || project.manager_name || project.created_by?.email || '', // From Project Roles or fallback
+                            projectManager: projectManager || project.project_manager?.name || project.manager_name || '', // From Project Roles (name is directly on role object, not nested under user)
                             projectSystem: 'Procore', // Default since coming from Procore
-                            projectStatus: project.status_name || project.status || projectDetail?.active === false ? 'Inactive' : 'Active',
-                            profitCenterYear: project.profit_center_year || project.year || null,
+                            projectStatus: project.stage_name || projectDetail?.project_stage?.name || project.status_name || project.status || (projectDetail?.active === false ? 'Inactive' : 'Active'), // Use stage_name for values like "Course of Construction", "Complete", etc.
                             // Financial fields - prioritize Prime Contract data, then project detail, then calculated
                             totalContractValue: totalValue || 0, // From Prime Contract (ProjectRevisedContractAmount) or project total_value
-                            estCostAtCompletion: estCostAtCompletion || 0, // From Budget Views
+                            estCostAtCompletion: estCostAtCompletion || 0, // From Budget Line Items + Commitments (Budget Views endpoint not available)
                             initialEstimatedProfit: totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0, // Calculated: Contract Value - Est Cost
                             currentProjectedProfit: projectedProfit || (totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0), // From custom field or calculated
-                            estimatedDifference: 0, // Calculate if needed
+                            estimatedDifference: (() => {
+                                const initial = totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0;
+                                const current = projectedProfit || initial;
+                                return current - initial; // Difference between current and initial projected profit
+                            })(),
+                            jobToDateCost: jobToDateCost || 0, // From Requisitions or Budget Line Items
                             percentProjectedProfit: totalValue > 0 && estCostAtCompletion > 0 
                                 ? ((totalValue - estCostAtCompletion) / totalValue) * 100 
                                 : (totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0), // Formula: (Total Contract Value - Est Cost) / Total Contract Value * 100
@@ -1502,7 +1787,7 @@ export const procoreGetAllProjectsProfitability = functions
                             contractStartDate: contractStartDate || projectDetail?.start_date || projectDetail?.actual_start_date || null, // From Prime Contract or project
                             contractEndDate: contractEndDate || projectDetail?.completion_date || projectDetail?.projected_finish_date || null, // From Prime Contract or project
                             isActive: project.status_name !== 'Archived' && project.status_name !== 'Closed' && projectDetail?.active !== false,
-                            archiveDate: null,
+                            archiveDate: project.archived_at || project.archive_date || project.closed_at || project.closed_date || projectDetail?.archived_at || projectDetail?.archive_date || (project.status_name === 'Archived' ? project.updated_at : null) || null,
                             // Store raw Procore data for reference
                             _procoreData: project,
                             _procoreDetail: projectDetail, // Store detail for debugging
@@ -1510,21 +1795,82 @@ export const procoreGetAllProjectsProfitability = functions
                         };
                         
                         projectsWithData.push(projectData);
+                        
+                        // Update progress after each project
+                        if (progressRefCreated) {
+                            try {
+                                await progressRef.update({
+                                    processedProjects: i + 1,
+                                    currentProject: project.name || project.id,
+                                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                });
+                            } catch (progressError) {
+                                console.warn('Could not update progress:', progressError);
+                            }
+                        }
                     } catch (error: any) {
                         console.error(`Error processing project ${project.id}:`, error);
                         // Continue to next project even if this one fails
+                        // Still update progress
+                        if (progressRefCreated) {
+                            try {
+                                await progressRef.update({
+                                    processedProjects: i + 1,
+                                    errors: admin.firestore.FieldValue.arrayUnion({
+                                        projectId: project.id,
+                                        projectName: project.name,
+                                        error: error.message,
+                                        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                                    }),
+                                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                });
+                            } catch (progressError) {
+                                console.warn('Could not update progress on error:', progressError);
+                            }
+                        }
                     }
                 } catch (outerError: any) {
                     console.error(`Outer error processing project ${project.id}:`, outerError);
                 }
             }
             
+            // Mark progress as completed
+            if (progressRefCreated) {
+                try {
+                    await progressRef.update({
+                        status: 'completed',
+                        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                } catch (progressError) {
+                    console.warn('Could not mark progress as completed:', progressError);
+                }
+            }
+            
             return {
                 success: true,
                 data: projectsWithData.filter(p => p !== null),
+                progressDocId, // Return progress document ID for frontend tracking
+                totalProcessed: projectsWithData.length,
+                totalProjects: projectsToProcess.length,
             };
         } catch (error: any) {
             console.error('Error fetching all Procore projects:', error.response?.data || error.message);
+            
+            // Mark progress as failed if it exists
+            if (progressRefCreated && progressRef) {
+                try {
+                    await progressRef.update({
+                        status: 'failed',
+                        error: error.message || 'Unknown error',
+                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                } catch (progressError) {
+                    console.error('Error updating progress on failure:', progressError);
+                }
+            }
+            
             throw new functions.https.HttpsError(
                 'internal',
                 error.response?.data?.error_description || 'Failed to fetch projects'
@@ -1791,5 +2137,1103 @@ export const procoreTestProjectStatusSnapshots = functions
                 error.response?.data?.error_description || 'Failed to test Project Status Snapshots endpoint'
             );
         }
+    });
+
+// TEST FUNCTION: Test all alternative financial endpoints to find working ones
+export const procoreTestAllFinancialEndpoints = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 120,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Try alternative endpoints for missing financial data
+        const endpointsToTry = [
+            // Payment Applications (Owner Invoices) - might have invoice data!
+            {
+                name: 'Payment Applications (Owner Invoices)',
+                url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/payment_applications`,
+                params: { project_id: testProjectId, per_page: 1 },
+            },
+            // Contract Payments - might have payment data
+            {
+                name: 'Contract Payments',
+                url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/contract_payments`,
+                params: { project_id: testProjectId, per_page: 1 },
+            },
+            // Budget (v1.0) - might have cost data
+            {
+                name: 'Budget (v1.0)',
+                url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget`,
+                params: { company_id: PROCORE_CONFIG.companyId },
+            },
+        ];
+        
+        for (const endpoint of endpointsToTry) {
+            try {
+                console.log(`\n=== Trying: ${endpoint.name} ===`);
+                console.log(`URL: ${endpoint.url}`);
+                console.log(`Params:`, endpoint.params);
+                
+                const response = await axios.get(endpoint.url, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                    },
+                    params: endpoint.params,
+                });
+                
+                const data = response.data?.data || response.data || [];
+                console.log(`✅ SUCCESS: ${endpoint.name}`);
+                console.log(`Status: ${response.status}`);
+                console.log(`Data type: ${Array.isArray(data) ? 'Array' : typeof data}`);
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}`);
+                    console.log(`First item keys:`, Object.keys(data[0]));
+                    console.log(`First item structure:`, JSON.stringify(data[0], null, 2));
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                    console.log(`Full structure:`, JSON.stringify(data, null, 2));
+                }
+                
+                results.attempts.push({
+                    endpoint: endpoint.name,
+                    url: endpoint.url,
+                    success: true,
+                    status: response.status,
+                    data: data,
+                });
+                results.successfulEndpoints.push(endpoint.name);
+                
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorData = error.response?.data;
+                console.log(`❌ FAILED: ${endpoint.name}`);
+                console.log(`Status: ${status}`);
+                console.log(`Error: ${errorData?.error?.message || error.message}`);
+                
+                results.attempts.push({
+                    endpoint: endpoint.name,
+                    url: endpoint.url,
+                    success: false,
+                    status: status,
+                    error: errorData?.error?.message || error.message,
+                });
+            }
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            allAttempts: results.attempts,
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s). Check Firebase logs for details.`
+                : '❌ All endpoint attempts failed. Check allAttempts for details.',
+        };
+    });
+
+// COMPREHENSIVE TEST: Try ALL possible endpoint variations to find what works
+export const procoreTestAllVariations = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 180,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Helper to test an endpoint
+        const testEndpoint = async (name: string, url: string, headers: any, params?: any) => {
+            try {
+                console.log(`\n=== Testing: ${name} ===`);
+                console.log(`URL: ${url}`);
+                console.log(`Params:`, params || 'none');
+                
+                const response = await axios.get(url, { headers, params });
+                const data = response.data?.data || response.data || [];
+                
+                console.log(`✅ SUCCESS: ${name} - Status: ${response.status}`);
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}, First item keys:`, Object.keys(data[0]));
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                }
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: true,
+                    status: response.status,
+                    hasData: Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0,
+                });
+                results.successfulEndpoints.push(name);
+                return true;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                console.log(`❌ FAILED: ${name} - Status: ${status}, Error: ${errorMsg}`);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: false,
+                    status: status,
+                    error: errorMsg,
+                });
+                return false;
+            }
+        };
+        
+        const baseHeaders = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+        };
+        
+        // 1. PRIME CONTRACTS - Try ALL variations
+        console.log('\n========== TESTING PRIME CONTRACTS ==========');
+        const primeContractVariations = [
+            // v2.0 variations
+            { name: 'Prime Contracts v2.0 (default)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/prime_contracts`, params: {} },
+            { name: 'Prime Contracts v2.0 (view=default)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/prime_contracts`, params: { view: 'default' } },
+            { name: 'Prime Contracts v2.0 (view=extended)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/prime_contracts`, params: { view: 'extended' } },
+            // v1.0 variations
+            { name: 'Prime Contracts v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/prime_contracts`, params: {} },
+            { name: 'Prime Contracts v1.0 (view=extended)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/prime_contracts`, params: { view: 'extended' } },
+            // VAPID (if it exists)
+            { name: 'Prime Contracts VAPID', url: `${PROCORE_CONFIG.apiBaseUrl}/vapid/projects/${testProjectId}/prime_contracts`, params: {} },
+        ];
+        
+        for (const variation of primeContractVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100); // Small delay between attempts
+        }
+        
+        // 2. CHECK USER'S PROJECT ROLE FIRST (maybe user needs to be assigned to project)
+        console.log('\n========== CHECKING USER PROJECT ROLE ==========');
+        try {
+            // First, get the current user's info from Procore
+            let currentUserEmail: string | null = null;
+            try {
+                const userInfoUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/me`;
+                const userInfoResponse = await axios.get(userInfoUrl, { headers: baseHeaders });
+                currentUserEmail = userInfoResponse.data?.login || userInfoResponse.data?.email || null;
+                console.log(`Current user (OAuth token owner): ${currentUserEmail || 'Could not determine'}`);
+            } catch (userError: any) {
+                console.log(`⚠️ Could not get current user info: ${userError.response?.status || userError.message}`);
+            }
+            
+            // Get all project roles
+            const rolesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_roles`;
+            const rolesResponse = await axios.get(rolesUrl, {
+                headers: baseHeaders,
+                params: { project_id: testProjectId, per_page: 100 }
+            });
+            const roles = rolesResponse.data?.data || rolesResponse.data || [];
+            console.log(`Project has ${roles.length} role(s) defined`);
+            
+            if (roles.length > 0) {
+                // Check if current user is assigned to any role
+                const userRoles = roles.filter((r: any) => {
+                    const roleUserEmail = r.user?.login || r.user?.email || r.user?.name;
+                    return currentUserEmail && roleUserEmail && roleUserEmail.toLowerCase() === currentUserEmail.toLowerCase();
+                });
+                
+                console.log(`\n📋 All roles on project:`);
+                roles.forEach((r: any) => {
+                    const roleName = r.role_name || r.role || r.name;
+                    const roleUser = r.user?.login || r.user?.email || r.user?.name || 'Not assigned';
+                    const isCurrentUser = currentUserEmail && roleUser && roleUser.toLowerCase() === currentUserEmail.toLowerCase();
+                    console.log(`  - ${roleName}: ${roleUser} ${isCurrentUser ? '✅ (YOU)' : ''}`);
+                });
+                
+                if (userRoles.length > 0) {
+                    console.log(`\n✅ YOU ARE ASSIGNED to ${userRoles.length} role(s) on this project:`);
+                    userRoles.forEach((r: any) => {
+                        console.log(`  - ${r.role_name || r.role || r.name}`);
+                    });
+                } else {
+                    console.log(`\n⚠️ YOU ARE NOT ASSIGNED to any role on this project!`);
+                    console.log(`This might explain why API calls return 403 Forbidden.`);
+                    console.log(`Please check Procore UI: Project Settings → Project Team → Make sure your user is assigned.`);
+                }
+                
+                results.userProjectRoles = roles;
+                results.currentUserEmail = currentUserEmail;
+                results.userIsAssigned = userRoles.length > 0;
+                results.userAssignedRoles = userRoles.map((r: any) => r.role_name || r.role || r.name);
+            }
+        } catch (error: any) {
+            console.log(`⚠️ Could not check project roles: ${error.response?.status || error.message}`);
+        }
+        await delay(100);
+        
+        // 3. BUDGET VIEWS - Try ALL variations
+        console.log('\n========== TESTING BUDGET VIEWS ==========');
+        const budgetVariations = [
+            { name: 'Budget Views v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views`, params: {} },
+            { name: 'Budget Views v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views`, params: {} },
+            { name: 'Budget v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Budget VAPID', url: `${PROCORE_CONFIG.apiBaseUrl}/vapid/projects/${testProjectId}/budget_view`, params: {} },
+        ];
+        
+        for (const variation of budgetVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 4. PAYMENT APPLICATIONS - Try ALL variations
+        console.log('\n========== TESTING PAYMENT APPLICATIONS ==========');
+        const paymentVariations = [
+            { name: 'Payment Applications v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/payment_applications`, params: { project_id: testProjectId, per_page: 1 } },
+            { name: 'Payment Applications v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/payment_applications`, params: {} },
+            { name: 'Owner Invoices v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/owner_invoices`, params: {} },
+        ];
+        
+        for (const variation of paymentVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 5. INVOICES - Try ALL variations
+        console.log('\n========== TESTING INVOICES ==========');
+        const invoiceVariations = [
+            { name: 'Invoices v1.0 (query param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/invoices`, params: { project_id: testProjectId, per_page: 1 } },
+            { name: 'Invoices v1.0 (path param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/invoices`, params: {} },
+            { name: 'Invoices v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/invoices`, params: {} },
+        ];
+        
+        for (const variation of invoiceVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 6. REQUISITIONS - Try ALL variations
+        console.log('\n========== TESTING REQUISITIONS ==========');
+        const requisitionVariations = [
+            { name: 'Requisitions v1.0 (query param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/requisitions`, params: { project_id: testProjectId, per_page: 1 } },
+            { name: 'Requisitions v1.0 (path param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/requisitions`, params: {} },
+            { name: 'Requisitions v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/requisitions`, params: {} },
+        ];
+        
+        for (const variation of requisitionVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            totalAttempts: results.attempts.length,
+            allAttempts: results.attempts,
+            userProjectRoles: results.userProjectRoles || [],
+            currentUserEmail: results.currentUserEmail || null,
+            userIsAssigned: results.userIsAssigned || false,
+            userAssignedRoles: results.userAssignedRoles || [],
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for details.`
+                : `❌ All ${results.attempts.length} endpoint attempts failed. This suggests a permissions issue. Check Firebase logs for details.`,
+        };
+    });
+
+// TEST FUNCTION: Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)
+export const procoreTestCostEndpoints = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 180,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Helper to test an endpoint and log full structure
+        const testEndpoint = async (name: string, url: string, headers: any, params?: any) => {
+            try {
+                console.log(`\n=== Testing: ${name} ===`);
+                console.log(`URL: ${url}`);
+                console.log(`Params:`, params || 'none');
+                
+                const response = await axios.get(url, { headers, params });
+                const data = response.data?.data || response.data || [];
+                
+                console.log(`✅ SUCCESS: ${name} - Status: ${response.status}`);
+                
+                // Log full structure for first item if array
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}`);
+                    console.log(`First item keys:`, Object.keys(data[0]));
+                    console.log(`First item FULL structure:`, JSON.stringify(data[0], null, 2));
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                    console.log(`Data FULL structure:`, JSON.stringify(data, null, 2));
+                }
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: true,
+                    status: response.status,
+                    hasData: Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0,
+                    dataStructure: Array.isArray(data) && data.length > 0 ? Object.keys(data[0]) : (typeof data === 'object' ? Object.keys(data || {}) : []),
+                });
+                results.successfulEndpoints.push(name);
+                return true;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                console.log(`❌ FAILED: ${name} - Status: ${status}, Error: ${errorMsg}`);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: false,
+                    status: status,
+                    error: errorMsg,
+                });
+                return false;
+            }
+        };
+        
+        const baseHeaders = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+        };
+        
+        // 1. CONTRACT PAYMENTS - Try ALL variations
+        console.log('\n========== TESTING CONTRACT PAYMENTS ==========');
+        const contractPaymentVariations = [
+            { name: 'Contract Payments v1.0 (query param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/contract_payments`, params: { project_id: testProjectId } },
+            { name: 'Contract Payments v1.0 (path param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/contract_payments`, params: {} },
+            { name: 'Contract Payments v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/contract_payments`, params: {} },
+            { name: 'Payments v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/payments`, params: { project_id: testProjectId } },
+            { name: 'Payments v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/payments`, params: {} },
+        ];
+        
+        for (const variation of contractPaymentVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 2. COMMITMENTS - Try ALL variations and check for amount fields
+        console.log('\n========== TESTING COMMITMENTS ==========');
+        const commitmentVariations = [
+            { name: 'Commitments v1.0 (query param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/commitments`, params: { project_id: testProjectId } },
+            { name: 'Commitments v1.0 (path param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/commitments`, params: {} },
+            { name: 'Commitments v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/commitments`, params: {} },
+            { name: 'Subcontracts v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/subcontracts`, params: { project_id: testProjectId } },
+            { name: 'Subcontracts v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/subcontracts`, params: {} },
+            { name: 'Purchase Orders v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/purchase_orders`, params: { project_id: testProjectId } },
+            { name: 'Purchase Orders v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/purchase_orders`, params: {} },
+        ];
+        
+        for (const variation of commitmentVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 3. BUDGET/COST ENDPOINTS - Try ALL variations
+        console.log('\n========== TESTING BUDGET/COST ENDPOINTS ==========');
+        const budgetCostVariations = [
+            { name: 'Budget v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Budget v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget`, params: {} },
+            { name: 'Budget Line Items v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget_line_items`, params: {} },
+            { name: 'Budget Modifications v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/budget_modifications`, params: { project_id: testProjectId } },
+            { name: 'Budget Modifications v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget_modifications`, params: {} },
+            { name: 'Budget Changes v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/budget_changes`, params: { project_id: testProjectId } },
+            { name: 'Budget Changes v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget_changes`, params: {} },
+            { name: 'Project Costs v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_costs`, params: { project_id: testProjectId } },
+            { name: 'Cost Codes v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/cost_codes`, params: { project_id: testProjectId } },
+        ];
+        
+        for (const variation of budgetCostVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // 4. PROJECT STATUS SNAPSHOTS (for cost data)
+        console.log('\n========== TESTING PROJECT STATUS SNAPSHOTS (COST DATA) ==========');
+        const snapshotVariations = [
+            { name: 'Project Status Snapshots v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots`, params: { per_page: 1, sort: '-created_at' } },
+            { name: 'Project Status Snapshots v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots`, params: { per_page: 1, sort: '-created_at' } },
+        ];
+        
+        for (const variation of snapshotVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            totalAttempts: results.attempts.length,
+            allAttempts: results.attempts,
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working cost endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for full data structures.`
+                : `❌ All ${results.attempts.length} cost endpoint attempts failed. Check Firebase logs for details.`,
+        };
+    });
+
+// TEST FUNCTION: Test ALL archive date endpoints
+export const procoreTestArchiveDateEndpoints = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 180,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Helper to test an endpoint and log full structure, specifically looking for archive date fields
+        const testEndpoint = async (name: string, url: string, headers: any, params?: any) => {
+            try {
+                console.log(`\n=== Testing: ${name} ===`);
+                console.log(`URL: ${url}`);
+                console.log(`Params:`, params || 'none');
+                
+                const response = await axios.get(url, { headers, params });
+                const data = response.data?.data || response.data || [];
+                
+                console.log(`✅ SUCCESS: ${name} - Status: ${response.status}`);
+                
+                // Log full structure and specifically check for archive-related fields
+                let archiveFields: any = {};
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}`);
+                    console.log(`First item keys:`, Object.keys(data[0]));
+                    console.log(`First item FULL structure:`, JSON.stringify(data[0], null, 2));
+                    
+                    // Check for archive fields in first item
+                    const firstItem = data[0];
+                    archiveFields = {
+                        archived_at: firstItem.archived_at,
+                        archive_date: firstItem.archive_date,
+                        archived: firstItem.archived,
+                        closed_at: firstItem.closed_at,
+                        closed_date: firstItem.closed_date,
+                        status: firstItem.status,
+                        status_name: firstItem.status_name,
+                        active: firstItem.active,
+                        updated_at: firstItem.updated_at,
+                    };
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                    console.log(`Data FULL structure:`, JSON.stringify(data, null, 2));
+                    
+                    // Check for archive fields in object
+                    archiveFields = {
+                        archived_at: data.archived_at,
+                        archive_date: data.archive_date,
+                        archived: data.archived,
+                        closed_at: data.closed_at,
+                        closed_date: data.closed_date,
+                        status: data.status,
+                        status_name: data.status_name,
+                        active: data.active,
+                        updated_at: data.updated_at,
+                    };
+                }
+                
+                console.log(`📋 Archive-related fields found:`, archiveFields);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: true,
+                    status: response.status,
+                    hasData: Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0,
+                    archiveFields: archiveFields,
+                    dataStructure: Array.isArray(data) && data.length > 0 ? Object.keys(data[0]) : (typeof data === 'object' ? Object.keys(data || {}) : []),
+                });
+                results.successfulEndpoints.push(name);
+                return true;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                console.log(`❌ FAILED: ${name} - Status: ${status}, Error: ${errorMsg}`);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: false,
+                    status: status,
+                    error: errorMsg,
+                });
+                return false;
+            }
+        };
+        
+        const baseHeaders = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+        };
+        
+        // Test various project endpoints for archive date
+        console.log('\n========== TESTING PROJECT ENDPOINTS FOR ARCHIVE DATE ==========');
+        const projectVariations = [
+            { name: 'Projects v1.0 (list)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`, params: { per_page: 1 } },
+            { name: 'Projects v1.0 (detail)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Projects v2.0 (list)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects`, params: { per_page: 1 } },
+            { name: 'Projects v2.0 (detail)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}`, params: {} },
+            { name: 'Project Status v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/status`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Project Status v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/status`, params: {} },
+            { name: 'Project Stages v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/stages`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Project Stages v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/stages`, params: {} },
+        ];
+        
+        for (const variation of projectVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        // Test custom fields endpoint - archive date might be in custom fields
+        console.log('\n========== TESTING CUSTOM FIELDS FOR ARCHIVE DATE ==========');
+        try {
+            const customFieldsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/custom_fields`;
+            await testEndpoint('Custom Fields v1.0', customFieldsUrl, baseHeaders, { company_id: PROCORE_CONFIG.companyId });
+            await delay(100);
+        } catch (error) {
+            console.log('Custom fields test failed');
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            totalAttempts: results.attempts.length,
+            allAttempts: results.attempts,
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for archive date fields.`
+                : `❌ All ${results.attempts.length} archive date endpoint attempts failed. Check Firebase logs for details.`,
+        };
+    });
+
+// TEST FUNCTION: Test ALL Budget Views endpoints for Est Cost At Completion
+export const procoreTestBudgetViewsEndpoints = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 180,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Helper to test an endpoint and log full structure, specifically looking for Est Cost At Completion fields
+        const testEndpoint = async (name: string, url: string, headers: any, params?: any) => {
+            try {
+                console.log(`\n=== Testing: ${name} ===`);
+                console.log(`URL: ${url}`);
+                console.log(`Params:`, params || 'none');
+                
+                const response = await axios.get(url, { headers, params });
+                const data = response.data?.data || response.data || [];
+                
+                console.log(`✅ SUCCESS: ${name} - Status: ${response.status}`);
+                
+                // Log full structure and specifically check for Est Cost At Completion fields
+                let costFields: any = {};
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}`);
+                    console.log(`First item keys:`, Object.keys(data[0]));
+                    console.log(`First item FULL structure:`, JSON.stringify(data[0], null, 2));
+                    
+                    // Check for cost fields in first item
+                    const firstItem = data[0];
+                    costFields = {
+                        estimated_cost_at_completion: firstItem.estimated_cost_at_completion,
+                        est_cost_at_completion: firstItem.est_cost_at_completion,
+                        total_cost: firstItem.total_cost,
+                        estimated_cost: firstItem.estimated_cost,
+                        cost_at_completion: firstItem.cost_at_completion,
+                        budgeted_cost: firstItem.budgeted_cost,
+                        job_to_date_cost: firstItem.job_to_date_cost,
+                        jtd_cost: firstItem.jtd_cost,
+                        cost_to_date: firstItem.cost_to_date,
+                    };
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                    console.log(`Data FULL structure:`, JSON.stringify(data, null, 2));
+                    
+                    // Check for cost fields in object
+                    costFields = {
+                        estimated_cost_at_completion: data.estimated_cost_at_completion,
+                        est_cost_at_completion: data.est_cost_at_completion,
+                        total_cost: data.total_cost,
+                        estimated_cost: data.estimated_cost,
+                        cost_at_completion: data.cost_at_completion,
+                        budgeted_cost: data.budgeted_cost,
+                        job_to_date_cost: data.job_to_date_cost,
+                        jtd_cost: data.jtd_cost,
+                        cost_to_date: data.cost_to_date,
+                    };
+                }
+                
+                console.log(`💰 Est Cost At Completion fields found:`, costFields);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: true,
+                    status: response.status,
+                    hasData: Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0,
+                    costFields: costFields,
+                    dataStructure: Array.isArray(data) && data.length > 0 ? Object.keys(data[0]) : (typeof data === 'object' ? Object.keys(data || {}) : []),
+                });
+                results.successfulEndpoints.push(name);
+                return true;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                console.log(`❌ FAILED: ${name} - Status: ${status}, Error: ${errorMsg}`);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: false,
+                    status: status,
+                    error: errorMsg,
+                });
+                return false;
+            }
+        };
+        
+        const baseHeaders = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+        };
+        
+        // Test various Budget Views endpoints
+        console.log('\n========== TESTING BUDGET VIEWS ENDPOINTS FOR EST COST AT COMPLETION ==========');
+        
+        // First, try to get budget_view_id if available
+        let budgetViewId: string | null = null;
+        try {
+            // Try to get budget views list first
+            const budgetViewsListUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views`;
+            const budgetViewsListResponse = await axios.get(budgetViewsListUrl, { headers: baseHeaders, params: { per_page: 1 } });
+            const budgetViewsList = budgetViewsListResponse.data?.data || budgetViewsListResponse.data || [];
+            if (Array.isArray(budgetViewsList) && budgetViewsList.length > 0) {
+                budgetViewId = budgetViewsList[0].id?.toString() || null;
+                console.log(`Found budget_view_id: ${budgetViewId}`);
+            }
+        } catch (error) {
+            console.log('Could not get budget_view_id, will try without it');
+        }
+        
+        const budgetViewsVariations: Array<{ name: string; url: string; params: any }> = [
+            // Budget Views endpoints - try with and without budget_view_id
+            { name: 'Budget Views v2.0 (from snapshots, with per_page)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views`, params: { per_page: 1 } },
+            { name: 'Budget Views v1.0 (from snapshots)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views`, params: {} },
+            { name: 'Budget Views v2.0 (direct)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget_views`, params: {} },
+            { name: 'Budget Views v1.0 (direct)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget_views`, params: { company_id: PROCORE_CONFIG.companyId } },
+            // Project Status Snapshots (might contain budget views)
+            { name: 'Project Status Snapshots v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots`, params: { per_page: 1, sort: '-created_at' } },
+            { name: 'Project Status Snapshots v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots`, params: { per_page: 1, sort: '-created_at' } },
+            // Budget endpoints (might have views)
+            { name: 'Budget v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Budget v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget`, params: {} },
+            // Budget Line Items (we're already using this, but let's verify it has the right fields)
+            { name: 'Budget Line Items v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/budget_line_items`, params: {} },
+            { name: 'Budget Line Items v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/budget_line_items`, params: { company_id: PROCORE_CONFIG.companyId } },
+        ];
+        
+        // Add budget_view_id variation if we found one
+        if (budgetViewId) {
+            budgetViewsVariations.push({ 
+                name: 'Budget Views v2.0 (from snapshots, with budget_view_id)', 
+                url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_status_snapshots/budget_views/${budgetViewId}`, 
+                params: {} 
+            });
+        }
+        
+        for (const variation of budgetViewsVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            totalAttempts: results.attempts.length,
+            allAttempts: results.attempts,
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for Est Cost At Completion fields.`
+                : `❌ All ${results.attempts.length} Budget Views endpoint attempts failed. Check Firebase logs for details.`,
+        };
+    });
+
+// TEST FUNCTION: Test ALL Project Manager endpoints
+export const procoreTestProjectManagerEndpoints = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 180,
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const { projectId } = data;
+        
+        // Get project ID if not provided
+        let testProjectId = projectId;
+        if (!testProjectId) {
+            try {
+                const projectsResponse = await axios.get(
+                    `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${await getProcoreAccessToken(userId)}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                        params: { per_page: 1 }
+                    }
+                );
+                const projects = projectsResponse.data || [];
+                if (Array.isArray(projects) && projects.length > 0) {
+                    testProjectId = projects[0].id?.toString();
+                }
+            } catch (error) {
+                throw new functions.https.HttpsError('internal', 'Could not get a project ID to test with.');
+            }
+        }
+        
+        const accessToken = await getProcoreAccessToken(userId);
+        if (!accessToken) {
+            throw new functions.https.HttpsError('unauthenticated', 'No valid Procore access token.');
+        }
+        
+        const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        const results: any = {
+            projectId: testProjectId,
+            attempts: [],
+            successfulEndpoints: [],
+        };
+        
+        // Helper to test an endpoint and log full structure, specifically looking for Project Manager fields
+        const testEndpoint = async (name: string, url: string, headers: any, params?: any) => {
+            try {
+                console.log(`\n=== Testing: ${name} ===`);
+                console.log(`URL: ${url}`);
+                console.log(`Params:`, params || 'none');
+                
+                const response = await axios.get(url, { headers, params });
+                const data = response.data?.data || response.data || [];
+                
+                console.log(`✅ SUCCESS: ${name} - Status: ${response.status}`);
+                
+                // Log full structure and specifically check for Project Manager fields
+                let managerFields: any = {};
+                if (Array.isArray(data) && data.length > 0) {
+                    console.log(`Array length: ${data.length}`);
+                    console.log(`First item keys:`, Object.keys(data[0]));
+                    console.log(`First item FULL structure:`, JSON.stringify(data[0], null, 2));
+                    
+                    // Check for manager fields in first item
+                    const firstItem = data[0];
+                    managerFields = {
+                        role_name: firstItem.role_name,
+                        role: firstItem.role,
+                        name: firstItem.name,
+                        user_name: firstItem.user?.name,
+                        user_full_name: firstItem.user?.full_name,
+                        user_display_name: firstItem.user?.display_name,
+                        user_login: firstItem.user?.login,
+                        user_email: firstItem.user?.email,
+                        user: firstItem.user,
+                    };
+                } else if (typeof data === 'object' && data !== null) {
+                    console.log(`Data keys:`, Object.keys(data));
+                    console.log(`Data FULL structure:`, JSON.stringify(data, null, 2));
+                    
+                    // Check for manager fields in object
+                    managerFields = {
+                        project_manager: data.project_manager,
+                        manager_name: data.manager_name,
+                        manager: data.manager,
+                        created_by_name: data.created_by?.name,
+                        created_by_full_name: data.created_by?.full_name,
+                        created_by: data.created_by,
+                    };
+                }
+                
+                console.log(`👤 Project Manager fields found:`, managerFields);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: true,
+                    status: response.status,
+                    hasData: Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0,
+                    managerFields: managerFields,
+                    dataStructure: Array.isArray(data) && data.length > 0 ? Object.keys(data[0]) : (typeof data === 'object' ? Object.keys(data || {}) : []),
+                });
+                results.successfulEndpoints.push(name);
+                return true;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                console.log(`❌ FAILED: ${name} - Status: ${status}, Error: ${errorMsg}`);
+                
+                results.attempts.push({
+                    name,
+                    url,
+                    success: false,
+                    status: status,
+                    error: errorMsg,
+                });
+                return false;
+            }
+        };
+        
+        const baseHeaders = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+        };
+        
+        // Test various Project Manager endpoints
+        console.log('\n========== TESTING PROJECT MANAGER ENDPOINTS ==========');
+        const projectManagerVariations = [
+            // Project Roles endpoints
+            { name: 'Project Roles v1.0 (query param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_roles`, params: { project_id: testProjectId } },
+            { name: 'Project Roles v1.0 (path param)', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_roles`, params: {} },
+            { name: 'Project Roles v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/project_roles`, params: {} },
+            // Project detail (might have manager info)
+            { name: 'Project Detail v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Project Detail v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}`, params: {} },
+            // Project list (might have manager in list view)
+            { name: 'Projects List v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`, params: { per_page: 1, id: testProjectId } },
+            // Users assigned to project
+            { name: 'Project Users v1.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${testProjectId}/users`, params: { company_id: PROCORE_CONFIG.companyId } },
+            { name: 'Project Users v2.0', url: `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${testProjectId}/users`, params: {} },
+        ];
+        
+        for (const variation of projectManagerVariations) {
+            await testEndpoint(variation.name, variation.url, baseHeaders, variation.params);
+            await delay(100);
+        }
+        
+        return {
+            success: results.successfulEndpoints.length > 0,
+            projectId: testProjectId,
+            successfulEndpoints: results.successfulEndpoints,
+            totalAttempts: results.attempts.length,
+            allAttempts: results.attempts,
+            message: results.successfulEndpoints.length > 0 
+                ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for Project Manager fields.`
+                : `❌ All ${results.attempts.length} Project Manager endpoint attempts failed. Check Firebase logs for details.`,
+        };
     });
 
