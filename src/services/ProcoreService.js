@@ -151,8 +151,15 @@ export const ProcoreService = {
      */
     async getAllProjectsProfitability(options = {}) {
         try {
+            // Note: Firebase callable functions have a default client timeout of 60 seconds
+            // The backend function has a 540-second timeout, but the client will timeout first
+            // For now, we'll process a limited number of projects to avoid timeouts
+            // TODO: Implement batch processing for 100+ projects
             const getAllFunction = httpsCallable(functions, 'procoreGetAllProjectsProfitability')
-            const result = await getAllFunction(options)
+            const result = await getAllFunction({
+                ...options,
+                maxProjects: options.maxProjects || 5 // Default to 5 projects to avoid timeout (60-second client limit)
+            })
             return result.data.data || []
         } catch (error) {
             console.error('Error fetching all projects profitability:', error)
