@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import axios from 'axios';
+import * as sql from 'mssql';
 
 // Initialize Firebase Admin only if not already initialized
 try {
@@ -25,8 +26,9 @@ const PROCORE_CONFIG = {
     // Sandbox: https://sandbox.procore.com
     apiBaseUrl: process.env.PROCORE_API_BASE_URL || 'https://api.procore.com',
     // Production credentials (for production environment - read-only testing)
-    clientId: process.env.PROCORE_CLIENT_ID || 'cnOtyAY1YcKSCGdzQp88vB5ETGOknRvao3VT7cY2HoM', // Production Client ID
-    clientSecret: process.env.PROCORE_CLIENT_SECRET || '-HR68NdpKiELjbKOgz7sTAOFNXc1voHV2fq8Zosy55E', // Production Client Secret
+    // SECURITY: Never hardcode secrets. Use environment variables or Firebase Functions config.
+    clientId: process.env.PROCORE_CLIENT_ID || '', // Must be set via environment variable
+    clientSecret: process.env.PROCORE_CLIENT_SECRET || '', // Must be set via environment variable
     redirectUri: process.env.PROCORE_REDIRECT_URI || 'http://localhost:5173',
     companyId: process.env.PROCORE_COMPANY_ID || '598134325590042', // Production Company ID
 };
@@ -862,1345 +864,10 @@ export const procoreGetProjects = functions
         }
     });
 
-// Get project profitability data from Procore
-// Note: This endpoint may vary based on Procore API version and available endpoints
-export const procoreGetProjectProfitability = functions
-    .region('us-central1')
-    .runWith({
-        timeoutSeconds: 60,
-        memory: '256MB',
-    })
-    .https
-    .onCall(async (data, context) => {
-        if (!context.auth) {
-            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-        }
-        
-        const userId = context.auth.uid;
-        const { projectId } = data;
-        
-        if (!projectId) {
-            throw new functions.https.HttpsError('invalid-argument', 'Project ID is required');
-        }
-        
-        const accessToken = await getProcoreAccessToken(userId);
-        
-        if (!accessToken) {
-            throw new functions.https.HttpsError(
-                'unauthenticated',
-                'No valid Procore access token. Please authorize the application.'
-            );
-        }
-        
-        try {
-            // Fetch project details
-            const projectResponse = await axios.get(
-                `${PROCORE_CONFIG.apiBaseUrl}/vapid/projects/${projectId}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                    },
-                }
-            );
-            
-            // Fetch project budget/financials (endpoint may need adjustment based on Procore API)
-            // This is a placeholder - actual endpoint structure depends on Procore API documentation
-            let budgetData = null;
-            try {
-                const budgetResponse = await axios.get(
-                    `${PROCORE_CONFIG.apiBaseUrl}/vapid/projects/${projectId}/budget_view`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`,
-                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                        },
-                    }
-                );
-                budgetData = budgetResponse.data;
-            } catch (budgetError) {
-                console.log('Budget endpoint not available or different structure:', budgetError);
-            }
-            
-            return {
-                success: true,
-                data: {
-                    project: projectResponse.data,
-                    budget: budgetData,
-                },
-            };
-        } catch (error: any) {
-            console.error('Error fetching Procore project profitability:', error.response?.data || error.message);
-            throw new functions.https.HttpsError(
-                'internal',
-                error.response?.data?.error_description || 'Failed to fetch project profitability data'
-            );
-        }
-    });
-
-// Get all projects with profitability data (batch endpoint)
-export const procoreGetAllProjectsProfitability = functions
-    .region('us-central1')
-    .runWith({
-        timeoutSeconds: 540, // Maximum timeout (9 minutes) for Gen 1 Functions
-        // Note: For 100+ projects, this may timeout. Options:
-        // 1. Upgrade to Gen 2 Functions (supports up to 60 minutes)
-        // 2. Implement batch processing (process in chunks of 20-30 projects)
-        // 3. Use Cloud Tasks for background processing
-        memory: '512MB',
-    })
-    .https
-    .onCall(async (data, context) => {
-        if (!context.auth) {
-            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-        }
-        
-        const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
-        
-        if (!accessToken) {
-            throw new functions.https.HttpsError(
-                'unauthenticated',
-                'No valid Procore access token. Please authorize the application.'
-            );
-        }
-        
-        // Declare progress tracking variables outside try block for catch block access
-        let progressRef: admin.firestore.DocumentReference | null = null;
-        let progressRefCreated = false;
-        let progressDocId: string | null = null;
-        
-        try {
-            // Helper function to add delay between API calls to avoid rate limiting
-            const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-            
-            // Helper function to retry on rate limit errors
-            const retryOnRateLimit = async (fn: () => Promise<any>, maxRetries = 3, baseDelay = 1000) => {
-                for (let i = 0; i < maxRetries; i++) {
-                    try {
-                        return await fn();
-                    } catch (error: any) {
-                        if (error.response?.status === 429 && i < maxRetries - 1) {
-                            const retryAfter = error.response.headers['retry-after'] 
-                                ? parseInt(error.response.headers['retry-after']) * 1000 
-                                : baseDelay * Math.pow(2, i);
-                            console.warn(`Rate limit hit, waiting ${retryAfter}ms before retry ${i + 1}/${maxRetries}`);
-                            await delay(retryAfter);
-                            continue;
-                        }
-                        throw error;
-                    }
-                }
-            };
-            
-            // Get all projects using the correct REST API endpoint
-            const projectsResponse = await retryOnRateLimit(() => axios.get(
-                `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                    },
-                }
-            ));
-            
-            const projects = projectsResponse.data || [];
-            
-            // Log the raw Procore response to understand the data structure
-            console.log('Raw Procore projects response (first project):', JSON.stringify(projects.slice(0, 1), null, 2)); // Log first project as sample
-            console.log('Number of projects received:', projects.length);
-            
-            // Log ALL keys from the first project to see what fields are available
-            if (projects.length > 0) {
-                const firstProject = projects[0];
-                console.log('Available fields in first project:', Object.keys(firstProject));
-                console.log('First project full structure:', JSON.stringify(firstProject, null, 2));
-                // Log archive-related fields from project list
-                console.log('Archive-related fields in project list:', {
-                    archived_at: firstProject.archived_at,
-                    archive_date: firstProject.archive_date,
-                    archived: firstProject.archived,
-                    status: firstProject.status,
-                    status_name: firstProject.status_name,
-                    active: firstProject.active,
-                    updated_at: firstProject.updated_at,
-                    closed_at: firstProject.closed_at,
-                    closed_date: firstProject.closed_date
-                });
-            }
-            
-            // Process projects sequentially with delays to avoid rate limiting
-            // Allow configurable limit via data parameter, default to all projects (no limit)
-            // For production: process all projects (100+), user can wait for completion
-            const maxProjects = data?.maxProjects || projects.length; // Default to all projects
-            const projectsToProcess = projects.slice(0, maxProjects);
-            console.log(`Processing ${projectsToProcess.length} of ${projects.length} total projects (limit: ${maxProjects === projects.length ? 'none (all projects)' : maxProjects})`);
-            
-            // Create progress tracking document in Firestore
-            progressDocId = `procore_sync_${userId}_${Date.now()}`;
-            progressRef = admin.firestore().collection('procoreSyncProgress').doc(progressDocId);
-            
-            try {
-                await progressRef.set({
-                    userId,
-                    totalProjects: projectsToProcess.length,
-                    processedProjects: 0,
-                    status: 'processing',
-                    startedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-                progressRefCreated = true;
-            } catch (progressError) {
-                console.warn('Could not create progress document, continuing without progress tracking:', progressError);
-            }
-            
-            const projectsWithData: any[] = [];
-            
-            for (let i = 0; i < projectsToProcess.length; i++) {
-                const project = projectsToProcess[i];
-                console.log(`[${project.id}] ========== Processing project ${i + 1}/${projectsToProcess.length} ==========`);
-                
-                // Add delay between projects to avoid rate limiting (except for first project)
-                if (i > 0) {
-                    await delay(50); // Reduced delay: 50ms between projects
-                }
-                
-                try {
-                    console.log(`[${project.id}] ========== Starting project processing ==========`);
-                    try {
-                        // Fetch detailed project info to get total_value and other fields
-                        let projectDetail: any = null;
-                        try {
-                            const detailResponse = await retryOnRateLimit(() => axios.get(
-                                `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${project.id}`,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        company_id: PROCORE_CONFIG.companyId,
-                                    },
-                                }
-                            ));
-                            projectDetail = detailResponse.data;
-                            console.log(`Project ${project.id} detail fields:`, Object.keys(projectDetail || {}));
-                            // Log archive-related fields for debugging
-                            if (projectDetail) {
-                                console.log(`Project ${project.id} archive-related fields:`, {
-                                    archived_at: projectDetail.archived_at,
-                                    archive_date: projectDetail.archive_date,
-                                    archived: projectDetail.archived,
-                                    status: projectDetail.status,
-                                    status_name: projectDetail.status_name,
-                                    active: projectDetail.active,
-                                    updated_at: projectDetail.updated_at
-                                });
-                            }
-                            await delay(50); // Reduced delay: 50ms after each API call
-                        } catch (detailError: any) {
-                            console.warn(`Could not fetch details for project ${project.id}:`, detailError.response?.status || detailError.message);
-                            // Continue with basic project data if detail fetch fails
-                        }
-                        
-                        // Initialize variables for Prime Contracts data (will be populated below)
-                        let primeContractsData: any = null;
-                        let totalContractValueFromPrime = 0; // ProjectRevisedContractAmount or revised_contract_amount
-                        
-                        // Fetch Prime Contracts for financial data (based on Power BI mapping)
-                        // Fields: ProjectRevisedContractAmount, OwnerInvoiceAmount, RevisedContractAmount, Start/End dates, Status
-                        let totalInvoiced = 0; // OwnerInvoiceAmount or owner_invoice_amount
-                        let balanceLeftOnContract = 0; // RevisedContractAmount - OwnerInvoiceAmount
-                        let contractStartDate: string | null = null;
-                        let contractEndDate: string | null = null;
-                        let contractStatus: string = 'Active';
-                        
-                        console.log(`[${project.id}] Starting Prime Contracts fetch...`);
-                        try {
-                            // Use 'extended' view to get more fields including custom fields
-                            const primeContractsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${project.id}/prime_contracts`;
-                            console.log(`[${project.id}] Fetching Prime Contracts from: ${primeContractsUrl}`);
-                            const primeContractsResponse = await retryOnRateLimit(() => axios.get(
-                                primeContractsUrl,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        view: 'extended', // Get extended view with more fields
-                                    },
-                                }
-                            ));
-                            await delay(50);
-                            
-                            // Prime Contracts response is wrapped in { data: [...] }
-                            const primeContracts = primeContractsResponse.data?.data || primeContractsResponse.data || [];
-                            
-                            if (Array.isArray(primeContracts) && primeContracts.length > 0) {
-                                primeContractsData = primeContracts;
-                                console.log(`[${project.id}] Found ${primeContracts.length} prime contract(s)`);
-                                
-                                // Log the full structure of the first contract for debugging
-                                console.log(`[${project.id}] Full Prime Contract structure:`, JSON.stringify(primeContracts[0], null, 2));
-                                
-                                // Use the first/primary prime contract (or sum if multiple)
-                                const primaryContract = primeContracts[0];
-                                
-                                // Log all available fields
-                                console.log(`[${project.id}] Prime Contract available fields:`, Object.keys(primaryContract));
-                                
-                                // Map fields - Prime Contracts has 'grand_total' field for contract value
-                                // Total Contract Value: Use grand_total from Prime Contract
-                                totalContractValueFromPrime = parseFloat(
-                                    primaryContract.grand_total ||
-                                    primaryContract.revised_contract_amount || 
-                                    primaryContract.project_revised_contract_amount ||
-                                    primaryContract.pending_revised_contract_amount ||
-                                    primaryContract.total_amount || 
-                                    primaryContract.contract_amount ||
-                                    '0'
-                                ) || 0;
-                                
-                                // Total Invoiced: Owner Invoices Amount from /prime_contract
-                                // Note: Prime Contracts may not have invoiced amount directly
-                                // We'll get this from Payment Applications g702.contract_sum_to_date
-                                totalInvoiced = parseFloat(
-                                    primaryContract.owner_invoices_amount ||
-                                    primaryContract.owner_invoice_amount || 
-                                    primaryContract.invoiced_amount || 
-                                    primaryContract.total_invoiced ||
-                                    primaryContract.total_owner_invoices_amount ||
-                                    '0'
-                                ) || 0;
-                                
-                                // RevisedContractAmount for balance calculation
-                                const revisedContractAmount = parseFloat(
-                                    primaryContract.grand_total ||
-                                    primaryContract.revised_contract_amount || 
-                                    primaryContract.project_revised_contract_amount ||
-                                    primaryContract.total_amount || 
-                                    '0'
-                                ) || 0;
-                                
-                                // Balance Left on Contract = RevisedContractAmount - OwnerInvoiceAmount
-                                balanceLeftOnContract = revisedContractAmount - totalInvoiced;
-                                
-                                // Contract dates and status (from Formula Reference Chart)
-                                contractStartDate = primaryContract.start_date || primaryContract.contract_start_date || primaryContract.contract_start || null;
-                                contractEndDate = primaryContract.end_date || primaryContract.contract_end_date || primaryContract.completion_date || primaryContract.contract_end || null;
-                                contractStatus = primaryContract.status || primaryContract.contract_status || primaryContract.status_name || 'Active';
-                                
-                                console.log(`[${project.id}] Prime Contracts - Revised Amount: ${revisedContractAmount}, Invoiced: ${totalInvoiced}, Balance: ${balanceLeftOnContract}`);
-                                console.log(`[${project.id}] Contract Dates - Start: ${contractStartDate}, End: ${contractEndDate}, Status: ${contractStatus}`);
-                            } else {
-                                console.log(`[${project.id}] Prime Contracts: Empty array returned (no contracts)`);
-                            }
-                        } catch (primeContractsError: any) {
-                            // 403 or 404 errors are expected if user doesn't have access or project has no contracts
-                            const status = primeContractsError.response?.status;
-                            if (status === 403) {
-                                console.warn(`[${project.id}] Prime Contracts: 403 Forbidden (no access)`);
-                            } else if (status === 404) {
-                                console.warn(`[${project.id}] Prime Contracts: 404 Not Found`);
-                            } else {
-                                console.warn(`[${project.id}] Prime Contracts: Error ${status || 'unknown'}:`, primeContractsError.message);
-                            }
-                            // Continue without prime contracts data
-                        }
-                        
-                        // Extract financial data from project detail
-                        // Use Prime Contract value if available, otherwise use project total_value
-                        // Note: This will be updated after Payment Applications is fetched if g702 has contract value
-                        let totalValue = totalContractValueFromPrime > 0 
-                            ? totalContractValueFromPrime 
-                            : (projectDetail?.total_value ? parseFloat(projectDetail.total_value) : 0);
-                        
-                        // Fetch Est Cost At Completion and Job To Date Cost from Budget
-                        // Based on Procore Budget tool, we need to get:
-                        // - Estimated Cost at Completion: $285,841.43 (Grand Totals row)
-                        // - Job to Date Costs: $276,699.53 (Grand Totals row)
-                        // According to API docs: https://developers.procore.com/reference/rest/budget-views
-                        // We need to: 1) Get Budget Views, 2) Use summary_rows link to get totals
-                        let estCostAtCompletion = 0;
-                        let jobToDateCost = 0; // For calculating remaining costs
-                        
-                        console.log(`[${project.id}] Starting Budget fetch using Budget Views API...`);
-                        let budgetDataFound = false;
-                        
-                        // Step 1: Get Budget Views list
-                        try {
-                            const budgetViewsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/budget_views`;
-                            console.log(`[${project.id}] Fetching Budget Views from: ${budgetViewsUrl}`);
-                            const budgetViewsResponse = await retryOnRateLimit(() => axios.get(
-                                budgetViewsUrl,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        project_id: project.id,
-                                        per_page: 100, // Get all budget views
-                                    },
-                                }
-                            ));
-                            await delay(50);
-                            
-                            const budgetViews = budgetViewsResponse.data?.data || budgetViewsResponse.data || [];
-                            
-                            if (Array.isArray(budgetViews) && budgetViews.length > 0) {
-                                console.log(`[${project.id}] Budget Views: Found ${budgetViews.length} view(s)`);
-                                
-                                // Find the "Procore Standard View" or use the first one
-                                const budgetView = budgetViews.find((view: any) => 
-                                    view.name?.toLowerCase().includes('standard') || 
-                                    view.name?.toLowerCase().includes('procore')
-                                ) || budgetViews[0];
-                                
-                                console.log(`[${project.id}] Using Budget View: ${budgetView.name} (ID: ${budgetView.id})`);
-                                console.log(`[${project.id}] Budget View structure:`, JSON.stringify(budgetView, null, 2));
-                                
-                                // Step 2: Get Summary Rows (contains Grand Totals)
-                                if (budgetView.links?.summary_rows) {
-                                    // Extract project_id from the link URL or use the one we have
-                                    const summaryRowsUrl = budgetView.links.summary_rows;
-                                    console.log(`[${project.id}] Fetching Budget View Summary Rows from: ${summaryRowsUrl}`);
-                                    
-                                    const summaryRowsResponse = await retryOnRateLimit(() => axios.get(
-                                        summaryRowsUrl,
-                                        {
-                                            headers: {
-                                                'Authorization': `Bearer ${accessToken}`,
-                                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                            },
-                                        }
-                                    ));
-                                    await delay(50);
-                                    
-                                    const summaryRows = summaryRowsResponse.data?.data || summaryRowsResponse.data || [];
-                                    console.log(`[${project.id}] Budget View Summary Rows structure:`, JSON.stringify(summaryRows, null, 2));
-                                    
-                                    if (Array.isArray(summaryRows) && summaryRows.length > 0) {
-                                        // Find the Grand Totals row (usually the last one or has a specific identifier)
-                                        const grandTotalsRow = summaryRows.find((row: any) => 
-                                            row.description?.toLowerCase().includes('grand total') ||
-                                            row.description?.toLowerCase().includes('total') ||
-                                            row.is_total === true ||
-                                            row.is_grand_total === true
-                                        ) || summaryRows[summaryRows.length - 1]; // Fallback to last row
-                                        
-                                        if (grandTotalsRow) {
-                                            console.log(`[${project.id}] Grand Totals Row structure:`, JSON.stringify(grandTotalsRow, null, 2));
-                                            console.log(`[${project.id}] Grand Totals Row available fields:`, Object.keys(grandTotalsRow));
-                                            
-                                            // Extract Estimated Cost at Completion and Job to Date Costs
-                                            // Based on Procore Budget tool columns - field names match exactly!
-                                            estCostAtCompletion = parseFloat(
-                                                grandTotalsRow['Estimated Cost at Completion'] ||
-                                                grandTotalsRow.estimated_cost_at_completion ||
-                                                grandTotalsRow.est_cost_at_completion ||
-                                                '0'
-                                            ) || 0;
-                                            
-                                            jobToDateCost = parseFloat(
-                                                grandTotalsRow['Job to Date Costs'] ||
-                                                grandTotalsRow.job_to_date_costs ||
-                                                grandTotalsRow.job_to_date_cost ||
-                                                '0'
-                                            ) || 0;
-                                            
-                                            if (estCostAtCompletion > 0 || jobToDateCost > 0) {
-                                                budgetDataFound = true;
-                                                console.log(`[${project.id}] Budget View Summary Rows: Success - Est Cost: ${estCostAtCompletion}, Job To Date: ${jobToDateCost}`);
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    console.warn(`[${project.id}] Budget View does not have summary_rows link`);
-                                }
-                            } else {
-                                console.log(`[${project.id}] Budget Views: Empty array returned`);
-                            }
-                        } catch (budgetViewsError: any) {
-                            const status = budgetViewsError.response?.status;
-                            if (status === 403) {
-                                console.warn(`[${project.id}] Budget Views: 403 Forbidden (no access)`);
-                            } else if (status === 404) {
-                                console.warn(`[${project.id}] Budget Views: 404 Not Found`);
-                            } else {
-                                console.warn(`[${project.id}] Budget Views: Error ${status || 'unknown'}:`, budgetViewsError.message);
-                            }
-                        }
-                        
-                        // Fallback: Try Budget Line Items and sum them if Budget Views didn't work
-                        if (!budgetDataFound) {
-                            try {
-                                // Try Budget Line Items endpoint: /rest/v2.0/companies/{company_id}/projects/{project_id}/budget_line_items
-                                const budgetLineItemsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${project.id}/budget_line_items`;
-                                console.log(`[${project.id}] Trying Budget Line Items v2.0: ${budgetLineItemsUrl}`);
-                                const budgetLineItemsResponse = await retryOnRateLimit(() => axios.get(
-                                    budgetLineItemsUrl,
-                                    {
-                                        headers: {
-                                            'Authorization': `Bearer ${accessToken}`,
-                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                        },
-                                        params: {
-                                            per_page: 1000, // Get all line items to sum
-                                        },
-                                    }
-                                ));
-                                await delay(50);
-                                
-                                const budgetLineItems = budgetLineItemsResponse.data?.data || budgetLineItemsResponse.data || [];
-                                
-                                if (Array.isArray(budgetLineItems) && budgetLineItems.length > 0) {
-                                    console.log(`[${project.id}] Budget Line Items: Found ${budgetLineItems.length} items`);
-                                    
-                                    // Log first item structure to see all available fields
-                                    if (budgetLineItems.length > 0) {
-                                        console.log(`[${project.id}] Budget Line Item structure (first item):`, JSON.stringify(budgetLineItems[0], null, 2));
-                                        console.log(`[${project.id}] Budget Line Item available fields:`, Object.keys(budgetLineItems[0]));
-                                    }
-                                    
-                                    // Sum up cost data from line items
-                                    // Based on Procore Budget tool screenshot:
-                                    // - "Estimated Cost at Completion" column = Projected Costs + Forecast To Complete
-                                    // - "Job to Date Costs" column = Committed Costs + Direct Costs
-                                    budgetLineItems.forEach((item: any) => {
-                                        // Estimated Cost at Completion = Projected Costs + Forecast To Complete
-                                        const projectedCosts = parseFloat(item.projected_costs || '0') || 0;
-                                        const forecastToComplete = parseFloat(item.forecast_to_complete || '0') || 0;
-                                        const estCost = projectedCosts + forecastToComplete;
-                                        
-                                        // If that doesn't work, try direct fields
-                                        if (estCost === 0) {
-                                            const altEstCost = parseFloat(
-                                                item.estimated_cost_at_completion || 
-                                                item.est_cost_at_completion || 
-                                                item.forecast_at_completion ||
-                                                item.total_cost || 
-                                                item.cost_at_completion ||
-                                                '0'
-                                            ) || 0;
-                                            estCostAtCompletion += altEstCost;
-                                        } else {
-                                            estCostAtCompletion += estCost;
-                                        }
-                                        
-                                        // Job to Date Costs = Committed Costs + Direct Costs
-                                        const committedCosts = parseFloat(item.committed_costs || '0') || 0;
-                                        const directCosts = parseFloat(item.direct_costs || '0') || 0;
-                                        const jtdCost = committedCosts + directCosts;
-                                        
-                                        // If that doesn't work, try direct fields
-                                        if (jtdCost === 0) {
-                                            const altJtdCost = parseFloat(
-                                                item.job_to_date_costs ||
-                                                item.job_to_date_cost || 
-                                                item.jtd_cost || 
-                                                item.cost_to_date ||
-                                                item.total_cost_to_date ||
-                                                '0'
-                                            ) || 0;
-                                            jobToDateCost += altJtdCost;
-                                        } else {
-                                            jobToDateCost += jtdCost;
-                                        }
-                                    });
-                                    
-                                    if (estCostAtCompletion > 0 || jobToDateCost > 0) {
-                                        budgetDataFound = true;
-                                        console.log(`[${project.id}] Budget Line Items: Success - Est Cost: ${estCostAtCompletion}, Job To Date: ${jobToDateCost}`);
-                                    }
-                                } else {
-                                    console.log(`[${project.id}] Budget Line Items: Empty array returned`);
-                                }
-                            } catch (budgetError: any) {
-                                // Budget Line Items may not be available (403/404)
-                                const status = budgetError.response?.status;
-                                if (status === 403) {
-                                    console.warn(`[${project.id}] Budget Line Items: 403 Forbidden (no access)`);
-                                } else if (status === 404) {
-                                    console.warn(`[${project.id}] Budget Line Items: 404 Not Found`);
-                                } else {
-                                    console.warn(`[${project.id}] Budget Line Items: Error ${status || 'unknown'}:`, budgetError.message);
-                                }
-                            }
-                        }
-                        
-                        // Fetch Payment Applications for Percent Complete (Revenue) and Customer Retainage
-                        // Payment Applications v1.0 is a working endpoint (from test results)
-                        // This may contain invoice-like data with percent complete and retainage
-                        let percentCompleteRevenue = 0;
-                        let customerRetainage = 0;
-                        console.log(`[${project.id}] Starting Payment Applications fetch...`);
-                        try {
-                            // Use Payment Applications v1.0 endpoint: /rest/v1.0/payment_applications
-                            // Fetch multiple to find the one with the latest billing_date (not just created_at)
-                            const paymentApplicationsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/payment_applications`;
-                            console.log(`[${project.id}] Fetching Payment Applications from: ${paymentApplicationsUrl}`);
-                            const paymentApplicationsResponse = await retryOnRateLimit(() => axios.get(
-                                paymentApplicationsUrl,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        project_id: project.id, // Required query parameter
-                                        per_page: 10, // Get enough to find latest by billing_date (optimized for performance)
-                                        sort: '-billing_date', // Sort by billing_date directly if API supports it, otherwise by created_at
-                                    },
-                                }
-                            ));
-                            await delay(50);
-                            
-                            const paymentApplications = paymentApplicationsResponse.data?.data || paymentApplicationsResponse.data || [];
-                            
-                            if (Array.isArray(paymentApplications) && paymentApplications.length > 0) {
-                                // Sort by billing_date to get the most recent payment application by billing date
-                                // This is more accurate than sorting by created_at
-                                const sortedByBillingDate = [...paymentApplications].sort((a: any, b: any) => {
-                                    const dateA = a.billing_date ? new Date(a.billing_date).getTime() : 0;
-                                    const dateB = b.billing_date ? new Date(b.billing_date).getTime() : 0;
-                                    return dateB - dateA; // Most recent first
-                                });
-                                
-                                const latestPaymentApp = sortedByBillingDate[0];
-                                console.log(`[${project.id}] Using Payment Application with billing_date: ${latestPaymentApp.billing_date || 'N/A'}`);
-                                // Reduced logging for performance - only log structure in debug mode
-                                // console.log(`[${project.id}] Payment Application structure:`, JSON.stringify(latestPaymentApp, null, 2));
-                                // console.log(`[${project.id}] Payment Application available fields:`, Object.keys(latestPaymentApp));
-                                
-                                // Extract percent complete and retainage from payment application
-                                // percent_complete is at root level
-                                percentCompleteRevenue = parseFloat(
-                                    latestPaymentApp.percent_complete || 
-                                    latestPaymentApp.percentage_complete || 
-                                    latestPaymentApp.percent_complete_revenue ||
-                                    latestPaymentApp.completion_percentage ||
-                                    '0'
-                                ) || 0;
-                                
-                                // Customer retainage is nested in g702 object
-                                // Power BI shows 9142, but we're getting 35462.19 from completed_work_retainage_amount
-                                // Power BI might be showing the remaining/unreleased retainage, not the total retainage
-                                // Try balance_to_finish_including_retainage or calculate from total_retainage - released_retainage
-                                if (latestPaymentApp.g702) {
-                                    // Log specific g702 fields for debugging - need to find correct retainage field (Power BI shows 9142, we're getting 35462.19)
-                                    console.log(`[${project.id}] Payment Application g702 fields:`, Object.keys(latestPaymentApp.g702));
-                                    console.log(`[${project.id}] Payment Application g702 retainage-related values:`, {
-                                        retainage_amount: latestPaymentApp.g702.retainage_amount,
-                                        retainage: latestPaymentApp.g702.retainage,
-                                        customer_retainage: latestPaymentApp.g702.customer_retainage,
-                                        completed_work_retainage_amount: latestPaymentApp.g702.completed_work_retainage_amount,
-                                        total_retainage: latestPaymentApp.g702.total_retainage,
-                                        balance_to_finish_including_retainage: latestPaymentApp.g702.balance_to_finish_including_retainage,
-                                        stored_materials_retainage_amount: latestPaymentApp.g702.stored_materials_retainage_amount,
-                                        completed_work_retainage_percent: latestPaymentApp.g702.completed_work_retainage_percent
-                                    });
-                                    
-                                    // Try balance_to_finish_including_retainage first (remaining balance including retainage)
-                                    // If Power BI shows $9,142, it might be the remaining retainage, not the total
-                                    const balanceToFinish = parseFloat(latestPaymentApp.g702.balance_to_finish_including_retainage || '0') || 0;
-                                    const totalRetainage = parseFloat(latestPaymentApp.g702.total_retainage || '0') || 0;
-                                    
-                                    // If balance_to_finish_including_retainage is close to Power BI value (9142), use it
-                                    // Otherwise, try other fields
-                                    if (balanceToFinish > 0 && balanceToFinish < totalRetainage) {
-                                        customerRetainage = balanceToFinish;
-                                        console.log(`[${project.id}] Using balance_to_finish_including_retainage for Customer Retainage: ${customerRetainage}`);
-                                    } else {
-                                        // Fallback to other fields
-                                        customerRetainage = parseFloat(
-                                            latestPaymentApp.g702.retainage_amount ||
-                                            latestPaymentApp.g702.retainage ||
-                                            latestPaymentApp.g702.customer_retainage ||
-                                            latestPaymentApp.g702.completed_work_retainage_amount ||
-                                            latestPaymentApp.g702.total_retainage ||
-                                            '0'
-                                        ) || 0;
-                                    }
-                                }
-                                
-                                // Fallback to root level fields if g702 doesn't have it
-                                if (customerRetainage === 0) {
-                                    customerRetainage = parseFloat(
-                                        latestPaymentApp.total_retainage || 
-                                        latestPaymentApp.retainage_amount || 
-                                        latestPaymentApp.retainage ||
-                                        latestPaymentApp.customer_retainage ||
-                                        '0'
-                                    ) || 0;
-                                }
-                                
-                                // Use Payment Applications g702 data for contract value, invoiced amounts, and Job To Date Cost
-                                // Based on Power BI data: totalInvoiced (354620.88) matches expected contract value (354621)
-                                // So contract_sum_to_date appears to be the actual contract value, not original_contract_sum
-                                // Payment Applications are project-wide, so g702.total_completed_and_stored_to_date should be used for Job To Date Cost
-                                if (latestPaymentApp.g702) {
-                                    // Use contract_sum_to_date as contract value (matches Power BI - this is the actual contract amount)
-                                    // Power BI shows contract value as 354621, and our totalInvoiced (from contract_sum_to_date) is 354620.88
-                                    if (latestPaymentApp.g702.contract_sum_to_date) {
-                                        const contractSumToDate = parseFloat(latestPaymentApp.g702.contract_sum_to_date) || 0;
-                                        if (contractSumToDate > 0) {
-                                            // Use contract_sum_to_date as the contract value (it's the revised/current contract amount)
-                                            totalContractValueFromPrime = contractSumToDate;
-                                            totalValue = contractSumToDate;
-                                            totalInvoiced = contractSumToDate; // Also use as total invoiced
-                                            console.log(`[${project.id}] Using Payment Applications g702.contract_sum_to_date for Contract Value: ${totalContractValueFromPrime} (matches Power BI)`);
-                                        }
-                                    }
-                                    
-                                    // NOTE: Payment Application g702's total_completed_and_stored_to_date is the contract value (revenue), NOT the cost
-                                    // Job To Date Cost should come from Requisitions (sum of all requisitions' total_completed_and_stored_to_date)
-                                    // We'll calculate Job To Date Cost from Requisitions below, not from Payment Applications
-                                    
-                                    // Log all g702 numeric values to help identify correct fields
-                                    const g702NumericFields: any = {};
-                                    Object.keys(latestPaymentApp.g702).forEach(key => {
-                                        const value = latestPaymentApp.g702[key];
-                                        if (typeof value === 'number' || (typeof value === 'string' && !isNaN(parseFloat(value)))) {
-                                            g702NumericFields[key] = value;
-                                        }
-                                    });
-                                    console.log(`[${project.id}] Payment Application g702 ALL numeric values:`, g702NumericFields);
-                                    
-                                    // Fallback: use original_contract_sum if contract_sum_to_date is not available
-                                    if (totalContractValueFromPrime === 0 && latestPaymentApp.g702.original_contract_sum) {
-                                        const paymentAppContractValue = parseFloat(latestPaymentApp.g702.original_contract_sum) || 0;
-                                        if (paymentAppContractValue > 0) {
-                                            totalContractValueFromPrime = paymentAppContractValue;
-                                            totalValue = paymentAppContractValue;
-                                            console.log(`[${project.id}] Using Payment Applications g702.original_contract_sum for Contract Value (fallback): ${totalContractValueFromPrime}`);
-                                        }
-                                    }
-                                    
-                                    // Recalculate balance if we have new data
-                                    if (totalContractValueFromPrime > 0 && totalInvoiced > 0) {
-                                        balanceLeftOnContract = totalContractValueFromPrime - totalInvoiced;
-                                        console.log(`[${project.id}] Recalculated Balance from Payment Applications - Contract: ${totalContractValueFromPrime}, Invoiced: ${totalInvoiced}, Balance: ${balanceLeftOnContract}`);
-                                    }
-                                }
-                                
-                                // Fallback: use total_amount_paid as total invoiced if g702 doesn't have it
-                                if (totalInvoiced === 0 && latestPaymentApp.total_amount_paid) {
-                                    totalInvoiced = parseFloat(latestPaymentApp.total_amount_paid) || 0;
-                                }
-                                
-                                // Final balance recalculation after all Payment Applications data
-                                if (totalContractValueFromPrime > 0 && totalInvoiced > 0) {
-                                    balanceLeftOnContract = totalContractValueFromPrime - totalInvoiced;
-                                }
-                                
-                                console.log(`[${project.id}] Payment Application - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
-                            } else {
-                                console.log(`[${project.id}] No payment applications found`);
-                            }
-                            
-                            // Also try to get data from Prime Contract if available
-                            if (primeContractsData && primeContractsData.length > 0 && (percentCompleteRevenue === 0 || customerRetainage === 0)) {
-                                const primaryContract = primeContractsData[0];
-                                // Check if invoice data is nested in the contract
-                                if (primaryContract.owner_invoices && Array.isArray(primaryContract.owner_invoices) && primaryContract.owner_invoices.length > 0) {
-                                    const latestInvoice = primaryContract.owner_invoices[0];
-                                    if (percentCompleteRevenue === 0) {
-                                        percentCompleteRevenue = parseFloat(latestInvoice.percent_complete || latestInvoice.percentage_complete || '0') || 0;
-                                    }
-                                    if (customerRetainage === 0) {
-                                        customerRetainage = parseFloat(latestInvoice.total_retainage || latestInvoice.retainage_amount || '0') || 0;
-                                    }
-                                    console.log(`[${project.id}] Owner Invoice (from Prime Contract) - % Complete: ${percentCompleteRevenue}, Retainage: ${customerRetainage}`);
-                                }
-                            }
-                        } catch (paymentAppError: any) {
-                            // Payment Applications may not be available
-                            const status = paymentAppError.response?.status;
-                            if (status === 403) {
-                                console.warn(`[${project.id}] Payment Applications: 403 Forbidden (no access)`);
-                            } else if (status === 404) {
-                                console.warn(`[${project.id}] Payment Applications: 404 Not Found`);
-                            } else {
-                                console.warn(`[${project.id}] Payment Applications: Error ${status || 'unknown'}:`, paymentAppError.message);
-                            }
-                        }
-                        
-                        // Fetch Requisitions for Vendor Retainage (based on Power BI mapping)
-                        // Sum of Completed Work Retainage Amount From Requisitions
-                        let vendorRetainage = 0;
-                        console.log(`[${project.id}] Starting Requisitions fetch...`);
-                        try {
-                            // Correct endpoint: /rest/v1.0/requisitions with project_id as query parameter
-                            const requisitionsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/requisitions`;
-                            console.log(`[${project.id}] Fetching Requisitions from: ${requisitionsUrl}`);
-                            const requisitionsResponse = await retryOnRateLimit(() => axios.get(
-                                requisitionsUrl,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        project_id: project.id, // Required query parameter
-                                        per_page: 30, // Reduced from 100 for performance - get enough for retainage and job to date cost
-                                    },
-                                }
-                            ));
-                            await delay(50);
-                            
-                            const requisitions = requisitionsResponse.data?.data || requisitionsResponse.data || [];
-                            if (Array.isArray(requisitions) && requisitions.length > 0) {
-                                // Log first requisition structure to see what fields are available
-                                if (requisitions.length > 0) {
-                                    console.log(`[${project.id}] First Requisition structure:`, JSON.stringify(requisitions[0], null, 2));
-                                    console.log(`[${project.id}] First Requisition available fields:`, Object.keys(requisitions[0]));
-                                }
-                                
-                                // Sort requisitions by billing_date (most recent first) to get latest cumulative total
-                                const sortedRequisitions = [...requisitions].sort((a: any, b: any) => {
-                                    const dateA = a.billing_date ? new Date(a.billing_date).getTime() : 0;
-                                    const dateB = b.billing_date ? new Date(b.billing_date).getTime() : 0;
-                                    return dateB - dateA; // Most recent first
-                                });
-                                
-                                requisitions.forEach((req: any) => {
-                                    // Check summary object first (retainage might be nested there)
-                                    let retainage = 0;
-                                    
-                                    if (req.summary) {
-                                        // Extract vendor retainage
-                                        retainage = parseFloat(
-                                            req.summary.completed_work_retainage_amount ||
-                                            req.summary.retainage_amount ||
-                                            req.summary.total_retainage ||
-                                            '0'
-                                        ) || 0;
-                                    }
-                                    
-                                    // Fallback to root level fields
-                                    if (retainage === 0) {
-                                        retainage = parseFloat(
-                                            req.completed_work_retainage_amount || 
-                                            req.retainage_amount || 
-                                            req.total_retainage ||
-                                            '0'
-                                        ) || 0;
-                                    }
-                                    
-                                    vendorRetainage += retainage;
-                                });
-                                
-                                // For Job To Date Cost, use Budget data if available (more accurate)
-                                // Otherwise, sum ALL requisitions' total_completed_and_stored_to_date (not just latest)
-                                // Requisitions are per-commitment, so we need to sum them all to get total project cost
-                                // Power BI shows ~276,305 for Job To Date Cost, which is 97% of Est Cost ($284,851)
-                                // Payment Applications are for revenue, Requisitions are for costs
-                                // NOTE: Only use Requisitions if Budget didn't provide Job To Date Cost
-                                if (jobToDateCost === 0 && sortedRequisitions.length > 0) {
-                                    // Sum all requisitions' total_completed_and_stored_to_date to get total project cost
-                                    let totalRequisitionCost = 0;
-                                    sortedRequisitions.forEach((req: any) => {
-                                        if (req.summary && req.summary.total_completed_and_stored_to_date) {
-                                            const reqCost = parseFloat(req.summary.total_completed_and_stored_to_date) || 0;
-                                            totalRequisitionCost += reqCost;
-                                        }
-                                    });
-                                    
-                                    if (totalRequisitionCost > 0) {
-                                        jobToDateCost = totalRequisitionCost;
-                                        console.log(`[${project.id}] Using sum of all requisitions' total_completed_and_stored_to_date for Job To Date Cost: ${jobToDateCost} (from ${sortedRequisitions.length} requisitions)`);
-                                    } else {
-                                        // Fallback: use latest requisition's total_completed_and_stored_to_date
-                                        if (sortedRequisitions[0].summary) {
-                                            const latestSummary = sortedRequisitions[0].summary;
-                                            const latestTotal = parseFloat(
-                                                latestSummary.total_cost_to_date ||
-                                                latestSummary.cost_to_date ||
-                                                latestSummary.job_to_date_cost ||
-                                                latestSummary.total_completed_and_stored_to_date ||
-                                                '0'
-                                            ) || 0;
-                                            
-                                            if (latestTotal > 0) {
-                                                jobToDateCost = latestTotal;
-                                                console.log(`[${project.id}] Using latest requisition's Job To Date Cost (fallback): ${latestTotal}`);
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Log all summary fields for debugging
-                                    if (sortedRequisitions[0].summary) {
-                                        const latestSummary = sortedRequisitions[0].summary;
-                                        console.log(`[${project.id}] Latest Requisition Summary fields:`, Object.keys(latestSummary));
-                                        const numericFields: any = {};
-                                        Object.keys(latestSummary).forEach(key => {
-                                            const value = latestSummary[key];
-                                            if (typeof value === 'number' || (typeof value === 'string' && !isNaN(parseFloat(value)))) {
-                                                numericFields[key] = value;
-                                            }
-                                        });
-                                        console.log(`[${project.id}] Latest Requisition Summary ALL numeric values:`, numericFields);
-                                    }
-                                }
-                                
-                                console.log(`[${project.id}] Requisitions: Success - Found ${requisitions.length} requisitions, Vendor Retainage: ${vendorRetainage}, Job To Date Cost: ${jobToDateCost}`);
-                            } else {
-                                console.log(`[${project.id}] Requisitions: Empty array returned (no requisitions)`);
-                            }
-                        } catch (requisitionError: any) {
-                            // Requisitions may not be available
-                            const status = requisitionError.response?.status;
-                            if (status === 403) {
-                                console.warn(`[${project.id}] Requisitions: 403 Forbidden (no access)`);
-                            } else if (status === 404) {
-                                console.warn(`[${project.id}] Requisitions: 404 Not Found`);
-                            } else {
-                                console.warn(`[${project.id}] Requisitions: Error ${status || 'unknown'}:`, requisitionError.message);
-                            }
-                        }
-                        
-                        // Contract Payments endpoint returns 404, so we're using Requisitions for Job To Date Cost instead
-                        
-                        // Fetch Commitments for Est Cost At Completion (ONLY if Budget Line Items didn't provide data)
-                        // NOTE: This is a fallback approach since Budget Views endpoint (per reference chart) is not available.
-                        // We sum total_amount from individual commitment details to get Est Cost At Completion.
-                        // PERFORMANCE: Skip if Budget Line Items already provided estCostAtCompletion
-                        if (estCostAtCompletion === 0) {
-                            console.log(`[${project.id}] Starting Commitments fetch (fallback for Est Cost At Completion - Budget Line Items had no data)...`);
-                            try {
-                                const commitmentsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/commitments`;
-                                console.log(`[${project.id}] Fetching Commitments from: ${commitmentsUrl}`);
-                                const commitmentsResponse = await retryOnRateLimit(() => axios.get(
-                                    commitmentsUrl,
-                                    {
-                                        headers: {
-                                            'Authorization': `Bearer ${accessToken}`,
-                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                        },
-                                        params: {
-                                            project_id: project.id,
-                                            per_page: 50, // Reduced from 1000 for performance - limit to 50 commitments max
-                                        },
-                                    }
-                                ));
-                                await delay(50);
-                                
-                                const commitments = commitmentsResponse.data?.data || commitmentsResponse.data || [];
-                                if (Array.isArray(commitments) && commitments.length > 0) {
-                                    console.log(`[${project.id}] Commitments: Found ${commitments.length} commitment(s) (limited to 50 for performance)`);
-                                    
-                                    // PERFORMANCE: Only fetch details for first 20 commitments to avoid timeout
-                                    // This is a trade-off: we may miss some commitments, but it prevents timeouts
-                                    const commitmentsToFetch = commitments.slice(0, 20);
-                                    console.log(`[${project.id}] Fetching details for ${commitmentsToFetch.length} of ${commitments.length} commitments (limited for performance)...`);
-                                    
-                                    for (const commitment of commitmentsToFetch) {
-                                        try {
-                                            const commitmentDetailUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/commitments/${commitment.id}`;
-                                            const commitmentDetailResponse = await retryOnRateLimit(() => axios.get(
-                                                commitmentDetailUrl,
-                                                {
-                                                    headers: {
-                                                        'Authorization': `Bearer ${accessToken}`,
-                                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                                    },
-                                                    params: {
-                                                        project_id: project.id,
-                                                    },
-                                                }
-                                            ));
-                                            await delay(30); // Reduced delay from 50ms to 30ms
-                                            
-                                            const commitmentDetail = commitmentDetailResponse.data;
-                                            
-                                            // Check for amount fields in detail - use total_amount or grand_total
-                                            const commitmentAmount = parseFloat(
-                                                commitmentDetail.total_amount ||
-                                                commitmentDetail.grand_total ||
-                                                commitmentDetail.amount ||
-                                                commitmentDetail.committed_amount ||
-                                                commitmentDetail.estimated_cost ||
-                                                '0'
-                                            ) || 0;
-                                            
-                                            if (commitmentAmount > 0) {
-                                                estCostAtCompletion += commitmentAmount;
-                                            }
-                                        } catch (detailError: any) {
-                                            // If detail fetch fails, log but continue
-                                            const status = detailError.response?.status;
-                                            if (status === 403) {
-                                                console.warn(`[${project.id}] Commitment ${commitment.id} detail: 403 Forbidden`);
-                                            } else if (status === 404) {
-                                                console.warn(`[${project.id}] Commitment ${commitment.id} detail: 404 Not Found`);
-                                            }
-                                            // Skip other errors silently to avoid log spam
-                                        }
-                                    }
-                                    
-                                    console.log(`[${project.id}] Commitments: Est Cost At Completion from commitments: ${estCostAtCompletion} (from ${commitmentsToFetch.length} commitments)`);
-                                } else {
-                                    console.log(`[${project.id}] Commitments: Empty array returned`);
-                                }
-                            } catch (commitmentsError: any) {
-                                const status = commitmentsError.response?.status;
-                                if (status === 403) {
-                                    console.warn(`[${project.id}] Commitments: 403 Forbidden (no access)`);
-                                } else if (status === 404) {
-                                    console.warn(`[${project.id}] Commitments: 404 Not Found`);
-                                } else {
-                                    console.warn(`[${project.id}] Commitments: Error ${status || 'unknown'}:`, commitmentsError.message);
-                                }
-                            }
-                        } else {
-                            console.log(`[${project.id}] Skipping Commitments fetch - Budget Line Items already provided estCostAtCompletion: ${estCostAtCompletion}`);
-                        }
-                        
-                        // Final balance recalculation after all data is fetched
-                        // Use totalValue (which may have been updated from Payment Applications) or totalContractValueFromPrime
-                        const finalContractValue = totalContractValueFromPrime > 0 ? totalContractValueFromPrime : totalValue;
-                        if (finalContractValue > 0 && totalInvoiced > 0) {
-                            balanceLeftOnContract = finalContractValue - totalInvoiced;
-                            console.log(`[${project.id}] Final Balance Calculation - Contract: ${finalContractValue}, Invoiced: ${totalInvoiced}, Balance: ${balanceLeftOnContract}`);
-                        } else {
-                            console.log(`[${project.id}] Cannot calculate balance - Contract: ${finalContractValue}, Invoiced: ${totalInvoiced}`);
-                        }
-                        
-                        // If contract value equals total invoiced (from Payment Applications), balance should be 0
-                        // Power BI shows balance as 0 when contract is fully invoiced
-                        if (Math.abs(finalContractValue - totalInvoiced) < 1) {
-                            balanceLeftOnContract = 0;
-                            console.log(`[${project.id}] Contract value equals total invoiced, setting balance to 0`);
-                        }
-                        
-                        // Fetch Project Roles for Project Manager (based on Power BI mapping)
-                        // Initialize with empty string - will be populated from Project Roles endpoint
-                        let projectManager = '';
-                        console.log(`[${project.id}] Starting Project Roles fetch...`);
-                        try {
-                            // Correct endpoint: /rest/v1.0/project_roles with project_id as query parameter
-                            const projectRolesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_roles`;
-                            console.log(`[${project.id}] Fetching Project Roles from: ${projectRolesUrl}`);
-                            const projectRolesResponse = await retryOnRateLimit(() => axios.get(
-                                projectRolesUrl,
-                                {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
-                                    params: {
-                                        project_id: project.id, // Required query parameter
-                                    },
-                                }
-                            ));
-                            await delay(50);
-                            
-                            const projectRoles = projectRolesResponse.data?.data || projectRolesResponse.data || [];
-                            if (Array.isArray(projectRoles) && projectRoles.length > 0) {
-                                // Find Project Manager role - try multiple variations
-                                const pmRole = projectRoles.find((role: any) => {
-                                    const roleName = (role.role_name || role.role || '').toLowerCase();
-                                    return roleName.includes('project manager') || 
-                                           roleName === 'project manager' ||
-                                           roleName.includes('manager');
-                                });
-                                
-                                if (pmRole) {
-                                    // Based on test results: Project Roles v1.0 returns name directly on the role object
-                                    // Structure: { id, name: 'Simon Cox (Tatco Construction)', role: 'Project Manager', ... }
-                                    projectManager = pmRole.name || 
-                                                   pmRole.user?.name || 
-                                                   pmRole.user?.full_name || 
-                                                   pmRole.user?.display_name ||
-                                                   '';
-                                    console.log(`[${project.id}] Project Roles: Success - Found PM role: ${pmRole.role}, Name: ${projectManager}`);
-                                } else {
-                                    console.log(`[${project.id}] Project Roles: Success - Found ${projectRoles.length} roles, but no PM role found. Available roles:`, projectRoles.map((r: any) => r.role || r.role_name || 'unknown'));
-                                }
-                            } else {
-                                console.log(`[${project.id}] Project Roles: Empty array returned (no roles)`);
-                            }
-                        } catch (rolesError: any) {
-                            const status = rolesError.response?.status;
-                            if (status === 403) {
-                                console.warn(`[${project.id}] Project Roles: 403 Forbidden (no access)`);
-                            } else if (status === 404) {
-                                console.warn(`[${project.id}] Project Roles: 404 Not Found`);
-                            } else {
-                                console.warn(`[${project.id}] Project Roles: Error ${status || 'unknown'}:`, rolesError.message);
-                            }
-                            // Project roles may not be available, use fallback
-                        }
-                        
-                        // Check for projected_profit and initial_estimated_profit in custom fields
-                        // Custom fields are nested under projectDetail.custom_fields as custom_field_{id}
-                        let projectedProfit = 0;
-                        let initialEstimatedProfitFromCustomField = 0;
-                        if (projectDetail && projectDetail.custom_fields) {
-                            const customFields = projectDetail.custom_fields;
-                            const customFieldKeys = Object.keys(customFields);
-                            
-                            // Log all custom fields for debugging
-                            if (customFieldKeys.length > 0) {
-                                console.log(`Project ${project.id} has ${customFieldKeys.length} custom fields:`, customFieldKeys);
-                                customFieldKeys.forEach(key => {
-                                    const customField = customFields[key];
-                                    console.log(`  ${key}:`, {
-                                        data_type: customField?.data_type,
-                                        value: customField?.value,
-                                        label: customField?.label,
-                                        full: customField
-                                    });
-                                });
-                            }
-                            
-                            // First, try to find fields with "profit", "projected", or "initial" in the label/name
-                            for (const key of customFieldKeys) {
-                                const customField = customFields[key];
-                                
-                                // Handle both string and number values
-                                let fieldValue: string | number | null = null;
-                                if (customField?.value !== null && customField?.value !== undefined) {
-                                    if (typeof customField.value === 'string' || typeof customField.value === 'number') {
-                                        fieldValue = customField.value;
-                                    } else if (typeof customField.value === 'object' && customField.value !== null) {
-                                        // Some custom fields have nested value objects
-                                        fieldValue = (customField.value as any).value || (customField.value as any).id || null;
-                                    }
-                                }
-                                
-                                if (fieldValue !== null) {
-                                    // Check if field name/label contains relevant keywords (case insensitive)
-                                    const fieldLabel = customField?.label || key;
-                                    const labelLower = fieldLabel.toLowerCase();
-                                    
-                                    const numericValue = typeof fieldValue === 'number' ? fieldValue : parseFloat(String(fieldValue));
-                                    
-                                    if (!isNaN(numericValue)) {
-                                        // Check for "current projected profit" or "projected profit" (current)
-                                        if ((labelLower.includes('current') && labelLower.includes('projected')) ||
-                                            (labelLower.includes('projected') && !labelLower.includes('initial'))) {
-                                            if (projectedProfit === 0) {
-                                                projectedProfit = numericValue;
-                                                console.log(`✅ Found Current Projected Profit in custom field ${key} (${fieldLabel}): ${projectedProfit}`);
-                                            }
-                                        }
-                                        // Check for "initial estimated profit" or "initial profit"
-                                        else if ((labelLower.includes('initial') && (labelLower.includes('estimated') || labelLower.includes('profit'))) ||
-                                                 (labelLower.includes('original') && labelLower.includes('profit'))) {
-                                            if (initialEstimatedProfitFromCustomField === 0) {
-                                                initialEstimatedProfitFromCustomField = numericValue;
-                                                console.log(`✅ Found Initial Estimated Profit in custom field ${key} (${fieldLabel}): ${initialEstimatedProfitFromCustomField}`);
-                                            }
-                                        }
-                                        // Generic "profit" field (use as current projected if not found yet)
-                                        else if (labelLower.includes('profit') && projectedProfit === 0 && !labelLower.includes('initial') && !labelLower.includes('original')) {
-                                            projectedProfit = numericValue;
-                                            console.log(`✅ Found profit field (using as Current Projected Profit) ${key} (${fieldLabel}): ${projectedProfit}`);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // If we didn't find it by label, check if there's a decimal field that might be projected profit
-                            // Based on the console data, custom_field_598134325649528 has value 44829.84 and is decimal type
-                            // This might be Initial Estimated Profit, not Current Projected Profit
-                            if (projectedProfit === 0 || initialEstimatedProfitFromCustomField === 0) {
-                                for (const key of customFieldKeys) {
-                                    const customField = customFields[key];
-                                    const isDecimalField = customField?.data_type === 'decimal';
-                                    
-                                    if (isDecimalField && customField?.value !== null && customField?.value !== undefined) {
-                                        const numericValue = typeof customField.value === 'number' 
-                                            ? customField.value 
-                                            : parseFloat(String(customField.value));
-                                        
-                                        if (!isNaN(numericValue) && numericValue > 0) {
-                                            // If we found a value around 44,830, it might be Initial Estimated Profit
-                                            // If we found a value around 69,770, it might be Current Projected Profit
-                                            // Use the larger value as Current Projected Profit, smaller as Initial
-                                            if (projectedProfit === 0 && initialEstimatedProfitFromCustomField === 0) {
-                                                // First decimal field found - try to determine which it is
-                                                if (numericValue > 50000) {
-                                                    projectedProfit = numericValue;
-                                                    console.log(`⚠️ Using larger decimal custom field ${key} as Current Projected Profit (fallback): ${projectedProfit}`);
-                                                } else {
-                                                    initialEstimatedProfitFromCustomField = numericValue;
-                                                    console.log(`⚠️ Using smaller decimal custom field ${key} as Initial Estimated Profit (fallback): ${initialEstimatedProfitFromCustomField}`);
-                                                }
-                                            } else if (projectedProfit === 0 && numericValue > initialEstimatedProfitFromCustomField) {
-                                                projectedProfit = numericValue;
-                                                console.log(`⚠️ Using decimal custom field ${key} as Current Projected Profit (fallback): ${projectedProfit}`);
-                                            } else if (initialEstimatedProfitFromCustomField === 0 && numericValue < projectedProfit) {
-                                                initialEstimatedProfitFromCustomField = numericValue;
-                                                console.log(`⚠️ Using decimal custom field ${key} as Initial Estimated Profit (fallback): ${initialEstimatedProfitFromCustomField}`);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Map Procore project data to our format
-                        const projectData = {
-                            id: project.id?.toString() || `procore-${project.id}`,
-                            projectName: project.name || projectDetail?.name || 'Unknown Project',
-                            projectNumber: project.number || project.project_number || projectDetail?.project_number || '',
-                            projectManager: projectManager || project.project_manager?.name || project.manager_name || '', // From Project Roles (name is directly on role object, not nested under user)
-                            projectSystem: 'Procore', // Default since coming from Procore
-                            projectStatus: project.stage_name || projectDetail?.project_stage?.name || project.status_name || project.status || (projectDetail?.active === false ? 'Inactive' : 'Active'), // Use stage_name for values like "Course of Construction", "Complete", etc.
-                            // Financial fields - prioritize Prime Contract data, then project detail, then calculated
-                            totalContractValue: totalValue || 0, // From Payment Applications g702.original_contract_sum (prioritized) or Prime Contract
-                            estCostAtCompletion: estCostAtCompletion || 0, // From Budget Line Items + Commitments (Budget Views endpoint not available)
-                            // Initial Estimated Profit: Use custom field if available, otherwise calculate as Contract Value - Est Cost
-                            // Note: Power BI shows Initial Estimated Profit as a stored value (e.g., $44,830), not calculated
-                            initialEstimatedProfit: initialEstimatedProfitFromCustomField > 0 
-                                ? initialEstimatedProfitFromCustomField 
-                                : (totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0),
-                            // Current Projected Profit: Use custom field if available, otherwise calculate as Contract Value - Est Cost
-                            // Power BI shows this as $69,770 which matches Contract Value ($354,621) - Est Cost ($284,851) = $69,770
-                            currentProjectedProfit: projectedProfit > 0 
-                                ? projectedProfit 
-                                : (totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0),
-                            estimatedDifference: (() => {
-                                // Use custom field values if available, otherwise calculate
-                                const initial = initialEstimatedProfitFromCustomField > 0 
-                                    ? initialEstimatedProfitFromCustomField 
-                                    : (totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0);
-                                const current = projectedProfit > 0 
-                                    ? projectedProfit 
-                                    : (totalValue > 0 && estCostAtCompletion > 0 ? totalValue - estCostAtCompletion : 0);
-                                return current - initial; // Difference between current and initial projected profit
-                            })(),
-                            jobToDateCost: jobToDateCost || 0, // From Requisitions or Budget Line Items
-                            percentProjectedProfit: totalValue > 0 && estCostAtCompletion > 0 
-                                ? ((totalValue - estCostAtCompletion) / totalValue) * 100 
-                                : (totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0), // Formula: (Total Contract Value - Est Cost) / Total Contract Value * 100
-                            balanceLeftOnContract: balanceLeftOnContract || 0, // From Prime Contract: RevisedContractAmount - OwnerInvoiceAmount
-                            // Percent Complete (Revenue): Only use value from Payment Applications, don't calculate
-                            // Power BI shows this as blank/empty, so we should only populate if explicitly available from API
-                            percentCompleteRevenue: percentCompleteRevenue > 0 ? percentCompleteRevenue : 0, // Only from Payment Applications, don't calculate
-                            percentCompleteCost: estCostAtCompletion > 0 ? (jobToDateCost / estCostAtCompletion) * 100 : 0, // Formula: JobToDateCost / EstCostOfCompletion
-                            customerRetainage: customerRetainage || 0, // From most recent invoice
-                            remainingCost: estCostAtCompletion > 0 ? estCostAtCompletion - jobToDateCost : 0, // Formula: Est Cost Of Completion - Job To Date Costs
-                            vendorRetainage: vendorRetainage || 0, // Sum from Requisitions
-                            totalInvoiced: totalInvoiced || 0, // From Prime Contract: OwnerInvoiceAmount
-                            contractStatus: contractStatus || project.status_name || (projectDetail?.active === false ? 'Inactive' : 'Active'), // From Prime Contract or project
-                            contractStartDate: contractStartDate || projectDetail?.start_date || projectDetail?.actual_start_date || null, // From Prime Contract or project
-                            contractEndDate: contractEndDate || projectDetail?.completion_date || projectDetail?.projected_finish_date || null, // From Prime Contract or project
-                            isActive: project.status_name !== 'Archived' && project.status_name !== 'Closed' && projectDetail?.active !== false,
-                            // Archive Date: Check multiple sources, including updated_at if project is archived
-                            archiveDate: (() => {
-                                // First check explicit archive/close dates from project list
-                                if (project.archived_at) return project.archived_at;
-                                if (project.archive_date) return project.archive_date;
-                                if (project.closed_at) return project.closed_at;
-                                if (project.closed_date) return project.closed_date;
-                                
-                                // Then check project detail
-                                if (projectDetail?.archived_at) return projectDetail.archived_at;
-                                if (projectDetail?.archive_date) return projectDetail.archive_date;
-                                if (projectDetail?.closed_at) return projectDetail.closed_at;
-                                if (projectDetail?.closed_date) return projectDetail.closed_date;
-                                
-                                // If project is archived/closed, use updated_at as fallback
-                                if (project.status_name === 'Archived' || project.status_name === 'Closed' || projectDetail?.active === false) {
-                                    return project.updated_at || projectDetail?.updated_at || null;
-                                }
-                                
-                                return null;
-                            })(),
-                            // Store raw Procore data for reference
-                            _procoreData: project,
-                            _procoreDetail: projectDetail, // Store detail for debugging
-                            _primeContracts: primeContractsData, // Store prime contracts for debugging
-                        };
-                        
-                        projectsWithData.push(projectData);
-                        
-                        // Update progress after each project
-                        if (progressRefCreated) {
-                            try {
-                                await progressRef.update({
-                                    processedProjects: i + 1,
-                                    currentProject: project.name || project.id,
-                                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                                });
-                            } catch (progressError) {
-                                console.warn('Could not update progress:', progressError);
-                            }
-                        }
-                    } catch (error: any) {
-                        console.error(`Error processing project ${project.id}:`, error);
-                        // Continue to next project even if this one fails
-                        // Still update progress
-                        if (progressRefCreated) {
-                            try {
-                                await progressRef.update({
-                                    processedProjects: i + 1,
-                                    errors: admin.firestore.FieldValue.arrayUnion({
-                                        projectId: project.id,
-                                        projectName: project.name,
-                                        error: error.message,
-                                        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                                    }),
-                                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                                });
-                            } catch (progressError) {
-                                console.warn('Could not update progress on error:', progressError);
-                            }
-                        }
-                    }
-                } catch (outerError: any) {
-                    console.error(`Outer error processing project ${project.id}:`, outerError);
-                }
-            }
-            
-            // Mark progress as completed
-            if (progressRefCreated) {
-                try {
-                    await progressRef.update({
-                        status: 'completed',
-                        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-                } catch (progressError) {
-                    console.warn('Could not mark progress as completed:', progressError);
-                }
-            }
-            
-            return {
-                success: true,
-                data: projectsWithData.filter(p => p !== null),
-                progressDocId, // Return progress document ID for frontend tracking
-                totalProcessed: projectsWithData.length,
-                totalProjects: projectsToProcess.length,
-            };
-        } catch (error: any) {
-            console.error('Error fetching all Procore projects:', error.response?.data || error.message);
-            
-            // Mark progress as failed if it exists
-            if (progressRefCreated && progressRef) {
-                try {
-                    await progressRef.update({
-                        status: 'failed',
-                        error: error.message || 'Unknown error',
-                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    });
-                } catch (progressError) {
-                    console.error('Error updating progress on failure:', progressError);
-                }
-            }
-            
-            throw new functions.https.HttpsError(
-                'internal',
-                error.response?.data?.error_description || 'Failed to fetch projects'
-            );
-        }
-    });
+// DEPRECATED: Removed procoreGetProjectProfitability and procoreGetAllProjectsProfitability
+// These functions used the Procore API which had rate limits and missing data.
+// Replaced by azureSqlGetAllProjectsProfitability which queries Azure SQL Database directly.
+// This provides faster, more reliable data that matches Power BI exactly.
 
 // TEST FUNCTION: Test Prime Contracts endpoint to see what financial data is available
 // This is a temporary function for research purposes
@@ -3559,5 +2226,306 @@ export const procoreTestProjectManagerEndpoints = functions
                 ? `✅ Found ${results.successfulEndpoints.length} working endpoint(s) out of ${results.attempts.length} attempts. Check Firebase logs for Project Manager fields.`
                 : `❌ All ${results.attempts.length} Project Manager endpoint attempts failed. Check Firebase logs for details.`,
         };
+    });
+
+// ============================================================================
+// AZURE SQL DATABASE FUNCTIONS - Project Profitability from Database
+// ============================================================================
+// This approach queries the Azure SQL database that feeds Power BI directly
+// Benefits: No rate limits, faster, matches Power BI exactly, more reliable
+
+// Azure SQL Database Configuration
+// Use Firebase Functions config (legacy) or environment variables
+const getAzureSqlConfig = () => {
+    // Use Firebase Functions secrets (modern, secure approach)
+    // Secrets are automatically available as environment variables
+    // Trim whitespace/newlines that might have been included when setting secrets
+    const server = process.env.AZURE_SQL_SERVER?.trim();
+    const database = process.env.AZURE_SQL_DATABASE?.trim();
+    const user = process.env.AZURE_SQL_USER?.trim();
+    const password = process.env.AZURE_SQL_PASSWORD?.trim();
+    
+    if (!server || !database || !user || !password) {
+        throw new Error(
+            'Azure SQL credentials not configured. ' +
+            'Please ensure AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USER, and AZURE_SQL_PASSWORD ' +
+            'secrets are set via: firebase functions:secrets:set'
+        );
+    }
+    
+    console.log('✅ Using Azure SQL credentials from Firebase Functions secrets');
+    
+    return {
+        server: server,
+        database: database,
+        user: user,
+        password: password,
+        options: {
+            encrypt: true, // Required for Azure SQL
+            trustServerCertificate: true, // Azure SQL uses proper certificates but hostname matching can be strict
+            enableArithAbort: true,
+        },
+        pool: {
+            max: 10,
+            min: 0,
+            idleTimeoutMillis: 30000,
+        },
+    };
+};
+
+// Get all projects with profitability data from Azure SQL Database
+// This replaces the Procore API approach and matches Power BI exactly
+export const azureSqlGetAllProjectsProfitability = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540,
+        memory: '512MB',
+        secrets: ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USER', 'AZURE_SQL_PASSWORD'],
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        let progressRef: admin.firestore.DocumentReference | null = null;
+        let progressDocId: string | null = null;
+        let progressRefCreated = false;
+
+        try {
+            // Create progress tracking document
+            try {
+                const progressData = {
+                    userId: userId,
+                    totalProjects: 0, // Will update after query
+                    processedProjects: 0,
+                    currentProject: '',
+                    status: 'processing' as const,
+                    startedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                };
+                const progressDoc = await admin.firestore().collection('procoreSyncProgress').add(progressData);
+                progressRef = progressDoc;
+                progressDocId = progressDoc.id;
+                progressRefCreated = true;
+                console.log(`Progress tracking document created: ${progressDocId}`);
+            } catch (progressError) {
+                console.warn('Could not create progress document, continuing without progress tracking:', progressError);
+            }
+
+            // Connect to Azure SQL Database
+            // This database is the same source that feeds Power BI, so we get the most up-to-date data
+            // The view is refreshed regularly and contains all calculated values matching the Formula Reference Chart
+            console.log('Connecting to Azure SQL Database...');
+            const azureSqlConfig = getAzureSqlConfig();
+            const pool = await sql.connect(azureSqlConfig);
+            console.log('✅ Connected to Azure SQL Database');
+
+            try {
+                // Query the v_ProjectProfitability view
+                // This view already has all the calculations that match Power BI formulas
+                // The database view applies all formulas from the Formula Reference Chart:
+                // - Customer Retainage: from most recent invoice
+                // - Vendor Retainage: sum from requisitions
+                // - Total Invoiced: from prime contract
+                // - All other calculated fields are pre-computed in the view
+                
+                // Allow filtering by Active status (default: fetch all projects)
+                // Try different filtering options to match Power BI
+                // Based on query results, Power BI shows much higher values, suggesting it uses ALL projects
+                // Option 1: All projects (default) - matches the 292 projects query result
+                // Option 2: Only Active = 1
+                // Option 3: Only Active = 1 AND exclude NULL values
+                // Option 4: Only Active = 1 AND ContractStatus = 'Approved'
+                // Option 5: All projects with ContractStatus = 'Approved' (no Active filter)
+                // Option 6: All projects excluding NULL values
+                const filterOption = data?.filterOption || 'all'; // 'all', 'active', 'active_no_null', 'active_approved', 'all_approved', 'all_no_null'
+                
+                let whereClause = '';
+                switch (filterOption) {
+                    case 'active':
+                        whereClause = 'WHERE Active = 1';
+                        break;
+                    case 'active_no_null':
+                        whereClause = `WHERE Active = 1 
+                            AND ProjectRevisedContractAmount IS NOT NULL 
+                            AND ProjectedProfit IS NOT NULL 
+                            AND JobCostToDate IS NOT NULL`;
+                        break;
+                    case 'active_approved':
+                        whereClause = `WHERE Active = 1 AND ContractStatus = 'Approved'`;
+                        break;
+                    case 'all_approved':
+                        whereClause = `WHERE ContractStatus = 'Approved'`;
+                        break;
+                    case 'all_no_null':
+                        whereClause = `WHERE ProjectRevisedContractAmount IS NOT NULL 
+                            AND ProjectedProfit IS NOT NULL 
+                            AND JobCostToDate IS NOT NULL`;
+                        break;
+                    case 'all':
+                    default:
+                        whereClause = '';
+                        break;
+                }
+                
+                const query = `
+                    SELECT 
+                        ProjectName,
+                        ProjectRevisedContractAmount,
+                        ProjectNumber,
+                        ProjectManager,
+                        RedTeamImport,
+                        Active,
+                        EstCostAtCompletion,
+                        JobCostToDate,
+                        PercentCompleteBasedOnCost,
+                        RemainingCost,
+                        ProjectedProfit,
+                        ProjectedProfitPercentage,
+                        ContractStartDate,
+                        ContractEndDate,
+                        TotalInvoiced,
+                        ContractStatus,
+                        ProjectStage,
+                        BalanceLeftOnContract,
+                        PercentCompleteBasedOnRevenue,
+                        CustomerRetainage,
+                        VendorRetainage,
+                        ProfitCenterYear,
+                        ProcoreId,
+                        EstimatedProjectProfit
+                    FROM dbo.v_ProjectProfitability
+                    ${whereClause}
+                    ORDER BY ProjectName
+                `;
+                
+                console.log(`Executing query with filter option: ${filterOption}`);
+
+                console.log(`Executing query against v_ProjectProfitability with filter option: ${filterOption}...`);
+                const result = await pool.request().query(query);
+                const rows = result.recordset || [];
+                console.log(`✅ Query successful: Found ${rows.length} projects (filter: ${filterOption})`);
+
+                // Update progress with total count
+                if (progressRefCreated && progressRef) {
+                    await progressRef.update({
+                        totalProjects: rows.length,
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+
+                // Map database rows to our application format
+                const projectsWithData = rows.map((row: any, index: number) => {
+                    // Update progress
+                    if (progressRefCreated && progressRef) {
+                        progressRef.update({
+                            processedProjects: index + 1,
+                            currentProject: row.ProjectName || `Project ${index + 1}`,
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        }).catch(err => console.warn('Progress update failed:', err));
+                    }
+
+                    // Map database columns to application format
+                    // This matches the structure returned by procoreGetAllProjectsProfitability
+                    const projectData = {
+                        id: row.ProcoreId?.toString() || `db-${row.ProjectNumber}`,
+                        projectName: row.ProjectName || 'Unknown Project',
+                        projectNumber: row.ProjectNumber?.toString() || '',
+                        projectManager: row.ProjectManager || '',
+                        projectSystem: 'Procore', // Data comes from Procore via database
+                        projectStatus: row.ProjectStage || row.ContractStatus || 'Active',
+                        
+                        // Financial fields - directly from database (matches Power BI)
+                        totalContractValue: parseFloat(row.ProjectRevisedContractAmount) || 0,
+                        estCostAtCompletion: parseFloat(row.EstCostAtCompletion) || 0,
+                        initialEstimatedProfit: parseFloat(row.EstimatedProjectProfit) || 0,
+                        // Power BI calculates Projected Profit as: Total Contract Value - Est Cost At Completion
+                        // This matches the Formula Reference Chart: "Projected Profit: Total Contract Value - Est Cost Of Completion"
+                        currentProjectedProfit: (() => {
+                            const contractValue = parseFloat(row.ProjectRevisedContractAmount) || 0;
+                            const estCost = parseFloat(row.EstCostAtCompletion) || 0;
+                            return contractValue - estCost; // Calculate instead of using stored ProjectedProfit
+                        })(),
+                        estimatedDifference: (() => {
+                            const initial = parseFloat(row.EstimatedProjectProfit) || 0;
+                            const current = parseFloat(row.ProjectedProfit) || 0;
+                            return current - initial;
+                        })(),
+                        jobToDateCost: parseFloat(row.JobCostToDate) || 0,
+                        percentProjectedProfit: parseFloat(row.ProjectedProfitPercentage) || 0,
+                        balanceLeftOnContract: parseFloat(row.BalanceLeftOnContract) || 0,
+                        percentCompleteRevenue: parseFloat(row.PercentCompleteBasedOnRevenue) || 0,
+                        percentCompleteCost: parseFloat(row.PercentCompleteBasedOnCost) || 0,
+                        customerRetainage: parseFloat(row.CustomerRetainage) || 0, // ✅ Matches Power BI
+                        remainingCost: parseFloat(row.RemainingCost) || 0, // ✅ Matches Power BI ($9,141.90)
+                        vendorRetainage: parseFloat(row.VendorRetainage) || 0, // ✅ Matches Power BI ($16,019.86)
+                        totalInvoiced: parseFloat(row.TotalInvoiced) || 0,
+                        contractStatus: row.ContractStatus || 'Active',
+                        contractStartDate: row.ContractStartDate ? new Date(row.ContractStartDate).toISOString() : null,
+                        contractEndDate: row.ContractEndDate ? new Date(row.ContractEndDate).toISOString() : null,
+                        isActive: row.Active === 1,
+                        archiveDate: null, // Not in database view, would need to query separately if needed
+                        
+                        // Store source for debugging
+                        _source: 'Azure SQL Database',
+                        _procoreId: row.ProcoreId,
+                    };
+
+                    return projectData;
+                });
+
+                // Close the connection pool
+                await pool.close();
+                console.log('✅ Database connection closed');
+
+                // Update progress to completed
+                if (progressRefCreated && progressRef) {
+                    await progressRef.update({
+                        status: 'completed',
+                        processedProjects: projectsWithData.length,
+                        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+
+                console.log(`✅ Successfully processed ${projectsWithData.length} projects from Azure SQL Database`);
+
+                return {
+                    success: true,
+                    data: projectsWithData,
+                    totalProjects: projectsWithData.length,
+                    progressDocId: progressDocId,
+                    source: 'Azure SQL Database',
+                };
+
+            } catch (queryError: any) {
+                await pool.close();
+                throw queryError;
+            }
+
+        } catch (error: any) {
+            console.error('Error fetching projects from Azure SQL Database:', error);
+            
+            // Update progress to failed
+            if (progressRefCreated && progressRef) {
+                try {
+                    await progressRef.update({
+                        status: 'failed',
+                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        error: error.message || 'Unknown error',
+                    });
+                } catch (updateError) {
+                    console.warn('Could not update progress document:', updateError);
+                }
+            }
+
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to fetch projects from database: ${error.message || 'Unknown error'}`
+            );
+        }
     });
 

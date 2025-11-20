@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { Card, Input, Select, Tag, Tooltip, Button, Checkbox } from '@/components/ui'
+import { Card, Input, Select, Tag, Tooltip, Button, Checkbox, Skeleton } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import Chart from '@/components/shared/Chart'
 import { HiOutlineCurrencyDollar } from 'react-icons/hi'
@@ -165,87 +165,24 @@ const CustomPlaceholder = (props) => {
     return <components.Placeholder {...props} />
 }
 
-// Mock data - will be replaced with Procore API integration
-const generateMockProjects = () => {
-    const projects = []
-    const projectNames = [
-        '7 Brew - Norman - OK',
-        '7 Brew - Lawton - OK',
-        '7 Brew - W. Main Street',
-        '380 West Animal Hospital',
-        '50th and Western - 1st Floor and LL Work',
-        '50th and Western - 2nd Floor',
-        '50th and Western - 3rd Floor',
-        '63rd & Mac – ATM',
-        '36 E 33rd - Bathroom Add',
-        '3101 NE 63rd - Office/Lobby Renovation',
-        '2908 Piazza Ct - Bore',
-        '2800 S Telephone Rd - Site Assessment',
-        '2546 N Moore Ave',
-        '245 W Wilshire - Suite A',
-        '241 W Wilshire',
-        '2400 N 9th - Wall Infill',
-        '23rd St Apartments',
-        '200 NE 38th Ter',
-        '1601 S Agnew - Tar & Gravel Repair',
-        '13509 Railway - Suite A',
-    ]
-    const projectManagers = [
-        'Brett Tatum',
-        'Jamey Montgomery',
-        'Joe Lassiter',
-        'Simon Cox',
-        'Trey Roberts',
-        'Marc Dunham',
-        'Heath Pickens',
-        'Harrison McKee',
-    ]
-    const projectSystems = ['Red Team', 'Procore']
-    const projectStatuses = [
-        'Closed',
-        'Not Awarded',
-        'Pre-Construction',
-        'Bidding',
-        'Course of Construction',
-    ]
-    const contractStatuses = ['Active', 'Pending', 'Completed', 'Cancelled']
-
-    for (let i = 0; i < 20; i++) {
-        const contractValue = Math.floor(Math.random() * 5000000) + 100000
-        const estCost = contractValue * (0.6 + Math.random() * 0.3)
-        const initialProfit = contractValue - estCost
-        const currentProfit = initialProfit * (0.8 + Math.random() * 0.4)
-        const percentComplete = Math.random() * 100
-        const isActive = Math.random() > 0.3
-
-        projects.push({
-            id: `proj-${i + 1}`,
-            projectName: projectNames[i % projectNames.length],
-            projectNumber: String(1720000 + i),
-            projectManager: projectManagers[i % projectManagers.length],
-            projectSystem: projectSystems[i % projectSystems.length],
-            projectStatus: projectStatuses[i % projectStatuses.length],
-            totalContractValue: contractValue,
-            estCostAtCompletion: estCost,
-            initialEstimatedProfit: initialProfit,
-            currentProjectedProfit: currentProfit,
-            estimatedDifference: currentProfit - initialProfit,
-            percentProjectedProfit: (currentProfit / contractValue) * 100,
-            balanceLeftOnContract: contractValue * (1 - percentComplete / 100),
-            percentCompleteRevenue: percentComplete,
-            percentCompleteCost: percentComplete * (0.9 + Math.random() * 0.2),
-            customerRetainage: contractValue * 0.05,
-            remainingCost: estCost * (1 - percentComplete / 100),
-            vendorRetainage: estCost * 0.05,
-            totalInvoiced: contractValue * (percentComplete / 100),
-            contractStatus: contractStatuses[i % contractStatuses.length],
-            contractStartDate: new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-            contractEndDate: new Date(2025, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-            isActive: isActive,
-            archiveDate: isActive ? null : new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-        })
-    }
-    return projects
+// Skeleton loader component for table rows
+const TableSkeleton = ({ rows = 10 }) => {
+    return (
+        <div className="space-y-2">
+            {Array.from({ length: rows }).map((_, index) => (
+                <div key={index} className="flex items-center gap-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <Skeleton className="w-48 h-4" />
+                    <Skeleton className="w-32 h-4" />
+                    <Skeleton className="w-40 h-4" />
+                    <Skeleton className="w-24 h-4" />
+                    <Skeleton className="w-32 h-4" />
+                    <Skeleton className="w-28 h-4" />
+                    <Skeleton className="w-36 h-4" />
+                    <Skeleton className="w-32 h-4" />
+                </div>
+            ))}
+        </div>
+    )
 }
 
 // Filter options
@@ -284,32 +221,54 @@ const ProjectProfitability = () => {
         projectSystem: null,
         projectManager: null,
     })
-    const [pageIndex, setPageIndex] = useState(1)
-    const [pageSize, setPageSize] = useState(10)
     const [sort, setSort] = useState({ key: '', order: '' })
     const [localSearchValue, setLocalSearchValue] = useState('')
     const [showFiltersMobile, setShowFiltersMobile] = useState(false)
     const [showMoreFilters, setShowMoreFilters] = useState(false)
     const [projectOptions, setProjectOptions] = useState([])
     const searchDebounceRef = useRef(null)
-    const oauthProcessedRef = useRef(false) // Prevent duplicate OAuth processing
+    const tableScrollRef = useRef(null)
+    const bottomScrollRef = useRef(null)
     
-    // Procore integration states
+    // Loading and error states
     const [isLoading, setIsLoading] = useState(true)
-    const [isAuthorizing, setIsAuthorizing] = useState(false)
-    const [isAuthorized, setIsAuthorized] = useState(false)
     const [error, setError] = useState(null)
-    const [useMockData, setUseMockData] = useState(false)
-    const [isTestingPrimeContracts, setIsTestingPrimeContracts] = useState(false)
-    const [isTestingProjectStatusSnapshots, setIsTestingProjectStatusSnapshots] = useState(false)
-    const [isTestingAllFinancialEndpoints, setIsTestingAllFinancialEndpoints] = useState(false)
-    const [isTestingAllVariations, setIsTestingAllVariations] = useState(false)
-    const [isTestingCostEndpoints, setIsTestingCostEndpoints] = useState(false)
-    const [isTestingArchiveDateEndpoints, setIsTestingArchiveDateEndpoints] = useState(false)
-    const [isTestingBudgetViewsEndpoints, setIsTestingBudgetViewsEndpoints] = useState(false)
-    const [isTestingProjectManagerEndpoints, setIsTestingProjectManagerEndpoints] = useState(false)
-    const [isClearingTokens, setIsClearingTokens] = useState(false)
-    const [isFetchingData, setIsFetchingData] = useState(false)
+    
+    // Sync scrollbars - moved after filteredProjects and visibleColumnsList are defined
+
+    // Fetch projects on component mount
+    useEffect(() => {
+        const fetchProjects = async () => {
+            setIsLoading(true)
+            setError(null)
+            
+            try {
+                console.log('🔄 Fetching projects from Azure SQL Database...')
+                const projectsData = await ProcoreService.getAllProjectsProfitability()
+                console.log('✅ Fetched projects:', projectsData?.length || 0)
+                
+                if (projectsData && projectsData.length > 0) {
+                    setProjects(projectsData)
+                    
+                    // Update project options for filters
+                    const uniqueProjects = [...new Set(projectsData.map(p => p.projectName))].map(name => ({
+                        value: name,
+                        label: name,
+                    }))
+                    setProjectOptions(uniqueProjects)
+                } else {
+                    setError('No projects found.')
+                }
+            } catch (fetchError) {
+                console.error('Error fetching projects:', fetchError)
+                setError(`Failed to fetch projects: ${fetchError.message || 'Unknown error'}`)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchProjects()
+    }, [])
 
     // Column visibility and order (like Master Tracker) - includes all columns
     const defaultColumnKeys = [
@@ -436,661 +395,7 @@ const ProjectProfitability = () => {
         saveFilterPreferences(newVisibility)
     }
 
-    // Handle OAuth callback on page load
-    useEffect(() => {
-        const handleOAuthCallback = async () => {
-            // Prevent duplicate processing (React StrictMode runs effects twice)
-            if (oauthProcessedRef.current) {
-                console.log('OAuth callback already processed, skipping...')
-                return
-            }
-            
-            const urlParams = new URLSearchParams(window.location.search)
-            const code = urlParams.get('code')
-            const oauthError = urlParams.get('oauth_error')
-            const error = urlParams.get('error')
-            
-            // If we have a code but we're not on the Project Profitability page, redirect there
-            if (code && !window.location.pathname.includes('project-profitability')) {
-                window.location.href = `/project-profitability?code=${code}&state=${urlParams.get('state') || ''}`
-                return
-            }
-            
-            // Only process if we have a code, error, or oauthError
-            if (!code && !error && !oauthError) {
-                return
-            }
-            
-            // Mark as processed immediately to prevent duplicate calls
-            oauthProcessedRef.current = true
-            
-            console.log('OAuth callback detected:', { code, error, oauthError })
-            
-            if (code) {
-                // We have an authorization code - exchange it for token
-                setIsLoading(true)
-                setError(null)
-                try {
-                    console.log('Exchanging authorization code for token...', code)
-                    const result = await ProcoreService.exchangeToken(code)
-                    console.log('Token exchange successful!', result)
-                    
-                    // Clean up URL - remove the code and state from URL
-                    const cleanUrl = window.location.pathname || '/project-profitability'
-                    window.history.replaceState({}, document.title, cleanUrl)
-                    
-                    // Skip connection test - token exchange succeeded, so token is valid
-                    // Go straight to fetching data to avoid unnecessary API calls and rate limits
-                    setIsAuthorized(true)
-                    setError(null)
-                    console.log('✅ Token exchange successful! Fetching real projects...')
-                    
-                    // Fetch real projects directly (no connection test needed)
-                    try {
-                        const procoreData = await ProcoreService.getAllProjectsProfitability()
-                        console.log('Fetched Procore projects:', procoreData?.length || 0)
-                        
-                        if (procoreData && procoreData.length > 0) {
-                            console.log('✅ Successfully loaded', procoreData.length, 'projects from Procore')
-                            setProjects(procoreData)
-                            setUseMockData(false)
-                            
-                            // Update project options
-                            const uniqueProcoreProjects = [...new Set(procoreData.map(p => p.projectName))].map(name => ({
-                                value: name,
-                                label: name,
-                            }))
-                            setProjectOptions(uniqueProcoreProjects)
-                        } else {
-                            console.warn('⚠️ No projects returned from Procore, keeping mock data')
-                            // Keep mock data if no projects returned
-                            const mockData = generateMockProjects()
-                            setProjects(mockData)
-                            setUseMockData(true)
-                            const uniqueProjects = [...new Set(mockData.map(p => p.projectName))].map(name => ({
-                                value: name,
-                                label: name,
-                            }))
-                            setProjectOptions(uniqueProjects)
-                        }
-                    } catch (fetchError) {
-                        console.error('Error fetching Procore projects:', fetchError)
-                        // Fetching projects failed - keep mock data and show a warning
-                        setError('Failed to fetch projects from Procore. Showing mock data.')
-                        setIsAuthorized(false)
-                        const mockData = generateMockProjects()
-                        setProjects(mockData)
-                        setUseMockData(true)
-                        const uniqueProjects = [...new Set(mockData.map(p => p.projectName))].map(name => ({
-                            value: name,
-                            label: name,
-                        }))
-                        setProjectOptions(uniqueProjects)
-                    }
-                } catch (error) {
-                    console.error('Error exchanging token:', error)
-                    const errorMessage = error.message || error.code || 'Unknown error'
-                    setError(`Failed to complete authorization: ${errorMessage}. Please try connecting again.`)
-                    setIsAuthorized(false)
-                    
-                    // Clean up URL even on error
-                    const cleanUrl = window.location.pathname || '/project-profitability'
-                    window.history.replaceState({}, document.title, cleanUrl)
-                } finally {
-                    setIsLoading(false)
-                }
-            } else if (error) {
-                // OAuth error from Procore
-                const errorDesc = urlParams.get('error_description')
-                setError(`OAuth error: ${error}${errorDesc ? ' - ' + errorDesc : ''}`)
-                setIsAuthorized(false)
-            } else if (oauthError) {
-                // Error from our own error handling
-                setError(decodeURIComponent(oauthError))
-                setIsAuthorized(false)
-            }
-        }
-        
-        handleOAuthCallback()
-    }, [])
-    
-    // Load mock data and check Procore authorization status
-    useEffect(() => {
-        const checkProcoreConnection = async () => {
-            // Always load mock data first (so it shows even if connection check fails)
-            const mockData = generateMockProjects()
-            setProjects(mockData)
-            setUseMockData(true)
-            
-            const uniqueProjects = [...new Set(mockData.map(p => p.projectName))].map(name => ({
-                value: name,
-                label: name,
-            }))
-            setProjectOptions(uniqueProjects)
-            
-            // Then check token status
-            try {
-                const tokenStatus = await ProcoreService.checkToken()
-                console.log('Procore token status:', tokenStatus)
-                
-                // If token exists and is not expired, test the connection
-                if (tokenStatus.hasToken && !tokenStatus.isExpired) {
-                    console.log('Token exists and is valid, testing connection...')
-                    setIsAuthorized(true) // Optimistically set to true
-                    
-                    try {
-                        // Test the connection with sandbox API
-                        const connectionTest = await ProcoreService.testConnection()
-                        console.log('Connection test result:', connectionTest)
-                        
-                        if (connectionTest.connected) {
-                            console.log('✅ Connection test successful! Fetching real projects...')
-                            setIsAuthorized(true)
-                            setError(null)
-                            
-                            // Connection works! Fetch real projects
-                            try {
-                                const procoreData = await ProcoreService.getAllProjectsProfitability()
-                                console.log('Fetched Procore projects:', procoreData?.length || 0)
-                                
-                                if (procoreData && procoreData.length > 0) {
-                                    console.log('✅ Successfully loaded', procoreData.length, 'projects from Procore')
-                                    console.log('Raw Procore project data (first project):', JSON.stringify(procoreData[0], null, 2))
-                                    setProjects(procoreData)
-                                    setUseMockData(false)
-                                    
-                                    // Update project options
-                                    const uniqueProcoreProjects = [...new Set(procoreData.map(p => p.projectName))].map(name => ({
-                                        value: name,
-                                        label: name,
-                                    }))
-                                    setProjectOptions(uniqueProcoreProjects)
-                                } else {
-                                    console.warn('⚠️ No projects returned from Procore, keeping mock data')
-                                    // Keep mock data if no projects returned
-                                }
-                            } catch (fetchError) {
-                                console.error('Error fetching Procore projects:', fetchError)
-                                // Connection test passed but fetching projects failed
-                                // Keep mock data and show a warning
-                                setError('Connected to Procore but failed to fetch projects. Showing mock data.')
-                            }
-                        } else {
-                            // Connection test failed
-                            console.error('❌ Connection test failed:', connectionTest.message)
-                            setIsAuthorized(false)
-                            setError(`Connection test failed: ${connectionTest.message}. Showing mock data.`)
-                        }
-                    } catch (testError) {
-                        console.error('Error testing connection:', testError)
-                        setIsAuthorized(false)
-                        setError('Failed to test Procore connection. Showing mock data.')
-                    }
-                } else {
-                    // No token or token expired
-                    console.log('No valid token found')
-                    setIsAuthorized(false)
-                }
-            } catch (error) {
-                console.error('Error checking Procore connection:', error)
-                setIsAuthorized(false)
-            } finally {
-                setIsLoading(false)
-            }
-        }
-        
-        // Only check on mount, not when isAuthorized changes
-        checkProcoreConnection()
-    }, []) // Empty dependency array - only run once on mount
-    
-    // Handle OAuth authorization
-    const handleAuthorizeProcore = async () => {
-        setIsAuthorizing(true)
-        setError(null)
-        
-        try {
-            // For localhost, use redirect flow (popup has cross-origin issues)
-            const usePopup = !(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            await ProcoreService.initiateOAuth(usePopup)
-            // If using redirect, the page will navigate away, so we don't need to do anything
-            // If using popup, the promise will resolve and we can reload
-            if (usePopup) {
-                setIsAuthorized(true)
-                // The useEffect will trigger and reload data
-            }
-        } catch (error) {
-            console.error('Error authorizing Procore:', error)
-            setError('Failed to authorize with Procore. Please try again.')
-        } finally {
-            setIsAuthorizing(false)
-        }
-    }
-
-    // Fetch Procore data manually
-    const handleFetchData = async () => {
-        setIsFetchingData(true)
-        setError(null)
-        
-        try {
-            console.log('🔄 Fetching Procore projects...')
-            // Fetch all projects (no limit for production - 100+ projects)
-            const procoreData = await ProcoreService.getAllProjectsProfitability()
-            console.log('Fetched Procore projects:', procoreData?.length || 0)
-            
-            if (procoreData && procoreData.length > 0) {
-                console.log('✅ Successfully loaded', procoreData.length, 'projects from Procore')
-                setProjects(procoreData)
-                setUseMockData(false)
-                
-                // Update project options
-                const uniqueProcoreProjects = [...new Set(procoreData.map(p => p.projectName))].map(name => ({
-                    value: name,
-                    label: name,
-                }))
-                setProjectOptions(uniqueProcoreProjects)
-                setIsAuthorized(true)
-            } else {
-                console.warn('⚠️ No projects returned from Procore')
-                setError('No projects found. Please check your Procore permissions.')
-            }
-        } catch (fetchError) {
-            console.error('Error fetching Procore projects:', fetchError)
-            setError(`Failed to fetch projects: ${fetchError.message || 'Unknown error'}`)
-        } finally {
-            setIsFetchingData(false)
-        }
-    }
-
-    // TEMPORARY: Test Prime Contracts endpoint
-    const handleTestPrimeContracts = async () => {
-        setIsTestingPrimeContracts(true)
-        setError(null)
-        
-        try {
-            // Use the first project from the loaded projects if available
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('🧪 Testing Prime Contracts endpoint...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testPrimeContracts(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Prime Contracts test successful!')
-                console.log('📊 Full response:', JSON.stringify(result.data, null, 2))
-                console.log('📋 Number of contracts:', Array.isArray(result.data) ? result.data.length : 'Not an array')
-                
-                if (Array.isArray(result.data) && result.data.length > 0) {
-                    console.log('📄 First contract structure:', JSON.stringify(result.data[0], null, 2))
-                }
-                
-                alert(`✅ Test completed!\n\nCheck the browser console for detailed results.\n\nAlso check Firebase logs:\nfirebase functions:log --only procoreTestPrimeContracts --lines 50`)
-            } else {
-                console.error('❌ Prime Contracts test failed:', result.error)
-                setError(`Test failed: ${result.error?.message || 'Unknown error'}`)
-                alert(`❌ Test failed!\n\nError: ${result.error?.message || 'Unknown error'}\n\nCheck console for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing Prime Contracts:', error)
-            setError(`Failed to test Prime Contracts: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingPrimeContracts(false)
-        }
-    }
-
-    // TEMPORARY: Test Project Status Snapshots endpoint
-    const handleTestProjectStatusSnapshots = async () => {
-        setIsTestingProjectStatusSnapshots(true)
-        setError(null)
-        
-        try {
-            // Use the first project from the loaded projects if available
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('🧪 Testing Project Status Snapshots endpoint...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testProjectStatusSnapshots(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Project Status Snapshots test successful!')
-                console.log('📊 Full response:', JSON.stringify(result, null, 2))
-                console.log('📋 Budget Views:', result.budgetViews?.length || 0)
-                console.log('📋 Snapshots:', result.snapshots?.length || 0)
-                
-                if (result.snapshots && result.snapshots.length > 0) {
-                    console.log('📄 First snapshot structure:', JSON.stringify(result.snapshots[0], null, 2))
-                    console.log('📄 Available fields:', Object.keys(result.snapshots[0]))
-                }
-                
-                alert(`✅ Test completed!\n\nCheck the browser console for detailed results.\n\nAlso check Firebase logs:\nfirebase functions:log --only procoreTestProjectStatusSnapshots --lines 100`)
-            } else {
-                console.error('❌ Project Status Snapshots test failed:', result.error)
-                setError(`Test failed: ${result.error?.message || 'Unknown error'}`)
-                alert(`❌ Test failed!\n\nError: ${result.error?.message || 'Unknown error'}\n\nCheck console for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing Project Status Snapshots:', error)
-            setError(`Failed to test Project Status Snapshots: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingProjectStatusSnapshots(false)
-        }
-    }
-
-    // COMPREHENSIVE TEST: Try ALL possible endpoint variations
-    const handleTestAllVariations = async () => {
-        setIsTestingAllVariations(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('🧪 Testing ALL Endpoint Variations...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testAllVariations(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Comprehensive test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 Total attempts:', result.totalAttempts)
-                console.log('👤 User project roles:', result.userProjectRoles)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
-                    } else {
-                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                const rolesInfo = result.userProjectRoles?.length > 0 
-                    ? `\n\n👤 Your project roles: ${result.userProjectRoles.length} role(s) found`
-                    : '\n\n⚠️ No project roles found - you may need to be assigned to this project'
-                
-                alert(`✅ Comprehensive test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}${rolesInfo}\n\nCheck browser console and Firebase logs for full details.`)
-            } else {
-                console.error('❌ All endpoint variations failed:', result.allAttempts)
-                const rolesInfo = result.userProjectRoles?.length > 0 
-                    ? `\n\n👤 Your project roles: ${result.userProjectRoles.length} role(s) found`
-                    : '\n\n⚠️ No project roles found - you may need to be assigned to this project'
-                setError('All endpoint attempts failed. Check console for details.')
-                alert(`❌ All ${result.totalAttempts} endpoint variations failed!${rolesInfo}\n\nThis suggests a permissions issue. Check console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing all variations:', error)
-            setError(`Failed to test all variations: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingAllVariations(false)
-        }
-    }
-
-    // TEST: Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)
-    const handleTestCostEndpoints = async () => {
-        setIsTestingCostEndpoints(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('💰 Testing ALL Cost Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testCostEndpoints(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Cost endpoints test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 Total attempts:', result.totalAttempts)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
-                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
-                            console.log(`   Available fields:`, attempt.dataStructure)
-                        }
-                    } else {
-                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                alert(`✅ Cost endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for full data structures.`)
-            } else {
-                console.error('❌ All cost endpoint attempts failed:', result.allAttempts)
-                setError('All cost endpoint attempts failed. Check console for details.')
-                alert(`❌ All ${result.totalAttempts} cost endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing cost endpoints:', error)
-            setError(`Failed to test cost endpoints: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingCostEndpoints(false)
-        }
-    }
-
-    // TEST: Test ALL archive date endpoints
-    const handleTestArchiveDateEndpoints = async () => {
-        setIsTestingArchiveDateEndpoints(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('📅 Testing ALL Archive Date Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testArchiveDateEndpoints(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Archive date endpoints test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 Total attempts:', result.totalAttempts)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
-                        if (attempt.archiveFields) {
-                            console.log(`   Archive fields found:`, attempt.archiveFields)
-                        }
-                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
-                            console.log(`   Available fields:`, attempt.dataStructure)
-                        }
-                    } else {
-                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                alert(`✅ Archive date endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for archive date fields.`)
-            } else {
-                console.error('❌ All archive date endpoint attempts failed:', result.allAttempts)
-                setError('All archive date endpoint attempts failed. Check console for details.')
-                alert(`❌ All ${result.totalAttempts} archive date endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing archive date endpoints:', error)
-            setError(`Failed to test archive date endpoints: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingArchiveDateEndpoints(false)
-        }
-    }
-
-    // TEST: Test ALL Budget Views endpoints for Est Cost At Completion
-    const handleTestBudgetViewsEndpoints = async () => {
-        setIsTestingBudgetViewsEndpoints(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('📊 Testing ALL Budget Views Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testBudgetViewsEndpoints(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Budget Views endpoints test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 Total attempts:', result.totalAttempts)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
-                        if (attempt.costFields) {
-                            console.log(`   Est Cost At Completion fields found:`, attempt.costFields)
-                        }
-                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
-                            console.log(`   Available fields:`, attempt.dataStructure)
-                        }
-                    } else {
-                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                alert(`✅ Budget Views endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for Est Cost At Completion fields.`)
-            } else {
-                console.error('❌ All Budget Views endpoint attempts failed:', result.allAttempts)
-                setError('All Budget Views endpoint attempts failed. Check console for details.')
-                alert(`❌ All ${result.totalAttempts} Budget Views endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing Budget Views endpoints:', error)
-            setError(`Failed to test Budget Views endpoints: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingBudgetViewsEndpoints(false)
-        }
-    }
-
-    // TEST: Test ALL Project Manager endpoints
-    const handleTestProjectManagerEndpoints = async () => {
-        setIsTestingProjectManagerEndpoints(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('👤 Testing ALL Project Manager Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testProjectManagerEndpoints(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Project Manager endpoints test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 Total attempts:', result.totalAttempts)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.name}: Status ${attempt.status}, Has data: ${attempt.hasData}`)
-                        if (attempt.managerFields) {
-                            console.log(`   Project Manager fields found:`, attempt.managerFields)
-                        }
-                        if (attempt.dataStructure && attempt.dataStructure.length > 0) {
-                            console.log(`   Available fields:`, attempt.dataStructure)
-                        }
-                    } else {
-                        console.log(`❌ ${attempt.name}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                alert(`✅ Project Manager endpoints test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s) out of ${result.totalAttempts} attempts:\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for Project Manager fields.`)
-            } else {
-                console.error('❌ All Project Manager endpoint attempts failed:', result.allAttempts)
-                setError('All Project Manager endpoint attempts failed. Check console for details.')
-                alert(`❌ All ${result.totalAttempts} Project Manager endpoint attempts failed!\n\nCheck console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing Project Manager endpoints:', error)
-            setError(`Failed to test Project Manager endpoints: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingProjectManagerEndpoints(false)
-        }
-    }
-
-    // TEMPORARY: Test All Financial Endpoints
-    const handleTestAllFinancialEndpoints = async () => {
-        setIsTestingAllFinancialEndpoints(true)
-        setError(null)
-        
-        try {
-            const projectIdToTest = projects.length > 0 ? projects[0].id : null
-            console.log('🧪 Testing All Financial Endpoints...', projectIdToTest ? `Using project ID: ${projectIdToTest}` : 'No project ID available')
-            const result = await ProcoreService.testAllFinancialEndpoints(projectIdToTest)
-            
-            if (result.success) {
-                console.log('✅ Test completed!')
-                console.log('📊 Successful endpoints:', result.successfulEndpoints)
-                console.log('📋 All attempts:', result.allAttempts)
-                
-                result.allAttempts.forEach(attempt => {
-                    if (attempt.success) {
-                        console.log(`✅ ${attempt.endpoint}:`, attempt.data)
-                    } else {
-                        console.log(`❌ ${attempt.endpoint}: ${attempt.error} (Status: ${attempt.status})`)
-                    }
-                })
-                
-                alert(`✅ Test completed!\n\nFound ${result.successfulEndpoints.length} working endpoint(s):\n${result.successfulEndpoints.join(', ')}\n\nCheck browser console and Firebase logs for details.`)
-            } else {
-                console.error('❌ All endpoints failed:', result.allAttempts)
-                setError('All endpoint attempts failed. Check console for details.')
-                alert(`❌ All endpoints failed!\n\nCheck console and Firebase logs for details.`)
-            }
-        } catch (error) {
-            console.error('❌ Error testing endpoints:', error)
-            setError(`Failed to test endpoints: ${error.message}`)
-            alert(`❌ Test failed!\n\nError: ${error.message}\n\nCheck console for details.`)
-        } finally {
-            setIsTestingAllFinancialEndpoints(false)
-        }
-    }
-
-    // Clear Procore tokens (for switching between sandbox/production)
-    const handleClearTokens = async () => {
-        if (!confirm('Are you sure you want to clear your Procore tokens? You will need to re-authorize.')) {
-            return
-        }
-        
-        setIsClearingTokens(true)
-        setError(null)
-        
-        try {
-            console.log('🗑️ Clearing Procore tokens...')
-            await ProcoreService.clearTokens()
-            console.log('✅ Tokens cleared successfully')
-            
-            // Reset authorization state
-            setIsAuthorized(false)
-            setUseMockData(true)
-            
-            alert('✅ Tokens cleared successfully!\n\nYou can now connect to Procore again (this will use production credentials).')
-        } catch (error) {
-            console.error('❌ Error clearing tokens:', error)
-            setError(`Failed to clear tokens: ${error.message}`)
-            alert(`❌ Failed to clear tokens!\n\nError: ${error.message}`)
-        } finally {
-            setIsClearingTokens(false)
-        }
-    }
-    
-    // Refresh data from Procore
-    const handleRefreshData = async () => {
-        setIsLoading(true)
-        setError(null)
-        
-        try {
-            const procoreData = await ProcoreService.getAllProjectsProfitability()
-            
-            if (procoreData && procoreData.length > 0) {
-                setProjects(procoreData)
-                setUseMockData(false)
-                
-                // Update project options
-                const uniqueProjects = [...new Set(procoreData.map(p => p.projectName))].map(name => ({
-                    value: name,
-                    label: name,
-                }))
-                setProjectOptions(uniqueProjects)
-            } else {
-                setError('No data received from Procore')
-            }
-        } catch (error) {
-            console.error('Error refreshing Procore data:', error)
-            setError('Failed to refresh data from Procore')
-        } finally {
-            setIsLoading(false)
-        }
-    }
+    // All test functions and Procore connection handlers removed - no longer needed with Azure SQL
 
     // Filter projects
     const filteredProjects = useMemo(() => {
@@ -1150,17 +455,19 @@ const ProjectProfitability = () => {
     }, [projects, filters, sort])
 
     // Calculate summary values
+    // Note: Using all projects (not filtered) to match Power BI totals
+    // Power BI shows totals for all projects regardless of filters
     const summaryValues = useMemo(() => {
-        return filteredProjects.reduce(
+        return projects.reduce(
             (acc, proj) => {
                 acc.totalContractValue += proj.totalContractValue || 0
                 acc.totalProjectedProfit += proj.currentProjectedProfit || 0
-                acc.jobToDateCost += proj.jobToDateCost || 0 // Use jobToDateCost directly from Procore data
+                acc.jobToDateCost += proj.jobToDateCost || 0
                 return acc
             },
             { totalContractValue: 0, totalProjectedProfit: 0, jobToDateCost: 0 }
         )
-    }, [filteredProjects])
+    }, [projects])
 
     const formatCurrency = (value) => {
         if (!value && value !== 0) return '-'
@@ -1198,10 +505,8 @@ const ProjectProfitability = () => {
         return colors[value] || 'bg-gray-100 text-gray-700'
     }
 
-    const pageTotal = filteredProjects.length
-    const pageStart = (pageIndex - 1) * pageSize
-    const pageEnd = pageStart + pageSize
-    const pageData = filteredProjects.slice(pageStart, pageEnd)
+    // No pagination - show all filtered projects
+    const pageData = filteredProjects
 
     // Column definitions
     const allColumns = useMemo(() => [
@@ -1477,6 +782,47 @@ const ProjectProfitability = () => {
         return finalCols
     }, [allColumns, columnOrder, visibleColumns])
 
+    // Sync scrollbars - runs after table content changes (placed after visibleColumnsList is defined)
+    useEffect(() => {
+        const tableScroll = tableScrollRef.current
+        const bottomScroll = bottomScrollRef.current
+        
+        if (!tableScroll || !bottomScroll) return
+        
+        const handleTableScroll = () => {
+            bottomScroll.scrollLeft = tableScroll.scrollLeft
+        }
+        
+        const handleBottomScroll = () => {
+            tableScroll.scrollLeft = bottomScroll.scrollLeft
+        }
+        
+        tableScroll.addEventListener('scroll', handleTableScroll)
+        bottomScroll.addEventListener('scroll', handleBottomScroll)
+        
+        // Set bottom scrollbar width to match table content width
+        // Use setTimeout to ensure table is rendered
+        const updateScrollbarWidth = () => {
+            const tableContent = tableScroll.querySelector('table')
+            if (tableContent) {
+                const tableWidth = tableContent.scrollWidth
+                const scrollContent = bottomScroll.querySelector('#table-scroll-content')
+                if (scrollContent) {
+                    scrollContent.style.width = `${tableWidth}px`
+                }
+            }
+        }
+        
+        // Update width after a short delay to ensure table is rendered
+        const timeoutId = setTimeout(updateScrollbarWidth, 100)
+        
+        return () => {
+            clearTimeout(timeoutId)
+            tableScroll.removeEventListener('scroll', handleTableScroll)
+            bottomScroll.removeEventListener('scroll', handleBottomScroll)
+        }
+    }, [filteredProjects, visibleColumnsList])
+
     // Chart data
     const chartData = useMemo(() => {
         // Profitability by Project Status
@@ -1521,7 +867,6 @@ const ProjectProfitability = () => {
     }, [filteredProjects])
 
     const handleClearAllFilters = () => {
-        setPageIndex(1)
         setFilters({
             search: '',
             project: null,
@@ -1540,65 +885,8 @@ const ProjectProfitability = () => {
                 <div>
                     <h1 className="text-2xl font-semibold">Project Profitability</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        This report includes project details and projections from Procore
-                        {!isAuthorized && (
-                            <span className="ml-2 text-amber-600 dark:text-amber-400">
-                                (Not connected - showing mock data)
-                            </span>
-                        )}
-                        {isAuthorized && useMockData && (
-                            <span className="ml-2 text-amber-600 dark:text-amber-400">
-                                (Connected - showing mock data)
-                            </span>
-                        )}
-                        {isAuthorized && !useMockData && (
-                            <span className="ml-2 text-green-600 dark:text-green-400">
-                                (Connected - showing live Procore data)
-                            </span>
-                        )}
+                        This report includes project details and projections from Azure SQL Database
                     </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    {!isAuthorized && (
-                        <Button
-                            variant="solid"
-                            color="blue"
-                            loading={isAuthorizing}
-                            onClick={handleAuthorizeProcore}
-                        >
-                            {isAuthorizing ? 'Authorizing...' : 'Connect to Procore'}
-                        </Button>
-                    )}
-                    {isAuthorized && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-green-600 dark:text-green-400 font-medium">
-                                ✓ Connected to Procore
-                            </span>
-                            <Button
-                                variant="solid"
-                                color="blue"
-                                size="sm"
-                                loading={isFetchingData}
-                                onClick={handleFetchData}
-                                title="Fetch latest project data from Procore"
-                            >
-                                {isFetchingData ? 'Fetching...' : '🔄 Fetch Data'}
-                            </Button>
-                        </div>
-                    )}
-                    {/* Clear Tokens button - visible when authorized or when there might be old tokens */}
-                    {isAuthorized && (
-                        <Button
-                            variant="outlined"
-                            color="red"
-                            size="sm"
-                            loading={isClearingTokens}
-                            onClick={handleClearTokens}
-                            title="Clear Procore tokens (useful when switching between sandbox/production)"
-                        >
-                            {isClearingTokens ? 'Clearing...' : '🗑️ Clear Tokens'}
-                        </Button>
-                    )}
                 </div>
             </div>
             
@@ -1674,7 +962,6 @@ const ProjectProfitability = () => {
                                         setLocalSearchValue(value)
                                         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
                                         searchDebounceRef.current = setTimeout(() => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, search: value }))
                                         }, 300)
                                     }}
@@ -1706,7 +993,6 @@ const ProjectProfitability = () => {
                                     menuPosition="fixed"
                                     value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
                                     onChange={(opt) => {
-                                        setPageIndex(1)
                                         setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
                                     }}
                                     components={{
@@ -1728,7 +1014,6 @@ const ProjectProfitability = () => {
                                     menuPosition="fixed"
                                     value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
                                     onChange={(opt) => {
-                                        setPageIndex(1)
                                         setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
                                     }}
                                     components={{
@@ -1751,7 +1036,6 @@ const ProjectProfitability = () => {
                                         menuPosition="fixed"
                                         value={Array.isArray(filters.projectSystem) ? filters.projectSystem : (filters.projectSystem ? [filters.projectSystem] : null)}
                                         onChange={(opt) => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, projectSystem: opt && opt.length > 0 ? opt : null }))
                                         }}
                                         components={{
@@ -1771,7 +1055,6 @@ const ProjectProfitability = () => {
                                         menuPosition="fixed"
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, projectManager: opt && opt.length > 0 ? opt : null }))
                                         }}
                                         components={{
@@ -1797,7 +1080,6 @@ const ProjectProfitability = () => {
                                         setLocalSearchValue(value)
                                         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
                                         searchDebounceRef.current = setTimeout(() => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, search: value }))
                                         }, 300)
                                     }}
@@ -1809,7 +1091,6 @@ const ProjectProfitability = () => {
                                     options={projectOptions}
                                     value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
                                     onChange={(opt) => {
-                                        setPageIndex(1)
                                         setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
                                     }}
                                     components={{
@@ -1829,7 +1110,6 @@ const ProjectProfitability = () => {
                                     options={projectStageOptions}
                                     value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
                                     onChange={(opt) => {
-                                        setPageIndex(1)
                                         setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
                                     }}
                                     components={{
@@ -1850,7 +1130,6 @@ const ProjectProfitability = () => {
                                         options={projectSystemOptions}
                                         value={Array.isArray(filters.projectSystem) ? filters.projectSystem : (filters.projectSystem ? [filters.projectSystem] : null)}
                                         onChange={(opt) => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, projectSystem: opt && opt.length > 0 ? opt : null }))
                                         }}
                                         components={{
@@ -1868,7 +1147,6 @@ const ProjectProfitability = () => {
                                         options={projectManagerOptions}
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
-                                            setPageIndex(1)
                                             setFilters(prev => ({ ...prev, projectManager: opt && opt.length > 0 ? opt : null }))
                                         }}
                                         components={{
@@ -2004,27 +1282,58 @@ const ProjectProfitability = () => {
                         </div>
                     )}
 
-                    {/* Data Table */}
+                    {/* Data Table - Fixed height with scroll (scrollbars at top and bottom) */}
+                    <div className="relative">
+                        {/* Main table with scroll */}
+                        <div 
+                            ref={tableScrollRef}
+                            id="table-main-scroll"
+                            className="overflow-auto"
+                            style={{ 
+                                maxHeight: 'calc(100vh - 500px)',
+                                scrollbarGutter: 'stable'
+                            }}
+                        >
+                            {isLoading ? (
+                                <TableSkeleton rows={10} />
+                            ) : (
                     <DataTable
                         columns={visibleColumnsList}
                         data={pageData}
-                        loading={isLoading}
+                                    loading={false}
                         pagingData={{
-                            total: pageTotal,
-                            pageIndex,
-                            pageSize,
-                        }}
-                        onPaginationChange={(pageIndex) => {
-                            setPageIndex(pageIndex)
-                        }}
-                        onSelectChange={(pageSize) => {
-                            setPageIndex(1) // Reset to first page when changing page size
-                            setPageSize(pageSize)
+                                        total: pageData.length,
+                                        pageIndex: 1,
+                                        pageSize: pageData.length,
                         }}
                         onSort={({ key, order }) => {
                             setSort({ key, order })
                         }}
                     />
+                            )}
+                        </div>
+                        
+                        {/* Bottom horizontal scrollbar - syncs with main scroll */}
+                        <div 
+                            ref={bottomScrollRef}
+                            id="table-bottom-scroll"
+                            className="overflow-x-auto overflow-y-hidden mt-1 border-t border-gray-200 dark:border-gray-700"
+                            style={{ 
+                                height: '17px',
+                                scrollbarWidth: 'thin'
+                            }}
+                        >
+                            <div 
+                                id="table-scroll-content"
+                                style={{ 
+                                    width: '100%', 
+                                    minWidth: '2000px', 
+                                    height: '1px',
+                                    visibility: 'hidden'
+                                }}
+                            ></div>
+                        </div>
+                    </div>
                 </div>
             </Card>
 
@@ -2147,59 +1456,6 @@ const ProjectProfitability = () => {
                 </div>
             </Card>
 
-            {/* Admin-Only Test Functions - Only visible to admin users */}
-            {isAdmin && isAuthorized && (
-                <Card className="mt-6 p-4 border-2 border-dashed border-purple-300 dark:border-purple-700">
-                    <h6 className="font-semibold mb-3 text-sm text-purple-600 dark:text-purple-400">
-                        🔧 Admin Tools - Endpoint Testing
-                    </h6>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-                        These test functions help identify working Procore API endpoints. Use them to troubleshoot data issues.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            variant="outlined"
-                            color="purple"
-                            size="sm"
-                            loading={isTestingCostEndpoints}
-                            onClick={handleTestCostEndpoints}
-                            title="Test ALL cost-related endpoints (Job To Date Cost, Est Cost At Completion)"
-                        >
-                            {isTestingCostEndpoints ? 'Testing...' : '💰 Test Cost Endpoints'}
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="purple"
-                            size="sm"
-                            loading={isTestingArchiveDateEndpoints}
-                            onClick={handleTestArchiveDateEndpoints}
-                            title="Test ALL archive date endpoints"
-                        >
-                            {isTestingArchiveDateEndpoints ? 'Testing...' : '📅 Test Archive Date Endpoints'}
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="purple"
-                            size="sm"
-                            loading={isTestingBudgetViewsEndpoints}
-                            onClick={handleTestBudgetViewsEndpoints}
-                            title="Test ALL Budget Views endpoints for Est Cost At Completion"
-                        >
-                            {isTestingBudgetViewsEndpoints ? 'Testing...' : '📊 Test Budget Views Endpoints'}
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="purple"
-                            size="sm"
-                            loading={isTestingProjectManagerEndpoints}
-                            onClick={handleTestProjectManagerEndpoints}
-                            title="Test ALL Project Manager endpoints"
-                        >
-                            {isTestingProjectManagerEndpoints ? 'Testing...' : '👤 Test Project Manager Endpoints'}
-                        </Button>
-                    </div>
-                </Card>
-            )}
         </div>
     )
 }

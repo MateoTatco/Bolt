@@ -1,0 +1,35 @@
+﻿2025-11-19T19:31:05.634588Z ? procoreGetAllProjectsProfitability:     "retainage": 446.05,
+2025-11-19T19:31:05.634592Z ? procoreGetAllProjectsProfitability:     "source": "summary.completed_work_retainage_amount",
+2025-11-19T19:31:05.634598Z ? procoreGetAllProjectsProfitability:     "has_summary": true
+2025-11-19T19:31:05.634603Z ? procoreGetAllProjectsProfitability:   },
+2025-11-19T19:31:05.634607Z ? procoreGetAllProjectsProfitability:   {
+2025-11-19T19:31:05.634612Z ? procoreGetAllProjectsProfitability:     "id": 598134327313116,
+2025-11-19T19:31:05.634618Z ? procoreGetAllProjectsProfitability:     "commitment_id": 598134327044387,
+2025-11-19T19:31:05.634623Z ? procoreGetAllProjectsProfitability:     "billing_date": "2025-09-23",
+2025-11-19T19:31:05.634628Z ? procoreGetAllProjectsProfitability:     "retainage": 1375,
+2025-11-19T19:31:05.634691Z ? procoreGetAllProjectsProfitability:   {
+2025-11-19T19:31:05.634727Z ? procoreGetAllProjectsProfitability:   {
+2025-11-19T19:31:05.634757Z ? procoreGetAllProjectsProfitability:     "has_summary": true
+2025-11-19T19:31:05.634769Z ? procoreGetAllProjectsProfitability:     "id": 598134327395565,
+2025-11-19T19:31:05.634787Z ? procoreGetAllProjectsProfitability:     "source": "summary.completed_work_retainage_amount",
+2025-11-19T19:31:05.634842Z ? procoreGetAllProjectsProfitability:     "id": 598134327395905,
+2025-11-19T19:31:05.634847Z ? procoreGetAllProjectsProfitability:     "commitment_id": 598134327044387,
+2025-11-19T19:31:05.634854Z ? procoreGetAllProjectsProfitability:     "billing_date": "2025-10-20",
+2025-11-19T19:31:05.634860Z ? procoreGetAllProjectsProfitability:     "retainage": 1375,
+2025-11-19T19:31:05.634865Z ? procoreGetAllProjectsProfitability:     "source": "summary.completed_work_retainage_amount",
+2025-11-19T19:31:05.634870Z ? procoreGetAllProjectsProfitability:     "has_summary": true
+2025-11-19T19:31:05.634874Z ? procoreGetAllProjectsProfitability:   },
+2025-11-19T19:31:05.634895Z ? procoreGetAllProjectsProfitability:   {
+2025-11-19T19:31:05.634900Z ? procoreGetAllProjectsProfitability:     "id": 598134327403601,
+2025-11-19T19:31:05.634905Z ? procoreGetAllProjectsProfitability:     "commitment_id": 598134327044347,
+2025-11-19T19:31:05.634909Z ? procoreGetAllProjectsProfitability:     "billing_date": "2025-10-21",
+2025-11-19T19:31:05.634914Z ? procoreGetAllProjectsProfitability:     "retainage": 1226.23,
+2025-11-19T19:31:05.634919Z ? procoreGetAllProjectsProfitability:     "source": "summary.completed_work_retainage_amount",
+2025-11-19T19:31:05.634925Z ? procoreGetAllProjectsProfitability:     "has_summary": true
+2025-11-19T19:31:05.634930Z ? procoreGetAllProjectsProfitability:   }
+2025-11-19T19:31:05.634936Z ? procoreGetAllProjectsProfitability: ]
+2025-11-19T19:31:05.634945Z ? procoreGetAllProjectsProfitability: [598134326177405] Requisitions: Success - Found 30 requisitions, Vendor Retainage: 9877.949999999999, Job To Date Cost: 276480.86
+2025-11-19T19:31:05.634952Z ? procoreGetAllProjectsProfitability: [598134326177405] Skipping Commitments fetch - Budget Line Items already provided estCostAtCompletion: 285622.76
+2025-11-19T19:31:05.634960Z ? procoreGetAllProjectsProfitability: [598134326177405] Final Balance Calculation - Contract: 354620.88, Invoiced: 354620.88, Balance: 0
+2025-11-19T19:31:05.634966Z ? procoreGetAllProjectsProfitability: [598134326177405] Contract value equals total invoiced, setting balance to 0
+2025-11-19T19:31:05.634973Z ? procoreGetAllProjectsProfitability: [598134326177405] Starting Project Roles fetch...

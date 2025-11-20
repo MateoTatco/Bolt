@@ -1,0 +1,36 @@
+﻿2025-11-19T17:05:18.725705Z ? procoreGetAllProjectsProfitability:   'currency_configuration',
+2025-11-19T17:05:18.725707Z ? procoreGetAllProjectsProfitability:   'custom_fields',
+2025-11-19T17:05:18.725708Z ? procoreGetAllProjectsProfitability:   'delivery_date',
+2025-11-19T17:05:18.725710Z ? procoreGetAllProjectsProfitability:   'description',
+2025-11-19T17:05:18.725712Z ? procoreGetAllProjectsProfitability:   'display_materials_retainage',
+2025-11-19T17:05:18.725715Z ? procoreGetAllProjectsProfitability:   'display_work_retainage',
+2025-11-19T17:05:18.725718Z ? procoreGetAllProjectsProfitability:   'enable_ssov',
+2025-11-19T17:05:18.725720Z ? procoreGetAllProjectsProfitability:   'exclusions',
+2025-11-19T17:05:18.725722Z ? procoreGetAllProjectsProfitability:   'executed',
+2025-11-19T17:05:18.725724Z ? procoreGetAllProjectsProfitability:   'execution_date',
+2025-11-19T17:05:18.725725Z ? procoreGetAllProjectsProfitability:   'external_data',
+2025-11-19T17:05:18.725727Z ? procoreGetAllProjectsProfitability:   'grand_total',
+2025-11-19T17:05:18.725729Z ? procoreGetAllProjectsProfitability:   'inclusions',
+2025-11-19T17:05:18.725731Z ? procoreGetAllProjectsProfitability:   'issued_on_date',
+2025-11-19T17:05:18.725733Z ? procoreGetAllProjectsProfitability:   'letter_of_intent_date',
+2025-11-19T17:05:18.725734Z ? procoreGetAllProjectsProfitability:   'number',
+2025-11-19T17:05:18.725736Z ? procoreGetAllProjectsProfitability:   'private',
+2025-11-19T17:05:18.725738Z ? procoreGetAllProjectsProfitability:   'returned_date',
+2025-11-19T17:05:18.725740Z ? procoreGetAllProjectsProfitability:   'show_cost_code_on_pdf',
+2025-11-19T17:05:18.725741Z ? procoreGetAllProjectsProfitability:   'show_line_items_to_non_admins',
+2025-11-19T17:05:18.725743Z ? procoreGetAllProjectsProfitability:   'signed_contract_received_date',
+2025-11-19T17:05:18.725745Z ? procoreGetAllProjectsProfitability:   'status',
+2025-11-19T17:05:18.725747Z ? procoreGetAllProjectsProfitability:   'substantial_completion_date',
+2025-11-19T17:05:18.725749Z ? procoreGetAllProjectsProfitability:   'title',
+2025-11-19T17:05:18.725751Z ? procoreGetAllProjectsProfitability:   'type',
+2025-11-19T17:05:18.725753Z ? procoreGetAllProjectsProfitability:   'updated_at',
+2025-11-19T17:05:18.725754Z ? procoreGetAllProjectsProfitability:   'vendor'
+2025-11-19T17:05:18.725756Z ? procoreGetAllProjectsProfitability: ]
+2025-11-19T17:05:18.725759Z ? procoreGetAllProjectsProfitability: [598134326079732] Prime Contracts - Revised Amount: 1126224, Invoiced: 0, Balance: 1126224
+2025-11-19T17:05:18.725761Z ? procoreGetAllProjectsProfitability: [598134326079732] Contract Dates - Start: 2025-07-14, End: null, Status: Approved
+2025-11-19T17:05:18.725800Z ? procoreGetAllProjectsProfitability: [598134326079732] Starting Budget fetch using Budget Views API...
+2025-11-19T17:05:18.725844Z ? procoreGetAllProjectsProfitability: [598134326079732] Fetching Budget Views from: https://api.procore.com/rest/v1.0/budget_views
+2025-11-19T17:05:18.727822Z ? procoreGetAllProjectsProfitability: [598134325906344] Trying Budget Line Items v2.0: https://api.procore.com/rest/v2.0/companies/598134325590042/projects/598134325906344/budget_line_items
+2025-11-19T17:05:18.892481Z ? procoreGetAllProjectsProfitability: [598134326345017] Cannot calculate balance - Contract: 1000000, Invoiced: 0
+2025-11-19T17:05:18.892569Z ? procoreGetAllProjectsProfitability: [598134326345017] Starting Project Roles fetch...
+

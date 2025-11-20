@@ -1,0 +1,10 @@
+﻿
+2025-11-19T18:57:01.337618Z ? procoreGetAllProjectsProfitability: [598134326177405] Requisitions: Success - Found 30 requisitions, Vendor Retainage: 9877.949999999999, Job To Date Cost: 276480.86
+2025-11-19T18:57:01.337620Z ? procoreGetAllProjectsProfitability: [598134326177405] Skipping Commitments fetch - Budget Line Items already provided estCostAtCompletion: 285622.76
+2025-11-19T18:57:01.337622Z ? procoreGetAllProjectsProfitability: [598134326177405] Final Balance Calculation - Contract: 354620.88, Invoiced: 354620.88, Balance: 0
+2025-11-19T18:57:01.337624Z ? procoreGetAllProjectsProfitability: [598134326177405] Contract value equals total invoiced, setting balance to 0
+2025-11-19T18:57:01.337626Z ? procoreGetAllProjectsProfitability: [598134326177405] Starting Project Roles fetch...
+2025-11-19T18:57:01.337627Z ? procoreGetAllProjectsProfitability: [598134326177405] Fetching Project Roles from: https://api.procore.com/rest/v1.0/project_roles
+
+
+

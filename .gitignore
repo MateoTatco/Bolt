@@ -32,3 +32,13 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 functions/lib/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*secret*
+*password*
+*credentials*

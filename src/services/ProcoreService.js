@@ -127,38 +127,22 @@ export const ProcoreService = {
     },
 
     /**
-     * Get project profitability data for a specific project
-     * @param {string|number} projectId - Procore project ID
-     * @returns {Promise<Object>} Project profitability data
-     */
-    async getProjectProfitability(projectId) {
-        try {
-            const getProfitabilityFunction = httpsCallable(functions, 'procoreGetProjectProfitability')
-            const result = await getProfitabilityFunction({ projectId })
-            return result.data.data
-        } catch (error) {
-            console.error('Error fetching project profitability:', error)
-            throw error
-        }
-    },
-
-    /**
      * Get all projects with profitability data
      * This is the main function for the Project Profitability page
+     * 
+     * Uses Azure SQL Database - faster, no rate limits, matches Power BI exactly
+     * 
      * @param {Object} options - Optional parameters
-     * @param {number} options.maxProjects - Maximum number of projects to process (default: 10)
+     * @param {boolean} options.includeInactive - Include inactive projects (default: true)
      * @returns {Promise<Array>} Array of projects with profitability data
      */
     async getAllProjectsProfitability(options = {}) {
         try {
-            // Note: Firebase callable functions have a default client timeout of 60 seconds
-            // The backend function has a 540-second timeout, but the client will timeout first
-            // For now, we'll process a limited number of projects to avoid timeouts
-            // TODO: Implement batch processing for 100+ projects
-            const getAllFunction = httpsCallable(functions, 'procoreGetAllProjectsProfitability')
-            const result = await getAllFunction({
+            // Use Azure SQL Database - faster, more reliable, matches Power BI exactly
+            console.log('📊 Using Azure SQL Database for project profitability data');
+            const azureSqlFunction = httpsCallable(functions, 'azureSqlGetAllProjectsProfitability')
+            const result = await azureSqlFunction({
                 ...options,
-                maxProjects: options.maxProjects || 5 // Default to 5 projects to avoid timeout (60-second client limit)
             })
             return result.data.data || []
         } catch (error) {

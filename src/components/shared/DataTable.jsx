@@ -340,27 +340,30 @@ function DataTable(props) {
                     </TBody>
                 )}
             </Table>
-            <div className="flex items-center justify-between mt-4">
-                <Pagination
-                    pageSize={pageSize}
-                    currentPage={pageIndex}
-                    total={total}
-                    onChange={handlePaginationChange}
-                />
-                <div style={{ minWidth: 130 }}>
-                    <Select
-                        instanceId={instanceId}
-                        size="sm"
-                        menuPlacement="top"
-                        isSearchable={false}
-                        value={pageSizeOption.filter(
-                            (option) => option.value === pageSize,
-                        )}
-                        options={pageSizeOption}
-                        onChange={(option) => handleSelectChange(option?.value)}
+            {/* Only show pagination if pageSize is less than total (i.e., pagination is needed) */}
+            {pageSize < total && (
+                <div className="flex items-center justify-between mt-4">
+                    <Pagination
+                        pageSize={pageSize}
+                        currentPage={pageIndex}
+                        total={total}
+                        onChange={handlePaginationChange}
                     />
+                    <div style={{ minWidth: 130 }}>
+                        <Select
+                            instanceId={instanceId}
+                            size="sm"
+                            menuPlacement="top"
+                            isSearchable={false}
+                            value={pageSizeOption.filter(
+                                (option) => option.value === pageSize,
+                            )}
+                            options={pageSizeOption}
+                            onChange={(option) => handleSelectChange(option?.value)}
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
         </Loading>
     )
 }

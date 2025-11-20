@@ -1,0 +1,10 @@
+﻿
+2025-11-19T18:23:41.340034Z ? procoreGetAllProjectsProfitability: [598134326177405] Recalculated Balance from Payment 
+Applications - Contract: 354620.88, Invoiced: 354620.88, Balance: 0
+2025-11-19T18:23:41.340070Z ? procoreGetAllProjectsProfitability: [598134326177405] Payment Application - % Complete: 
+100, Retainage: 35462.19
+2025-11-19T18:23:41.340112Z ? procoreGetAllProjectsProfitability: [598134326177405] Starting Requisitions fetch...
+2025-11-19T18:23:41.340166Z ? procoreGetAllProjectsProfitability: [598134326177405] Fetching Requisitions from: 
+https://api.procore.com/rest/v1.0/requisitions
+
+
