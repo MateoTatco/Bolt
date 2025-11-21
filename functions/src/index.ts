@@ -2323,87 +2323,103 @@ export const azureSqlGetAllProjectsProfitability = functions
             console.log('✅ Connected to Azure SQL Database');
 
             try {
-                // Query the v_ProjectProfitability view
-                // This view already has all the calculations that match Power BI formulas
-                // The database view applies all formulas from the Formula Reference Chart:
-                // - Customer Retainage: from most recent invoice
-                // - Vendor Retainage: sum from requisitions
-                // - Total Invoiced: from prime contract
-                // - All other calculated fields are pre-computed in the view
+                // Query the ProjectProfitabilityArchive table
+                // Power BI uses this table and filters to the most recent ArchiveDate per project
+                // This matches Power BI's "Is Most Recent?" calculated column logic
+                // Based on investigation queries:
+                // - Query 5: Most recent archive records = 563 projects, $273.8M Total Contract Value
+                // - Query 6: Calculated Projected Profit ($161.8M) matches Power BI ($158.9M) when using Total Contract Value - Est Cost At Completion
+                // - Power BI values: $264.6M Total Contract Value, $158.9M Projected Profit, $45.3M Job To Date Cost
                 
-                // Allow filtering by Active status (default: fetch all projects)
-                // Try different filtering options to match Power BI
-                // Based on query results, Power BI shows much higher values, suggesting it uses ALL projects
-                // Option 1: All projects (default) - matches the 292 projects query result
-                // Option 2: Only Active = 1
-                // Option 3: Only Active = 1 AND exclude NULL values
-                // Option 4: Only Active = 1 AND ContractStatus = 'Approved'
-                // Option 5: All projects with ContractStatus = 'Approved' (no Active filter)
-                // Option 6: All projects excluding NULL values
-                const filterOption = data?.filterOption || 'all'; // 'all', 'active', 'active_no_null', 'active_approved', 'all_approved', 'all_no_null'
+                // Power BI Filter: Based on investigation, Power BI uses:
+                // - RedTeamImport = 0 (excludes RedTeam projects)
+                // - ProjectRevisedContractAmount > 0 (excludes zero/negative contract values)
+                // This gives us Projected Profit that matches Power BI almost exactly ($9,331 difference)
+                // Query C results: $158,936,026 vs Power BI $158,945,357
                 
-                let whereClause = '';
+                // Allow filtering by Active status (default: use Power BI matching filter)
+                const filterOption = data?.filterOption || 'power_bi_match'; // 'power_bi_match', 'all', 'active', 'active_no_null', 'active_approved', 'all_approved', 'all_no_null'
+                
+                // Build WHERE clause for additional filters (applied after most recent filter)
+                let additionalWhereClause = '';
                 switch (filterOption) {
+                    case 'power_bi_match':
+                        // Matches Power BI filter: RedTeamImport = 0 AND ContractValue > 0
+                        // This gives Projected Profit: $158,936,026 vs Power BI $158,945,357 (only $9,331 difference!)
+                        additionalWhereClause = `AND ppa.RedTeamImport = 0 
+                            AND ppa.ProjectRevisedContractAmount > 0`;
+                        break;
                     case 'active':
-                        whereClause = 'WHERE Active = 1';
+                        additionalWhereClause = 'AND ppa.IsActive = 1';
                         break;
                     case 'active_no_null':
-                        whereClause = `WHERE Active = 1 
-                            AND ProjectRevisedContractAmount IS NOT NULL 
-                            AND ProjectedProfit IS NOT NULL 
-                            AND JobCostToDate IS NOT NULL`;
+                        additionalWhereClause = `AND ppa.IsActive = 1 
+                            AND ppa.ProjectRevisedContractAmount IS NOT NULL 
+                            AND ppa.ProjectedProfit IS NOT NULL 
+                            AND ppa.JobCostToDate IS NOT NULL`;
                         break;
                     case 'active_approved':
-                        whereClause = `WHERE Active = 1 AND ContractStatus = 'Approved'`;
+                        additionalWhereClause = `AND ppa.IsActive = 1 AND ppa.ContractStatus = 'Approved'`;
                         break;
                     case 'all_approved':
-                        whereClause = `WHERE ContractStatus = 'Approved'`;
+                        additionalWhereClause = `AND ppa.ContractStatus = 'Approved'`;
                         break;
                     case 'all_no_null':
-                        whereClause = `WHERE ProjectRevisedContractAmount IS NOT NULL 
-                            AND ProjectedProfit IS NOT NULL 
-                            AND JobCostToDate IS NOT NULL`;
+                        additionalWhereClause = `AND ppa.ProjectRevisedContractAmount IS NOT NULL 
+                            AND ppa.ProjectedProfit IS NOT NULL 
+                            AND ppa.JobCostToDate IS NOT NULL`;
                         break;
                     case 'all':
                     default:
-                        whereClause = '';
+                        additionalWhereClause = '';
                         break;
                 }
                 
+                // Query to get most recent archive record for each project (matching Power BI's "Is Most Recent?" logic)
                 const query = `
+                    WITH MostRecentArchive AS (
+                        SELECT 
+                            ProjectNumber,
+                            MAX(ArchiveDate) as LatestArchiveDate
+                        FROM dbo.ProjectProfitabilityArchive
+                        GROUP BY ProjectNumber
+                    )
                     SELECT 
-                        ProjectName,
-                        ProjectRevisedContractAmount,
-                        ProjectNumber,
-                        ProjectManager,
-                        RedTeamImport,
-                        Active,
-                        EstCostAtCompletion,
-                        JobCostToDate,
-                        PercentCompleteBasedOnCost,
-                        RemainingCost,
-                        ProjectedProfit,
-                        ProjectedProfitPercentage,
-                        ContractStartDate,
-                        ContractEndDate,
-                        TotalInvoiced,
-                        ContractStatus,
-                        ProjectStage,
-                        BalanceLeftOnContract,
-                        PercentCompleteBasedOnRevenue,
-                        CustomerRetainage,
-                        VendorRetainage,
-                        ProfitCenterYear,
-                        ProcoreId,
-                        EstimatedProjectProfit
-                    FROM dbo.v_ProjectProfitability
-                    ${whereClause}
-                    ORDER BY ProjectName
+                        ppa.ProjectName,
+                        ppa.ProjectRevisedContractAmount,
+                        ppa.ProjectNumber,
+                        ppa.ProjectManager,
+                        ppa.RedTeamImport,
+                        ppa.IsActive as Active,
+                        ppa.EstCostAtCompletion,
+                        ppa.JobCostToDate,
+                        ppa.PercentCompleteBasedOnCost,
+                        ppa.RemainingCost,
+                        ppa.ProjectedProfit,
+                        ppa.ProjectedProfitPercentage,
+                        ppa.ContractStartDate,
+                        ppa.ContractEndDate,
+                        ppa.TotalInvoiced,
+                        ppa.ContractStatus,
+                        ppa.ProjectStage,
+                        ppa.BalanceLeftOnContract,
+                        ppa.PercentCompleteBasedOnRevenue,
+                        ppa.CustomerRetainage,
+                        ppa.VendorRetainage,
+                        ppa.ProfitCenterYear,
+                        ppa.ProcoreId,
+                        ppa.EstimatedProjectProfit,
+                        ppa.ArchiveDate
+                    FROM dbo.ProjectProfitabilityArchive ppa
+                    INNER JOIN MostRecentArchive mra 
+                        ON ppa.ProjectNumber = mra.ProjectNumber 
+                        AND ppa.ArchiveDate = mra.LatestArchiveDate
+                    WHERE 1=1
+                    ${additionalWhereClause}
+                    ORDER BY ppa.ProjectName
                 `;
                 
-                console.log(`Executing query with filter option: ${filterOption}`);
-
-                console.log(`Executing query against v_ProjectProfitability with filter option: ${filterOption}...`);
+                console.log(`Executing query against ProjectProfitabilityArchive (most recent records only) with filter option: ${filterOption}...`);
                 const result = await pool.request().query(query);
                 const rows = result.recordset || [];
                 console.log(`✅ Query successful: Found ${rows.length} projects (filter: ${filterOption})`);
@@ -2466,11 +2482,12 @@ export const azureSqlGetAllProjectsProfitability = functions
                         contractStartDate: row.ContractStartDate ? new Date(row.ContractStartDate).toISOString() : null,
                         contractEndDate: row.ContractEndDate ? new Date(row.ContractEndDate).toISOString() : null,
                         isActive: row.Active === 1,
-                        archiveDate: null, // Not in database view, would need to query separately if needed
+                        archiveDate: row.ArchiveDate ? new Date(row.ArchiveDate).toISOString() : null, // Archive date from most recent snapshot
                         
                         // Store source for debugging
-                        _source: 'Azure SQL Database',
+                        _source: 'Azure SQL Database - ProjectProfitabilityArchive (Most Recent)',
                         _procoreId: row.ProcoreId,
+                        _archiveDate: row.ArchiveDate ? new Date(row.ArchiveDate).toISOString() : null,
                     };
 
                     return projectData;
