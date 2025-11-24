@@ -198,7 +198,21 @@ SELECT
 FROM dbo.ProjectProfitabilityArchive
 ```
 
-results: (Run this query)
+results: Source
+TotalRows
+TotalContractValue
+TotalProjectedProfit
+TotalJobToDateCost
+v_ProjectProfitability
+292
+214856785.41
+9004489.61
+46511425.22
+ProjectProfitabilityArchive
+399263
+158478197627.05
+12500510130.05
+30429663147.42
 
 
 
@@ -309,7 +323,265 @@ HAVING COUNT(*) > 1
 ORDER BY RecordCount DESC
 ```
 
-results: (Run this to see if projects have multiple archive records)
+results: 
+
+ProjectNumber
+ProjectName
+RecordCount
+FirstArchiveDate
+LatestArchiveDate
+2620014
+Tyler's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620013
+Trey's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620007
+Sarah's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2670008
+Wingstop - Lawton
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2600002
+The Hub at Colony Pointe
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570015
+O'Reilly Auto Parts - Fellsmere
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2200003
+Dutch Bros - Tulsa
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1930015
+Dutch Bros - Gainesville
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+3040001
+KFC - Bartlesville (Exterior Repair)
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620016
+PM Overhead
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570027
+Detention Pond - Sachse, TX
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620009
+Joe's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620012
+Cindy's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1260011
+Starbucks - Western Ave.
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570026
+Starbucks - Sachse, TX
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620010
+Heath's Team Warranty 2024
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+3000001
+Cheba Hut - 23rd St
+1239
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2980001
+UrgentVet - Moore
+1238
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2680001
+Livewell Animal Hospital
+1238
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2410036
+Starbucks Broadway Interior
+1238
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1130003
+OKC Vet Collective
+1206
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2410033
+Starbucks 50th St & May Interior
+1185
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570025
+Walgreens - Royse City, TX
+1173
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+3070001
+Wendy's Cushing OK
+1172
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570028
+Chipotle Interior - Fort Worth, TX
+1162
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570029
+Chipotle - Fort Worth, TX
+1162
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620008
+Sam's Team Warranty 2024
+1161
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+3010002
+Chicken Salad Chick - Quail Springs
+1161
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620015
+Simon's Team Warranty 2024
+1161
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2410038
+Starbucks Interior US 69 & 26th Ave, Miami OK
+1147
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2530004
+Take 5 Oil Change - St. Augustine
+1142
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+3060001
+Arby's Skiatook OK
+1142
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2620011
+Marc's Team Warranty
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2720001
+Superintendent Overhead - OK
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1930017
+Dutch Bros - Davenport - Four Corners (FL0401)
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570017
+O'Reilly Auto Parts - Belle Glade
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1790015
+Salad and Go - #1611
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2790001
+Dutch Bros - Jacksonville Argyle (FL1403)
+1129
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2440001
+Dutch Bros - Stillwater
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1900001
+Meisner Garage
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1780002
+Price Edwards - 738 Culbertson Ave
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1720017
+Lakeshore - Ste 103
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1440001
+Cajun Corner 3
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1160001
+Schimmels Barn Apartment
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1720013
+Lagree - 245 W Wilshire
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2900001
+dummy project
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570021
+Starbucks Guthrie RTU (I-35 & Waterloo)
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+2410037
+SBX Guthrie RTU I-35 & Waterloo
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1870001
+Glen Williams
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+1570008
+O'Reilly Auto Parts Harrah, OK
+1128
+2024-08-02T11:58:18.7230000
+2025-11-21T08:24:18.9730000
+
+(There is an option to load even more, but i guess is fine with this ammount)
 
 
 
@@ -334,7 +606,16 @@ INNER JOIN MostRecentArchive mra
     ON ppa.ProjectNumber = mra.ProjectNumber 
     AND ppa.ArchiveDate = mra.LatestArchiveDate
 ```
-results: (Run this - this should match Power BI if it filters by "Is Most Recent?")
+results: 
+
+TotalProjects
+TotalContractValue
+TotalProjectedProfit
+TotalJobToDateCost
+563
+273851222.58
+15739289.80
+49061951.15
 
 ## Query 6: Calculate Projected Profit from Archive - MOST RECENT (Total Contract Value - Est Cost At Completion)
 ```sql
@@ -359,7 +640,19 @@ INNER JOIN MostRecentArchive mra
     ON ppa.ProjectNumber = mra.ProjectNumber 
     AND ppa.ArchiveDate = mra.LatestArchiveDate
 ```
-results: (Run this to compare calculated vs stored Projected Profit)
+results: 
+TotalProjects
+TotalContractValue
+TotalEstCostAtCompletion
+CalculatedProjectedProfit
+StoredProjectedProfit
+TotalJobToDateCost
+563
+273851222.58
+112091587.90
+161759634.68
+15739289.80
+49061951.15
 
 
 ## Query 7: Check all tables/views that might be used
@@ -464,7 +757,23 @@ INNER JOIN (
 ) mra ON ppa.ProjectNumber = mra.ProjectNumber 
     AND ppa.ArchiveDate = mra.LatestArchiveDate
 ```
-results: (Run this to see the difference)
+results: 
+
+FilterType
+TotalProjects
+TotalContractValue
+TotalProjectedProfit
+TotalJobToDateCost
+All Archive Records
+399263
+158478197627.05
+12500510130.05
+30429663147.42
+Most Recent Only
+563
+273851222.58
+15739289.80
+49061951.15
 
 ## Query 9: Check ArchiveDate distribution
 ```sql
@@ -477,7 +786,163 @@ FROM dbo.ProjectProfitabilityArchive
 GROUP BY CAST(ArchiveDate AS DATE)
 ORDER BY ArchiveDateOnly DESC
 ```
-results: (Run this to see archive snapshot dates)
+results: 
+
+ArchiveDateOnly
+RecordCount
+UniqueProjects
+2025-11-21
+486
+486
+2025-11-20
+972
+486
+2025-11-19
+972
+486
+2025-11-18
+972
+486
+2025-11-17
+972
+486
+2025-11-16
+972
+486
+2025-11-15
+972
+486
+2025-11-14
+972
+486
+2025-11-13
+972
+486
+2025-11-12
+485
+485
+2025-11-11
+970
+485
+2025-11-10
+970
+485
+2025-11-09
+970
+485
+2025-11-08
+970
+485
+2025-11-07
+1455
+485
+2025-11-06
+969
+485
+2025-11-05
+484
+484
+2025-11-04
+967
+484
+2025-11-03
+966
+483
+2025-11-02
+966
+483
+2025-11-01
+966
+483
+2025-10-31
+1449
+483
+2025-10-30
+965
+483
+2025-10-29
+964
+482
+2025-10-28
+481
+481
+2025-10-27
+961
+481
+2025-10-26
+960
+480
+2025-10-25
+960
+480
+2025-10-24
+1440
+480
+2025-10-23
+959
+480
+2025-10-22
+479
+479
+2025-10-21
+958
+479
+2025-10-20
+955
+478
+2025-10-19
+954
+477
+2025-10-18
+477
+477
+2025-10-17
+1431
+477
+2025-10-16
+477
+477
+2025-10-15
+954
+477
+2025-10-14
+950
+477
+2025-10-13
+946
+473
+2025-10-12
+946
+473
+2025-10-11
+473
+473
+2025-10-10
+1419
+473
+2025-10-09
+945
+473
+2025-10-08
+472
+472
+2025-10-07
+943
+472
+2025-10-06
+942
+471
+2025-10-05
+942
+471
+2025-10-04
+942
+471
+2025-10-03
+1413
+471
+
+(there is an option to load even more data here, but i guess this is enough)
 
 ## Next Steps
 1. ✅ Query 1: Confirmed ProjectProfitabilityArchive exists

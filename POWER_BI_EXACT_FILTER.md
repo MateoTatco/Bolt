@@ -53,6 +53,18 @@ INNER JOIN MostRecentArchive mra
 WHERE ppa.ProjectRevisedContractAmount > 0
   AND ppa.ContractStatus != 'Not Awarded'
 ```
+results:
+TotalProjects
+TotalContractValue
+CalculatedProjectedProfit
+TotalJobToDateCost
+81
+69634787.01
+9325770.87
+47955957.53
+
+
+
 
 ### Query M: All Projects - Exclude "Bidding" ContractStatus
 ```sql
@@ -75,6 +87,17 @@ INNER JOIN MostRecentArchive mra
 WHERE ppa.ProjectRevisedContractAmount > 0
   AND ppa.ContractStatus != 'Bidding'
 ```
+results: 
+TotalProjects
+TotalContractValue
+CalculatedProjectedProfit
+TotalJobToDateCost
+81
+69634787.01
+9325770.87
+47955957.53
+
+
 
 ### Query N: All Projects - Exclude "Not Awarded" OR "Bidding" ContractStatus
 ```sql
@@ -98,6 +121,17 @@ WHERE ppa.ProjectRevisedContractAmount > 0
   AND ppa.ContractStatus NOT IN ('Not Awarded', 'Bidding')
 ```
 
+results; 
+
+TotalProjects
+TotalContractValue
+CalculatedProjectedProfit
+TotalJobToDateCost
+81
+69634787.01
+9325770.87
+47955957.53
+
 ### Query O: Calculate sum of "Not Awarded" projects
 ```sql
 WITH MostRecentArchive AS (
@@ -117,6 +151,12 @@ INNER JOIN MostRecentArchive mra
 WHERE ppa.ProjectRevisedContractAmount > 0
   AND ppa.ContractStatus = 'Not Awarded'
 ```
+results: 
+ProjectCount
+TotalContractValue
+0
+
+
 
 ### Query P: Calculate sum of "Bidding" projects
 ```sql
@@ -137,6 +177,11 @@ INNER JOIN MostRecentArchive mra
 WHERE ppa.ProjectRevisedContractAmount > 0
   AND ppa.ContractStatus = 'Bidding'
 ```
+results: 
+ProjectCount
+TotalContractValue
+0
+
 
 ## Current Best Match
 

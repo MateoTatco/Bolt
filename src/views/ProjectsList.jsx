@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip, Dialog, DatePicker, Checkbox, Dropdown } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
@@ -7,6 +7,7 @@ import ProjectsBulkDataManager from '@/components/ProjectsBulkDataManager'
 import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus, HiOutlineDotsHorizontal } from 'react-icons/hi'
 import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { components } from 'react-select'
 
 // Project options
 const marketOptions = [
@@ -86,6 +87,161 @@ const bidTypeOptions = [
     { value: 'New Opportunity', label: 'New Opportunity' },
     { value: 'Legacy', label: 'Legacy' }
 ]
+
+// Custom ValueContainer to show selected value or count badge
+const CustomValueContainer = ({ children, ...props }) => {
+    const { getValue, selectProps } = props
+    const selected = getValue()
+    const hasValue = selected && selected.length > 0
+    
+    // Filter out placeholder when there's a value
+    const childrenArray = React.Children.toArray(children)
+    const filteredChildren = hasValue 
+        ? childrenArray.filter(child => {
+            // Remove placeholder element when value exists
+            if (React.isValidElement(child) && child.props && child.props.className) {
+                return !child.props.className.includes('select-placeholder')
+            }
+            return true
+        })
+        : childrenArray
+    
+    if (selectProps.isMulti && hasValue) {
+        // Get input and indicators (usually the last 2 children)
+        const input = filteredChildren[filteredChildren.length - 2]
+        const indicators = filteredChildren[filteredChildren.length - 1]
+        
+        if (selected.length === 1) {
+            // Single selection - show the value name
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px'
+                    }}>
+                        {selected[0].label}
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        } else {
+            // Multiple selections - show count badge
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <span>{selected.length} selected</span>
+                        <span className="px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded">
+                            {selected.length}
+                        </span>
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        }
+    }
+    
+    // Default behavior for no selection
+    return <div className="select-value-container">{filteredChildren}</div>
+}
+
+// Custom MultiValue component to hide multi-value tags
+const CustomMultiValue = () => {
+    return null
+}
+
+// Custom MenuList to pin selected items to top
+const CustomMenuList = (props) => {
+    const { children, selectProps, ...rest } = props
+    const selected = selectProps.value || []
+    const selectedValues = Array.isArray(selected) ? selected.map(s => s.value) : []
+    
+    // Separate selected and unselected options
+    const childrenArray = React.Children.toArray(children)
+    const selectedOptions = []
+    const unselectedOptions = []
+    
+    childrenArray.forEach((child) => {
+        if (React.isValidElement(child) && child.props) {
+            const optionValue = child.props.data?.value
+            if (optionValue && selectedValues.includes(optionValue)) {
+                selectedOptions.push(child)
+            } else {
+                unselectedOptions.push(child)
+            }
+        } else {
+            unselectedOptions.push(child)
+        }
+    })
+    
+    // Use default MenuList component but with sorted children
+    if (selectedOptions.length > 0 && unselectedOptions.length > 0) {
+        // Add separator between selected and unselected
+        const separator = (
+            <div 
+                key="separator" 
+                className="border-t border-gray-200 dark:border-gray-700 my-1"
+            />
+        )
+        const sortedChildren = [
+            ...selectedOptions,
+            separator,
+            ...unselectedOptions
+        ]
+        return <components.MenuList {...rest} selectProps={selectProps}>{sortedChildren}</components.MenuList>
+    }
+    
+    return <components.MenuList {...rest} selectProps={selectProps}>{children}</components.MenuList>
+}
+
+// Custom Option with checkmark
+const CustomOption = (props) => {
+    const { innerProps, label, isSelected, isDisabled, data } = props
+    
+    return (
+        <div
+            className={`
+                select-option
+                ${!isDisabled && !isSelected && 'hover:text-gray-800 dark:hover:text-gray-100'}
+                ${isSelected && 'text-primary bg-primary-subtle'}
+                ${isDisabled && 'opacity-50 cursor-not-allowed'}
+            `}
+            {...innerProps}
+        >
+            <span className="ml-2 flex-1">{label}</span>
+            {isSelected && (
+                <span className="text-primary text-lg">✓</span>
+            )}
+        </div>
+    )
+}
+
+// Custom Placeholder that hides when there's a value
+const CustomPlaceholder = (props) => {
+    const { selectProps } = props
+    const hasValue = selectProps.value && (Array.isArray(selectProps.value) ? selectProps.value.length > 0 : true)
+    
+    if (hasValue) {
+        return null
+    }
+    
+    return <components.Placeholder {...props} />
+}
 
 const ProjectsList = () => {
     const navigate = useNavigate()
@@ -861,6 +1017,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ market: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectStatus && (
@@ -876,6 +1041,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectStatus: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectProbability && (
@@ -891,6 +1065,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectProbability: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectManager && (
@@ -906,6 +1089,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectManager: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.superintendent && (
@@ -921,6 +1113,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ superintendent: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                             </div>
@@ -955,6 +1156,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ market: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectStatus && (
@@ -968,6 +1178,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectStatus: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectProbability && (
@@ -981,6 +1200,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectProbability: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectManager && (
@@ -994,6 +1222,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ projectManager: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.superintendent && (
@@ -1007,6 +1244,15 @@ const ProjectsList = () => {
                                             setPageIndex(1)
                                             setFilters({ superintendent: opt && opt.length > 0 ? opt : null })
                                         }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                             </div>

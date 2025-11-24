@@ -152,4 +152,16 @@
   td {
     word-wrap: break-word;
   }
+
+  .table-hide-horizontal-scrollbar {
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox - hides horizontal scrollbar */
+    -ms-overflow-style: none; /* IE and Edge - hides horizontal scrollbar */
+  }
+
+  /* Hide horizontal scrollbar in webkit browsers */
+  .table-hide-horizontal-scrollbar::-webkit-scrollbar {
+    height: 0px; /* Hide horizontal scrollbar */
+    width: auto; /* Keep vertical scrollbar */
+  }
 }

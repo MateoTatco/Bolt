@@ -207,6 +207,10 @@ const projectManagerOptions = [
     { value: 'Heath Pickens', label: 'Heath Pickens' },
     { value: 'Harrison McKee', label: 'Harrison McKee' },
 ]
+const isActiveOptions = [
+    { value: true, label: 'Yes' },
+    { value: false, label: 'No' },
+]
 
 const ProjectProfitability = () => {
     // Check if user is admin
@@ -220,6 +224,7 @@ const ProjectProfitability = () => {
         projectStage: null,
         projectSystem: null,
         projectManager: null,
+        isActive: null,
     })
     const [sort, setSort] = useState({ key: '', order: '' })
     const [localSearchValue, setLocalSearchValue] = useState('')
@@ -228,7 +233,7 @@ const ProjectProfitability = () => {
     const [projectOptions, setProjectOptions] = useState([])
     const searchDebounceRef = useRef(null)
     const tableScrollRef = useRef(null)
-    const bottomScrollRef = useRef(null)
+    const topScrollbarRef = useRef(null)
     
     // Loading and error states
     const [isLoading, setIsLoading] = useState(true)
@@ -335,6 +340,7 @@ const ProjectProfitability = () => {
     const defaultFilterVisibility = {
         projectSystem: false,
         projectManager: false,
+        isActive: false,
     }
     const [filterVisibility, setFilterVisibility] = useState(defaultFilterVisibility)
     const [isLoadingFilterPrefs, setIsLoadingFilterPrefs] = useState(true)
@@ -399,7 +405,7 @@ const ProjectProfitability = () => {
 
     // Filter projects
     const filteredProjects = useMemo(() => {
-        const { search, project, projectStage, projectSystem, projectManager } = filters
+        const { search, project, projectStage, projectSystem, projectManager, isActive } = filters
         
         return projects
             .filter((proj) => {
@@ -438,6 +444,33 @@ const ProjectProfitability = () => {
                         if (projectManager.length > 0 && !projectManager.some(pm => pm.value === proj.projectManager)) return false
                     } else if (projectManager.value) {
                         if (proj.projectManager !== projectManager.value) return false
+                    }
+                }
+                
+                if (isActive !== null && isActive !== undefined) {
+                    const projIsActive = proj.isActive === true || proj.isActive === 1 || proj.isActive === 'true' || proj.isActive === '1'
+                    
+                    if (Array.isArray(isActive)) {
+                        if (isActive.length > 0) {
+                            const activeValues = isActive.map(opt => opt.value)
+                            const matches = activeValues.some(val => {
+                                if (val === true || val === 'true' || val === 1 || val === '1') {
+                                    return projIsActive
+                                }
+                                if (val === false || val === 'false' || val === 0 || val === '0') {
+                                    return !projIsActive
+                                }
+                                return false
+                            })
+                            if (!matches) return false
+                        }
+                    } else if (isActive.value !== undefined) {
+                        const val = isActive.value
+                        if (val === true || val === 'true' || val === 1 || val === '1') {
+                            if (!projIsActive) return false
+                        } else if (val === false || val === 'false' || val === 0 || val === '0') {
+                            if (projIsActive) return false
+                        }
                     }
                 }
                 
@@ -519,7 +552,7 @@ const ProjectProfitability = () => {
                 const value = props.row.original.projectName
                 return (
                     <Tooltip title={value}>
-                        <span className="block max-w-[300px] truncate font-semibold">{value || '-'}</span>
+                        <span className="block max-w-[300px] truncate font-semibold text-xs">{value || '-'}</span>
                     </Tooltip>
                 )
             },
@@ -531,7 +564,7 @@ const ProjectProfitability = () => {
             meta: { key: 'projectNumber' },
             cell: (props) => {
                 const value = props.row.original.projectNumber
-                return <span>{value || '-'}</span>
+                return <span className="text-xs">{value || '-'}</span>
             },
         },
         {
@@ -541,7 +574,7 @@ const ProjectProfitability = () => {
             meta: { key: 'projectManager' },
             cell: (props) => {
                 const value = props.row.original.projectManager
-                return <span>{value || '-'}</span>
+                return <span className="text-xs">{value || '-'}</span>
             },
         },
         {
@@ -551,7 +584,7 @@ const ProjectProfitability = () => {
             meta: { key: 'projectSystem' },
             cell: (props) => {
                 const value = props.row.original.projectSystem
-                return <span>{value || '-'}</span>
+                return <span className="text-xs">{value || '-'}</span>
             },
         },
         {
@@ -561,7 +594,7 @@ const ProjectProfitability = () => {
             meta: { key: 'projectStatus' },
             cell: (props) => {
                 const value = props.row.original.projectStatus
-                return <Tag className={statusColor(value)}>{value || '-'}</Tag>
+                return <Tag className={`${statusColor(value)} text-xs`}>{value || '-'}</Tag>
             },
         },
         {
@@ -571,7 +604,7 @@ const ProjectProfitability = () => {
             meta: { key: 'totalContractValue' },
             cell: (props) => {
                 const value = props.row.original.totalContractValue
-                return <span className="font-semibold">{formatCurrency(value)}</span>
+                return <span className="font-semibold text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -581,7 +614,7 @@ const ProjectProfitability = () => {
             meta: { key: 'estCostAtCompletion' },
             cell: (props) => {
                 const value = props.row.original.estCostAtCompletion
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -591,7 +624,7 @@ const ProjectProfitability = () => {
             meta: { key: 'initialEstimatedProfit' },
             cell: (props) => {
                 const value = props.row.original.initialEstimatedProfit
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -603,7 +636,7 @@ const ProjectProfitability = () => {
                 const value = props.row.original.currentProjectedProfit
                 const isPositive = value >= 0
                 return (
-                    <span className={isPositive ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>
+                    <span className={`text-xs ${isPositive ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}`}>
                         {formatCurrency(value)}
                     </span>
                 )
@@ -618,7 +651,7 @@ const ProjectProfitability = () => {
                 const value = props.row.original.estimatedDifference
                 const isPositive = value >= 0
                 return (
-                    <span className={isPositive ? 'text-emerald-600' : 'text-red-600'}>
+                    <span className={`text-xs ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                         {formatCurrency(value)}
                     </span>
                 )
@@ -633,7 +666,7 @@ const ProjectProfitability = () => {
                 const value = props.row.original.percentProjectedProfit
                 const isPositive = value >= 0
                 return (
-                    <span className={isPositive ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}>
+                    <span className={`text-xs ${isPositive ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}`}>
                         {formatPercent(value)}
                     </span>
                 )
@@ -646,7 +679,7 @@ const ProjectProfitability = () => {
             meta: { key: 'balanceLeftOnContract' },
             cell: (props) => {
                 const value = props.row.original.balanceLeftOnContract
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -656,7 +689,7 @@ const ProjectProfitability = () => {
             meta: { key: 'percentCompleteRevenue' },
             cell: (props) => {
                 const value = props.row.original.percentCompleteRevenue
-                return <span>{formatPercent(value)}</span>
+                return <span className="text-xs">{formatPercent(value)}</span>
             },
         },
         {
@@ -666,7 +699,7 @@ const ProjectProfitability = () => {
             meta: { key: 'percentCompleteCost' },
             cell: (props) => {
                 const value = props.row.original.percentCompleteCost
-                return <span>{formatPercent(value)}</span>
+                return <span className="text-xs">{formatPercent(value)}</span>
             },
         },
         {
@@ -676,7 +709,7 @@ const ProjectProfitability = () => {
             meta: { key: 'customerRetainage' },
             cell: (props) => {
                 const value = props.row.original.customerRetainage
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -686,7 +719,7 @@ const ProjectProfitability = () => {
             meta: { key: 'remainingCost' },
             cell: (props) => {
                 const value = props.row.original.remainingCost
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -696,7 +729,7 @@ const ProjectProfitability = () => {
             meta: { key: 'vendorRetainage' },
             cell: (props) => {
                 const value = props.row.original.vendorRetainage
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -706,7 +739,7 @@ const ProjectProfitability = () => {
             meta: { key: 'totalInvoiced' },
             cell: (props) => {
                 const value = props.row.original.totalInvoiced
-                return <span>{formatCurrency(value)}</span>
+                return <span className="text-xs">{formatCurrency(value)}</span>
             },
         },
         {
@@ -716,7 +749,7 @@ const ProjectProfitability = () => {
             meta: { key: 'contractStatus' },
             cell: (props) => {
                 const value = props.row.original.contractStatus
-                return <span>{value || '-'}</span>
+                return <span className="text-xs">{value || '-'}</span>
             },
         },
         {
@@ -726,7 +759,7 @@ const ProjectProfitability = () => {
             meta: { key: 'contractStartDate' },
             cell: (props) => {
                 const value = props.row.original.contractStartDate
-                return <span>{formatDate(value)}</span>
+                return <span className="text-xs">{formatDate(value)}</span>
             },
         },
         {
@@ -736,7 +769,7 @@ const ProjectProfitability = () => {
             meta: { key: 'contractEndDate' },
             cell: (props) => {
                 const value = props.row.original.contractEndDate
-                return <span>{formatDate(value)}</span>
+                return <span className="text-xs">{formatDate(value)}</span>
             },
         },
         {
@@ -747,7 +780,7 @@ const ProjectProfitability = () => {
             cell: (props) => {
                 const value = props.row.original.isActive
                 return (
-                    <Tag className={value ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>
+                    <Tag className={`text-xs ${value ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
                         {value ? 'Yes' : 'No'}
                     </Tag>
                 )
@@ -760,7 +793,7 @@ const ProjectProfitability = () => {
             meta: { key: 'archiveDate' },
             cell: (props) => {
                 const value = props.row.original.archiveDate
-                return <span>{formatDate(value)}</span>
+                return <span className="text-xs">{formatDate(value)}</span>
             },
         },
     ], [])
@@ -782,35 +815,54 @@ const ProjectProfitability = () => {
         return finalCols
     }, [allColumns, columnOrder, visibleColumns])
 
-    // Sync scrollbars - runs after table content changes (placed after visibleColumnsList is defined)
+    // Sync top scrollbar with table scroll - runs after table content changes
     useEffect(() => {
         const tableScroll = tableScrollRef.current
-        const bottomScroll = bottomScrollRef.current
+        const topScrollbar = topScrollbarRef.current
         
-        if (!tableScroll || !bottomScroll) return
+        if (!tableScroll || !topScrollbar) return
         
         const handleTableScroll = () => {
-            bottomScroll.scrollLeft = tableScroll.scrollLeft
+            topScrollbar.scrollLeft = tableScroll.scrollLeft
         }
         
-        const handleBottomScroll = () => {
-            tableScroll.scrollLeft = bottomScroll.scrollLeft
+        const handleTopScrollbarScroll = () => {
+            tableScroll.scrollLeft = topScrollbar.scrollLeft
         }
         
         tableScroll.addEventListener('scroll', handleTableScroll)
-        bottomScroll.addEventListener('scroll', handleBottomScroll)
+        topScrollbar.addEventListener('scroll', handleTopScrollbarScroll)
         
-        // Set bottom scrollbar width to match table content width
-        // Use setTimeout to ensure table is rendered
+        // Set top scrollbar width to match table content width
         const updateScrollbarWidth = () => {
             const tableContent = tableScroll.querySelector('table')
             if (tableContent) {
                 const tableWidth = tableContent.scrollWidth
-                const scrollContent = bottomScroll.querySelector('#table-scroll-content')
+                const scrollContent = topScrollbar.querySelector('#table-scroll-content')
                 if (scrollContent) {
+                    // Set both width and minWidth to ensure scrollbar is scrollable
                     scrollContent.style.width = `${tableWidth}px`
+                    scrollContent.style.minWidth = `${tableWidth}px`
+                    // Ensure the scrollbar container can scroll
+                    topScrollbar.style.width = '100%'
                 }
             }
+        }
+        
+        // Initial update
+        updateScrollbarWidth()
+        
+        // Also update on window resize and when table content changes
+        window.addEventListener('resize', updateScrollbarWidth)
+        
+        // Use MutationObserver to detect table changes
+        const observer = new MutationObserver(updateScrollbarWidth)
+        if (tableScroll.querySelector('table')) {
+            observer.observe(tableScroll.querySelector('table'), {
+                childList: true,
+                subtree: true,
+                attributes: true
+            })
         }
         
         // Update width after a short delay to ensure table is rendered
@@ -818,8 +870,10 @@ const ProjectProfitability = () => {
         
         return () => {
             clearTimeout(timeoutId)
+            window.removeEventListener('resize', updateScrollbarWidth)
+            observer.disconnect()
             tableScroll.removeEventListener('scroll', handleTableScroll)
-            bottomScroll.removeEventListener('scroll', handleBottomScroll)
+            topScrollbar.removeEventListener('scroll', handleTopScrollbarScroll)
         }
     }, [filteredProjects, visibleColumnsList])
 
@@ -873,6 +927,7 @@ const ProjectProfitability = () => {
             projectStage: null,
             projectSystem: null,
             projectManager: null,
+            isActive: null,
         })
         setLocalSearchValue('')
     }
@@ -1064,6 +1119,29 @@ const ProjectProfitability = () => {
                                         controlShouldRenderValue={false}
                                     />
                                 )}
+                                {filterVisibility.isActive && (
+                                    <Select
+                                        placeholder="Is Active"
+                                        isClearable
+                                        isMulti
+                                        options={isActiveOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1156,6 +1234,29 @@ const ProjectProfitability = () => {
                                         controlShouldRenderValue={false}
                                     />
                                 )}
+                                {filterVisibility.isActive && (
+                                    <Select
+                                        placeholder="Is Active"
+                                        isClearable
+                                        isMulti
+                                        options={isActiveOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
                             </div>
                             {/* More Filters Toggle Button - desktop only */}
                             <div className="flex items-center pt-0">
@@ -1175,7 +1276,8 @@ const ProjectProfitability = () => {
                         (filters.project && (Array.isArray(filters.project) ? filters.project.length > 0 : filters.project.value)) ||
                         (filters.projectStage && (Array.isArray(filters.projectStage) ? filters.projectStage.length > 0 : filters.projectStage.value)) ||
                         (filters.projectSystem && (Array.isArray(filters.projectSystem) ? filters.projectSystem.length > 0 : filters.projectSystem.value)) ||
-                        (filters.projectManager && (Array.isArray(filters.projectManager) ? filters.projectManager.length > 0 : filters.projectManager.value))) && (
+                        (filters.projectManager && (Array.isArray(filters.projectManager) ? filters.projectManager.length > 0 : filters.projectManager.value)) ||
+                        (filters.isActive && (Array.isArray(filters.isActive) ? filters.isActive.length > 0 : filters.isActive.value))) && (
                         <div className="flex justify-end">
                             <Button 
                                 size="sm" 
@@ -1210,6 +1312,13 @@ const ProjectProfitability = () => {
                                             onChange={(checked) => handleFilterVisibilityChange('projectManager', checked)}
                                         />
                                         <span>Project Manager</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.isActive !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('isActive', checked)}
+                                        />
+                                        <span>Is Active</span>
                                     </label>
                                 </div>
                             </Card>
@@ -1282,16 +1391,37 @@ const ProjectProfitability = () => {
                         </div>
                     )}
 
-                    {/* Data Table - Fixed height with scroll (scrollbars at top and bottom) */}
+                    {/* Data Table - Fixed height with sticky top scrollbar */}
                     <div className="relative">
-                        {/* Main table with scroll */}
+                        {/* Sticky top horizontal scrollbar - always visible */}
+                        <div 
+                            ref={topScrollbarRef}
+                            id="table-top-scroll"
+                            className="sticky top-0 z-20 overflow-x-auto overflow-y-hidden bg-transparent"
+                            style={{ 
+                                height: '17px',
+                                scrollbarWidth: 'auto'
+                            }}
+                        >
+                            <div 
+                                id="table-scroll-content"
+                                style={{ 
+                                    width: '2000px',
+                                    minWidth: '2000px', 
+                                    height: '1px'
+                                }}
+                            ></div>
+                        </div>
+                        
+                        {/* Main table with scroll - horizontal scrollbar hidden, only vertical visible */}
                         <div 
                             ref={tableScrollRef}
                             id="table-main-scroll"
-                            className="overflow-auto"
+                            className="overflow-y-auto table-hide-horizontal-scrollbar"
                             style={{ 
                                 maxHeight: 'calc(100vh - 500px)',
-                                scrollbarGutter: 'stable'
+                                scrollbarGutter: 'stable',
+                                overflowX: 'auto'
                             }}
                         >
                             {isLoading ? (
@@ -1309,29 +1439,10 @@ const ProjectProfitability = () => {
                         onSort={({ key, order }) => {
                             setSort({ key, order })
                         }}
+                        className="table-compact"
+                        overflow={false}
                     />
                             )}
-                        </div>
-                        
-                        {/* Bottom horizontal scrollbar - syncs with main scroll */}
-                        <div 
-                            ref={bottomScrollRef}
-                            id="table-bottom-scroll"
-                            className="overflow-x-auto overflow-y-hidden mt-1 border-t border-gray-200 dark:border-gray-700"
-                            style={{ 
-                                height: '17px',
-                                scrollbarWidth: 'thin'
-                            }}
-                        >
-                            <div 
-                                id="table-scroll-content"
-                                style={{ 
-                                    width: '100%', 
-                                    minWidth: '2000px', 
-                                    height: '1px',
-                                    visibility: 'hidden'
-                                }}
-                            ></div>
                         </div>
                     </div>
                 </div>
