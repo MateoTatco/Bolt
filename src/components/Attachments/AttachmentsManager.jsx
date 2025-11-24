@@ -415,11 +415,11 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     }
 
     const HeaderActions = (
-        <div className="flex items-center gap-2">
-            <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')}>Grid</Button>
-            <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')}>List</Button>
-            <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)}>New Folder</Button>
-            <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)}>Upload</Button>
+        <div className="grid grid-cols-2 md:flex md:items-center gap-2 w-full md:w-auto">
+            <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Grid</Button>
+            <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">List</Button>
+            <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">New Folder</Button>
+            <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Upload</Button>
         </div>
     )
 
@@ -459,9 +459,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     )
 
     const renderFolderCard = (folder) => (
-        <div key={folder.id} className="p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md cursor-pointer" onDoubleClick={()=>openFolder(folder)}>
+        <div key={folder.id} className="p-3 md:p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md cursor-pointer" onDoubleClick={()=>openFolder(folder)}>
             <div className="flex items-start justify-between">
-                <HiOutlineFolder className="text-amber-500" />
+                <HiOutlineFolder className="text-amber-500 text-lg md:text-xl" />
                 <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
                     <Dropdown.Item onClick={()=>openFolder(folder)}>Open</Dropdown.Item>
                     <Dropdown.Item onClick={()=>handleDownloadFolder(folder)}>Download</Dropdown.Item>
@@ -469,53 +469,53 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     <Dropdown.Item onClick={()=>onDelete(folder,'folder')}>Delete</Dropdown.Item>
                 </Dropdown>
             </div>
-            <div className="mt-3 font-medium truncate">{folder.name}</div>
+            <div className="mt-2 md:mt-3 font-medium text-sm md:text-base truncate">{folder.name}</div>
             <div className="text-xs text-gray-500 mt-1">{bytesToHuman(folder.size)}</div>
-            <div className="mt-3">
-                <Button size="sm" variant="twoTone" onClick={()=>openFolder(folder)}>Open</Button>
+            <div className="mt-2 md:mt-3">
+                <Button size="sm" variant="twoTone" onClick={()=>openFolder(folder)} className="text-xs md:text-sm">Open</Button>
             </div>
         </div>
     )
 
     const renderFileCard = (file) => (
-        <div key={file.id} className="p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md">
+        <div key={file.id} className="p-3 md:p-4 bg-white dark:bg-gray-700 rounded-xl border shadow-sm hover:shadow-md">
             <div className="flex items-start justify-between">
-                <HiOutlineDocument className="text-emerald-500" />
+                <HiOutlineDocument className="text-emerald-500 text-lg md:text-xl" />
                 <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
                     <Dropdown.Item onClick={()=>handleDownloadFile(file)} disabled={!file.path && !file.downloadURL}>Download</Dropdown.Item>
                     <Dropdown.Item onClick={()=>startRename(file,'file')}>Rename</Dropdown.Item>
                     <Dropdown.Item onClick={()=>onDelete(file,'file')}>Delete</Dropdown.Item>
                 </Dropdown>
             </div>
-            <div className="mt-3 font-medium truncate">{file.name}</div>
+            <div className="mt-2 md:mt-3 font-medium text-sm md:text-base truncate">{file.name}</div>
             <div className="text-xs text-gray-500 mt-1">{file.type?.toUpperCase()} • {bytesToHuman(file.size)}</div>
-            <div className="mt-3 flex gap-2">
-                <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} />
-                <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} />
-                <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600" onClick={()=>onDelete(file,'file')} />
+            <div className="mt-2 md:mt-3 flex gap-1.5 md:gap-2">
+                <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} className="text-xs" />
+                <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} className="text-xs" />
+                <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600 text-xs" onClick={()=>onDelete(file,'file')} />
             </div>
         </div>
     )
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6 overflow-x-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Attachments</h2>
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-0">
+                <div className="flex items-center space-x-2 md:space-x-3">
+                    <div className="w-1 h-6 md:h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                    <h2 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Attachments</h2>
                 </div>
                 {HeaderActions}
             </div>
 
             {/* Breadcrumb / Navigation */}
             {breadcrumb.length > 1 && (
-                <div className="flex items-center justify-between bg-gray-50/60 dark:bg-gray-800/30 rounded-xl px-4 py-2">
-                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-0 bg-gray-50/60 dark:bg-gray-800/30 rounded-xl px-3 md:px-4 py-2 overflow-x-auto">
+                    <div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-gray-600 dark:text-gray-300 min-w-0">
                         {breadcrumb.map((b, idx) => (
                             <React.Fragment key={b.id}>
                                 <button
-                                    className={`font-medium ${idx === breadcrumb.length-1 ? 'text-gray-900 dark:text-white' : 'hover:text-primary'}`}
+                                    className={`font-medium truncate ${idx === breadcrumb.length-1 ? 'text-gray-900 dark:text-white' : 'hover:text-primary'}`}
                                     onClick={() => {
                                         const targetIndex = idx
                                         const next = breadcrumb.slice(0, targetIndex + 1)
@@ -525,12 +525,12 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                                 >
                                     {b.name}
                                 </button>
-                                {idx < breadcrumb.length-1 && <HiOutlineChevronRight />}
+                                {idx < breadcrumb.length-1 && <HiOutlineChevronRight className="flex-shrink-0" />}
                             </React.Fragment>
                         ))}
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Button size="sm" variant="twoTone" icon={<HiOutlineChevronLeft />} onClick={goBack}>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button size="sm" variant="twoTone" icon={<HiOutlineChevronLeft />} onClick={goBack} className="text-xs md:text-sm">
                             Back
                         </Button>
                     </div>
@@ -557,7 +557,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                                     {inFolder.folders.map(renderFolderRow)}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                                     {inFolder.folders.map(renderFolderCard)}
                                 </div>
                             )}
@@ -571,7 +571,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                                     {inFolder.files.map(renderFileRow)}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                                     {inFolder.files.map(renderFileCard)}
                                 </div>
                             )}
@@ -588,14 +588,14 @@ const AttachmentsManager = ({ entityType, entityId }) => {
 
             {/* Upload Dialog */}
             <Dialog isOpen={uploadOpen} onClose={()=>setUploadOpen(false)} width={600}>
-                <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Upload Files</h3>
-                    <div className="border-2 border-dashed rounded-xl p-8 text-center mb-4 transition hover:border-primary hover:bg-primary/5"
+                <div className="p-4 md:p-6">
+                    <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Upload Files</h3>
+                    <div className="border-2 border-dashed rounded-xl p-4 md:p-8 text-center mb-3 md:mb-4 transition hover:border-primary hover:bg-primary/5"
                         onDragOver={(e)=>{e.preventDefault();}}
                         onDrop={(e)=>{e.preventDefault(); onChooseFiles(e.dataTransfer.files)}}
                     >
-                        <p className="text-gray-600 mb-2">Drop your files here, or <span className="text-primary">browse</span></p>
-                        <input type="file" multiple onChange={(e)=>onChooseFiles(e.target.files)} />
+                        <p className="text-sm md:text-base text-gray-600 mb-2">Drop your files here, or <span className="text-primary">browse</span></p>
+                        <input type="file" multiple onChange={(e)=>onChooseFiles(e.target.files)} className="text-xs md:text-sm" />
                         <div className="text-xs text-gray-500 mt-2">Max {MAX_FILE_MB}MB per file</div>
                     </div>
                     {pendingUploads.length > 0 && !uploading && (
@@ -611,10 +611,10 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                             ))}
                         </div>
                     )}
-                    <div className="flex justify-end gap-2">
-                        <Button variant="twoTone" onClick={()=>setUploadOpen(false)} disabled={uploading}>Close</Button>
+                    <div className="flex flex-col-reverse md:flex-row justify-end gap-2">
+                        <Button variant="twoTone" onClick={()=>setUploadOpen(false)} disabled={uploading} className="w-full md:w-auto text-sm">Close</Button>
                         {!uploading && (
-                            <Button variant="solid" onClick={commitUpload} disabled={pendingUploads.length===0}>Upload</Button>
+                            <Button variant="solid" onClick={commitUpload} disabled={pendingUploads.length===0} className="w-full md:w-auto text-sm">Upload</Button>
                         )}
                     </div>
                 </div>

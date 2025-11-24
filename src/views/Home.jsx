@@ -236,7 +236,7 @@ const Home = () => {
     }, [filters.type])
 
     const [pageIndex, setPageIndex] = useState(1)
-    const [pageSize, setPageSize] = useState(10)
+    const [pageSize, setPageSize] = useState(100)
     const [sort, setSort] = useState({ key: '', order: '' })
     const [tableInstanceKey, setTableInstanceKey] = useState(0)
 
@@ -472,7 +472,7 @@ const Home = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search)
         const qPage = parseInt(params.get('page') || '1', 10)
-        const qSize = parseInt(params.get('size') || '10', 10)
+        const qSize = parseInt(params.get('size') || '100', 10)
         const qSortKey = params.get('sortKey') || ''
         const qSortOrder = params.get('sortOrder') || ''
         const qSearch = params.get('search') || ''
@@ -486,7 +486,7 @@ const Home = () => {
         // Only apply if any query param exists
         if ([...params.keys()].length > 0) {
             setPageIndex(Number.isNaN(qPage) ? 1 : qPage)
-            setPageSize(Number.isNaN(qSize) ? 10 : qSize)
+            setPageSize(Number.isNaN(qSize) ? 100 : qSize)
             setSort({ key: qSortKey, order: qSortOrder })
 
             const nextFilters = {}
@@ -1004,6 +1004,7 @@ const Home = () => {
         })
         return finalCols
     }, [allColumns, columnOrder, visibleColumns])
+
 
     // Ctrl/Cmd click handler for new tab
     const handleLeadNameClick = (e, leadId) => {

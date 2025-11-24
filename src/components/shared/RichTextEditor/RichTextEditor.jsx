@@ -71,38 +71,40 @@ const RichTextEditor = (props) => {
                     'bg-error-subtle ring-error border-error',
             )}
         >
-            <div className="flex gap-x-1 gap-y-2 px-2">
-                {customToolBar ? (
-                    customToolBar(editor, {
-                        ToolButtonBold,
-                        ToolButtonItalic,
-                        ToolButtonStrike,
-                        ToolButtonCode,
-                        ToolButtonBlockquote,
-                        ToolButtonHeading,
-                        ToolButtonBulletList,
-                        ToolButtonOrderedList,
-                        ToolButtonCodeBlock,
-                        ToolButtonHorizontalRule,
-                        ToolButtonParagraph,
-                        ToolButtonUndo,
-                        ToolButtonRedo,
-                    })
-                ) : (
-                    <>
-                        <ToolButtonBold editor={editor} />
-                        <ToolButtonItalic editor={editor} />
-                        <ToolButtonStrike editor={editor} />
-                        <ToolButtonCode editor={editor} />
-                        <ToolButtonBlockquote editor={editor} />
-                        <ToolButtonHeading editor={editor} />
-                        <ToolButtonBulletList editor={editor} />
-                        <ToolButtonOrderedList editor={editor} />
-                        <ToolButtonCodeBlock editor={editor} />
-                        <ToolButtonHorizontalRule editor={editor} />
-                        <ToolButtonImage editor={editor} />
-                    </>
-                )}
+            <div className="overflow-x-auto scrollbar-hide md:overflow-x-visible">
+                <div className="flex gap-x-1 gap-y-2 px-2 min-w-max md:min-w-0">
+                    {customToolBar ? (
+                        customToolBar(editor, {
+                            ToolButtonBold,
+                            ToolButtonItalic,
+                            ToolButtonStrike,
+                            ToolButtonCode,
+                            ToolButtonBlockquote,
+                            ToolButtonHeading,
+                            ToolButtonBulletList,
+                            ToolButtonOrderedList,
+                            ToolButtonCodeBlock,
+                            ToolButtonHorizontalRule,
+                            ToolButtonParagraph,
+                            ToolButtonUndo,
+                            ToolButtonRedo,
+                        })
+                    ) : (
+                        <>
+                            <ToolButtonBold editor={editor} />
+                            <ToolButtonItalic editor={editor} />
+                            <ToolButtonStrike editor={editor} />
+                            <ToolButtonCode editor={editor} />
+                            <ToolButtonBlockquote editor={editor} />
+                            <ToolButtonHeading editor={editor} />
+                            <ToolButtonBulletList editor={editor} />
+                            <ToolButtonOrderedList editor={editor} />
+                            <ToolButtonCodeBlock editor={editor} />
+                            <ToolButtonHorizontalRule editor={editor} />
+                            <ToolButtonImage editor={editor} />
+                        </>
+                    )}
+                </div>
             </div>
 
             <EditorContent

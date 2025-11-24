@@ -6,7 +6,7 @@ const ToolButton = (props) => {
     return (
         <button
             className={classNames(
-                'tool-button text-xl heading-text hover:text-primary flex items-center p-1.5 rounded-lg',
+                'tool-button text-base md:text-xl heading-text hover:text-primary flex items-center p-1 md:p-1.5 rounded-lg flex-shrink-0',
                 active && 'text-primary',
                 disabled && 'opacity-20 cursor-not-allowed',
                 className,

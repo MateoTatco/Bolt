@@ -243,7 +243,27 @@ const ClientDetail = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+                {/* Mobile Tab Navigation - Only visible on mobile */}
+                <div className="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex overflow-x-auto scrollbar-hide px-2 py-2">
+                        {sidebarItems.map((item) => (
+                            <button
+                                key={item.key}
+                                onClick={() => setActiveTab(item.key)}
+                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                                    activeTab === item.key
+                                        ? 'bg-primary text-white shadow-md'
+                                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                }`}
+                            >
+                                <span className="text-base">{item.icon}</span>
+                                <span>{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Seamless Header */}
                 {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && activeTab !== 'activities' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">

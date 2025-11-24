@@ -467,12 +467,12 @@ const TasksManager = ({ entityType, entityId }) => {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-0">
+                <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
+                    <h2 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
                         Tasks
                     </h2>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1 md:space-x-2 flex-shrink-0">
                         <UsersAvatarGroup 
                             users={(() => {
                                 // Get all unique members from all sections
@@ -484,7 +484,8 @@ const TasksManager = ({ entityType, entityId }) => {
                                 })
                                 return Array.from(allMembers).map(memberId => getUserById(memberId)).filter(Boolean)
                             })()}
-                            avatarProps={{ size: 24 }}
+                            avatarProps={{ size: 20 }}
+                            className="hidden md:flex"
                         />
                     </div>
                 </div>
@@ -492,6 +493,7 @@ const TasksManager = ({ entityType, entityId }) => {
                     variant="solid"
                     icon={<HiOutlinePlus />}
                     onClick={() => setIsCreateSectionOpen(true)}
+                    className="w-full md:w-auto text-sm"
                 >
                     Add Section
                 </Button>
@@ -515,27 +517,27 @@ const TasksManager = ({ entityType, entityId }) => {
                                                 <div
                                                     ref={provided.innerRef}
                                                     {...provided.draggableProps}
-                                                    className={`rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-6 ${
+                                                    className={`rounded-xl md:rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-4 md:p-6 ${
                                                         snapshot.isDragging ? 'shadow-2xl opacity-90' : ''
                                                     }`}
                                                 >
                                                     {/* Section Header */}
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <div className="flex items-center space-x-3">
+                                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-0 mb-3 md:mb-4">
+                                                        <div className="flex items-center space-x-2 md:space-x-3 min-w-0 flex-1">
                                                             <div
                                                                 {...provided.dragHandleProps}
-                                                                className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200"
+                                                                className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1.5 md:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-all duration-200 flex-shrink-0"
                                                             >
-                                                                <HiOutlineMenu size={20} />
+                                                                <HiOutlineMenu size={18} className="md:w-5 md:h-5" />
                                                             </div>
-                                                            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                                                            <h3 className="text-base md:text-xl font-semibold text-gray-900 dark:text-white truncate">
                                                                 {section.name}
                                                             </h3>
-                                                            <span className="text-sm text-gray-500">
+                                                            <span className="text-xs md:text-sm text-gray-500 flex-shrink-0">
                                                                 {sectionTasks.length} tasks
                                                             </span>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-1.5 md:gap-2 w-full md:w-auto">
                                                             <Button
                                                                 size="sm"
                                                                 variant="twoTone"
@@ -545,9 +547,10 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                     setMembers(section.members || [])
                                                                     setIsAddMembersOpen(true)
                                                                 }}
-                                                                className="mr-2"
+                                                                className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none"
                                                             >
-                                                                Members
+                                                                <span className="hidden md:inline">Members</span>
+                                                                <span className="md:hidden">Members</span>
                                                             </Button>
                                                             <Button
                                                                 size="sm"
@@ -557,15 +560,17 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                     setSelectedSection(section)
                                                                     setIsCreateTaskOpen(true)
                                                                 }}
+                                                                className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none"
                                                             >
-                                                                Add task
+                                                                <span className="hidden md:inline">Add task</span>
+                                                                <span className="md:hidden">Add</span>
                                                             </Button>
                                                             <Button
                                                                 size="sm"
                                                                 variant="plain"
                                                                 icon={<HiOutlineTrash />}
                                                                 onClick={() => handleDeleteSection(section.id)}
-                                                                className="text-red-600 hover:text-red-700"
+                                                                className="text-red-600 hover:text-red-700 p-1.5 md:p-2 flex-shrink-0"
                                                             />
                                                         </div>
                                                     </div>
@@ -584,32 +589,32 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                         task.status === 'completed' ? 'opacity-60' : ''
                                                                     }`}
                                                                 >
-                                                                    <div className="flex items-center p-3">
+                                                                    <div className="flex items-center p-2 md:p-3">
                                                                         <Checkbox
                                                                             checked={task.status === 'completed'}
                                                                             onChange={() => handleToggleTask(task.id, task.status)}
-                                                                            className="mr-3"
+                                                                            className="mr-2 md:mr-3 flex-shrink-0"
                                                                         />
-                                                                        <div className="flex-1 min-w-0">
-                                                                            <p className={`font-medium ${
+                                                                        <div className="flex-1 min-w-0 mr-2">
+                                                                            <p className={`font-medium text-sm md:text-base truncate ${
                                                                                 task.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'
                                                                             }`}>
                                                                                 {task.name}
                                                                             </p>
                                                                         </div>
-                                                                        <div className="flex items-center space-x-2">
-                                                                            <Tag className={getStatusColor(task.status)}>
+                                                                        <div className="flex items-center gap-1 md:space-x-2 flex-shrink-0">
+                                                                            <Tag className={`${getStatusColor(task.status)} text-xs px-1.5 md:px-2 py-0.5 md:py-1`}>
                                                                                 {statusOptions.find(opt => opt.value === task.status)?.label}
                                                                             </Tag>
-                                                                            <Tag className={getPriorityColor(task.priority)}>
+                                                                            <Tag className={`${getPriorityColor(task.priority)} text-xs px-1.5 md:px-2 py-0.5 md:py-1 hidden md:inline-flex`}>
                                                                                 {priorityOptions.find(opt => opt.value === task.priority)?.label}
                                                                             </Tag>
-                                                                            <span className="text-sm text-gray-500">
+                                                                            <span className="text-xs md:text-sm text-gray-500 whitespace-nowrap hidden md:inline">
                                                                                 {formatDate(task.dueDate)}
                                                                             </span>
                                                                             {task.assignee && (
                                                                                 <Tooltip title={getUserById(task.assignee)?.name || 'Unknown'}>
-                                                                                    <Avatar size={24}>
+                                                                                    <Avatar size={20} className="hidden md:flex">
                                                                                         {getUserById(task.assignee)?.name?.charAt(0) || '?'}
                                                                                     </Avatar>
                                                                                 </Tooltip>
@@ -619,16 +624,32 @@ const TasksManager = ({ entityType, entityId }) => {
                                                                                 variant="plain"
                                                                                 icon={<HiOutlinePencil />}
                                                                                 onClick={() => openEditTask(task)}
-                                                                                className="text-blue-600 hover:text-blue-700"
+                                                                                className="text-blue-600 hover:text-blue-700 text-base md:text-lg p-1 md:p-1.5"
                                                                             />
                                                                             <Button
                                                                                 size="sm"
                                                                                 variant="plain"
                                                                                 icon={<HiOutlineTrash />}
                                                                                 onClick={() => handleDeleteTask(task.id)}
-                                                                                className="text-red-600 hover:text-red-700"
+                                                                                className="text-red-600 hover:text-red-700 text-base md:text-lg p-1 md:p-1.5"
                                                                             />
                                                                         </div>
+                                                                    </div>
+                                                                    {/* Mobile-only row for priority, date, and assignee */}
+                                                                    <div className="md:hidden px-2 pb-2 flex items-center gap-2 text-xs">
+                                                                        <Tag className={`${getPriorityColor(task.priority)} text-xs px-1.5 py-0.5`}>
+                                                                            {priorityOptions.find(opt => opt.value === task.priority)?.label}
+                                                                        </Tag>
+                                                                        <span className="text-xs text-gray-500">
+                                                                            {formatDate(task.dueDate)}
+                                                                        </span>
+                                                                        {task.assignee && (
+                                                                            <Tooltip title={getUserById(task.assignee)?.name || 'Unknown'}>
+                                                                                <Avatar size={16}>
+                                                                                    {getUserById(task.assignee)?.name?.charAt(0) || '?'}
+                                                                                </Avatar>
+                                                                            </Tooltip>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             ))
@@ -679,20 +700,21 @@ const TasksManager = ({ entityType, entityId }) => {
 
             {/* Create Task Dialog */}
             <Dialog isOpen={isCreateTaskOpen} onClose={() => setIsCreateTaskOpen(false)} width={500}>
-                <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Create New Task</h3>
-                    <div className="space-y-4">
+                <div className="p-4 md:p-6">
+                    <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Create New Task</h3>
+                    <div className="space-y-3 md:space-y-4">
                         <div>
-                            <label className="block text-sm font-medium mb-2">Task Name *</label>
+                            <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Task Name *</label>
                             <Input
                                 value={taskForm.name}
                                 onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
                                 placeholder="Enter task name"
+                                className="text-sm md:text-base"
                             />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">Status</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Status</label>
                                 <Select
                                     options={statusOptions}
                                     value={statusOptions.find(opt => opt.value === taskForm.status)}
@@ -700,7 +722,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-2">Priority</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Priority</label>
                                 <Select
                                     options={priorityOptions}
                                     value={priorityOptions.find(opt => opt.value === taskForm.priority)}
@@ -708,9 +730,9 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">Due Date</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Due Date</label>
                                 <DatePicker
                                     value={taskForm.dueDate}
                                     onChange={(date) => setTaskForm({ ...taskForm, dueDate: date })}
@@ -718,7 +740,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-2">Assignee</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Assignee</label>
                                 <Select
                                     options={assigneeOptions}
                                     value={assigneeOptions.find(opt => opt.value === taskForm.assignee)}
@@ -728,10 +750,11 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                         </div>
-                        <div className="flex justify-end space-x-2">
+                        <div className="flex flex-col-reverse md:flex-row justify-end gap-2 md:space-x-2 pt-2">
                             <Button
                                 variant="twoTone"
                                 onClick={() => setIsCreateTaskOpen(false)}
+                                className="w-full md:w-auto text-sm"
                             >
                                 Cancel
                             </Button>
@@ -739,6 +762,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 variant="solid"
                                 onClick={handleCreateTask}
                                 disabled={!taskForm.name.trim()}
+                                className="w-full md:w-auto text-sm"
                             >
                                 Create Task
                             </Button>
@@ -749,20 +773,21 @@ const TasksManager = ({ entityType, entityId }) => {
 
             {/* Edit Task Dialog */}
             <Dialog isOpen={isEditTaskOpen} onClose={() => setIsEditTaskOpen(false)} width={500}>
-                <div className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Edit Task</h3>
-                    <div className="space-y-4">
+                <div className="p-4 md:p-6">
+                    <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Edit Task</h3>
+                    <div className="space-y-3 md:space-y-4">
                         <div>
-                            <label className="block text-sm font-medium mb-2">Task Name *</label>
+                            <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Task Name *</label>
                             <Input
                                 value={taskForm.name}
                                 onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
                                 placeholder="Enter task name"
+                                className="text-sm md:text-base"
                             />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">Status</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Status</label>
                                 <Select
                                     options={statusOptions}
                                     value={statusOptions.find(opt => opt.value === taskForm.status)}
@@ -770,7 +795,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-2">Priority</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Priority</label>
                                 <Select
                                     options={priorityOptions}
                                     value={priorityOptions.find(opt => opt.value === taskForm.priority)}
@@ -778,9 +803,9 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                             <div>
-                                <label className="block text-sm font-medium mb-2">Due Date</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Due Date</label>
                                 <DatePicker
                                     value={taskForm.dueDate}
                                     onChange={(date) => setTaskForm({ ...taskForm, dueDate: date })}
@@ -788,7 +813,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-2">Assignee</label>
+                                <label className="block text-xs md:text-sm font-medium mb-1.5 md:mb-2">Assignee</label>
                                 <Select
                                     options={assigneeOptions}
                                     value={assigneeOptions.find(opt => opt.value === taskForm.assignee)}
@@ -798,7 +823,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 />
                             </div>
                         </div>
-                        <div className="flex justify-end space-x-2">
+                        <div className="flex flex-col-reverse md:flex-row justify-end gap-2 md:space-x-2 pt-2">
                             <Button
                                 variant="twoTone"
                                 onClick={() => {
@@ -812,6 +837,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                         assignee: null
                                     })
                                 }}
+                                className="w-full md:w-auto text-sm"
                             >
                                 Cancel
                             </Button>
@@ -819,6 +845,7 @@ const TasksManager = ({ entityType, entityId }) => {
                                 variant="solid"
                                 onClick={handleEditTask}
                                 disabled={!taskForm.name.trim()}
+                                className="w-full md:w-auto text-sm"
                             >
                                 Update Task
                             </Button>

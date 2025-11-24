@@ -380,7 +380,27 @@ const ProjectDetail = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+                {/* Mobile Tab Navigation - Only visible on mobile */}
+                <div className="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex overflow-x-auto scrollbar-hide px-2 py-2">
+                        {sidebarItems.map((item) => (
+                            <button
+                                key={item.key}
+                                onClick={() => setActiveTab(item.key)}
+                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                                    activeTab === item.key
+                                        ? 'bg-primary text-white shadow-md'
+                                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                }`}
+                            >
+                                <span className="text-base">{item.icon}</span>
+                                <span>{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Header hidden on content-heavy tabs */}
                 {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && activeTab !== 'activities' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
@@ -633,13 +653,15 @@ const ProjectDetail = () => {
                     )}
 
                     {activeTab === 'tasks' && project && (
-                        <div className="space-y-8">
+                        <div className="px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
                             <TasksManager entityType="project" entityId={project.id} />
                         </div>
                     )}
 
                     {activeTab === 'attachments' && project && (
-                        <AttachmentsManager entityType="project" entityId={project.id} />
+                        <div className="px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <AttachmentsManager entityType="project" entityId={project.id} />
+                        </div>
                     )}
 
                     {activeTab === 'activities' && project && (
@@ -647,26 +669,26 @@ const ProjectDetail = () => {
                     )}
 
                     {activeTab === 'settings' && project && (
-                        <div className="space-y-8">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h2>
+                        <div className="space-y-6 md:space-y-8 px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-0">
+                                <div className="flex items-center gap-2 md:space-x-3">
+                                    <div className="w-1 h-6 md:h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                    <h2 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h2>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <Button size="sm" variant="plain" onClick={handleCancel}>Cancel</Button>
-                                    <Button size="sm" variant="solid" onClick={saveSettings}>Save Changes</Button>
+                                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 w-full md:w-auto">
+                                    <Button size="sm" variant="plain" onClick={handleCancel} className="w-full md:w-auto text-sm">Cancel</Button>
+                                    <Button size="sm" variant="solid" onClick={saveSettings} className="w-full md:w-auto text-sm">Save Changes</Button>
                                 </div>
                             </div>
 
                             {/* Project Overview Editor */}
                             <Card>
-                                <div className="p-6 space-y-4">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="w-1 h-6 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Project Overview</h3>
+                                <div className="p-4 md:p-6 space-y-3 md:space-y-4">
+                                    <div className="flex items-center space-x-2 md:space-x-3">
+                                        <div className="w-1 h-5 md:h-6 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                        <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white">Project Overview</h3>
                                     </div>
-                                    <div className="prose prose-lg max-w-none dark:prose-invert">
+                                    <div className="prose prose-sm md:prose-lg max-w-none dark:prose-invert">
                                         <RichTextEditor 
                                             content={overviewHtml || '<p class="text-gray-500">Describe your project or add notes here</p>'} 
                                             onChange={(content) => {
@@ -676,16 +698,16 @@ const ProjectDetail = () => {
                                                     setOverviewHtml(content)
                                                 }
                                             }}
-                                            editorContentClass="min-h-[400px]"
+                                            editorContentClass="min-h-[300px] md:min-h-[400px]"
                                         />
                                     </div>
                                 </div>
                             </Card>
 
                             <Card>
-                                <div className="p-6 space-y-6">
+                                <div className="p-4 md:p-6 space-y-4 md:space-y-6">
                                     {/* Primary */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                                         {fieldNumber('Project Number', 'ProjectNumber')}
                                         {fieldInput('Project Name', 'ProjectName')}
                                         {fieldInput('Address', 'address')}
@@ -703,7 +725,7 @@ const ProjectDetail = () => {
                                     </div>
 
                                     {/* Dates */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                                         {fieldDate('Start Date', 'StartDate')}
                                         {fieldDate('Projected Finish', 'ProjectedFinishDate')}
                                         {fieldDate('Completion Date', 'CompletionDate')}
@@ -718,7 +740,7 @@ const ProjectDetail = () => {
                                     </div>
 
                                     {/* Numbers / Currency */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                                         {fieldCurrency('Estimated Value (USD)', 'EstimatedValue')}
                                         {fieldCurrency('Estimated Cost at Completion (USD)', 'EstimatedCostAtCompletion')}
                                         {fieldCurrency('Revised Contract Amount (USD)', 'ProjectRevisedContractAmount')}
@@ -731,7 +753,7 @@ const ProjectDetail = () => {
                                     </div>
 
                                     {/* Misc */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                                         {fieldBool('Archived', 'Archived')}
                                     </div>
                                 </div>

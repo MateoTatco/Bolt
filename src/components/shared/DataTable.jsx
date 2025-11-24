@@ -340,15 +340,19 @@ function DataTable(props) {
                     </TBody>
                 )}
             </Table>
-            {/* Only show pagination if pageSize is less than total (i.e., pagination is needed) */}
-            {pageSize < total && (
+            {/* Show pagination controls when there are items - always show page size selector */}
+            {total > 0 && (
                 <div className="flex items-center justify-between mt-4">
-                    <Pagination
-                        pageSize={pageSize}
-                        currentPage={pageIndex}
-                        total={total}
-                        onChange={handlePaginationChange}
-                    />
+                    {pageSize < total ? (
+                        <Pagination
+                            pageSize={pageSize}
+                            currentPage={pageIndex}
+                            total={total}
+                            onChange={handlePaginationChange}
+                        />
+                    ) : (
+                        <div></div>
+                    )}
                     <div style={{ minWidth: 130 }}>
                         <Select
                             instanceId={instanceId}

@@ -262,7 +262,27 @@ const LeadDetail = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-h-screen">
+            <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+                {/* Mobile Tab Navigation - Only visible on mobile */}
+                <div className="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex overflow-x-auto scrollbar-hide px-2 py-2">
+                        {sidebarItems.map((item) => (
+                            <button
+                                key={item.key}
+                                onClick={() => setActiveTab(item.key)}
+                                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                                    activeTab === item.key
+                                        ? 'bg-primary text-white shadow-md'
+                                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                }`}
+                            >
+                                <span className="text-base">{item.icon}</span>
+                                <span>{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Seamless Header */}
                 {activeTab !== 'tasks' && activeTab !== 'settings' && activeTab !== 'attachments' && activeTab !== 'activities' && (
                     <div className="bg-gradient-to-r from-white via-gray-50/30 to-white dark:from-gray-900 dark:via-gray-800/30 dark:to-gray-900 border-b border-gray-100 dark:border-gray-700/50">
@@ -671,82 +691,80 @@ const LeadDetail = () => {
                     )}
 
                     {activeTab === 'tasks' && (
-                        <TasksManager entityType="lead" entityId={leadId} />
+                        <div className="px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <TasksManager entityType="lead" entityId={leadId} />
+                        </div>
                     )}
 
                     {activeTab === 'attachments' && (
-                        <AttachmentsManager entityType="lead" entityId={leadId} />
+                        <div className="px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <AttachmentsManager entityType="lead" entityId={leadId} />
+                        </div>
                     )}
 
                     {activeTab === 'activities' && (
-                        <div className="space-y-6">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Activities</h2>
+                        <div className="space-y-4 md:space-y-6 px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <div className="flex items-center space-x-2 md:space-x-3">
+                                <div className="w-1 h-6 md:h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                                <h2 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Activities</h2>
                             </div>
                             <ActivitiesTimeline entityType="lead" entityId={leadId} />
                         </div>
                     )}
 
                     {activeTab === 'settings' && (
-                        <div className="space-y-8">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
+                        <div className="space-y-6 md:space-y-8 px-4 md:px-8 py-4 md:py-8 overflow-x-hidden">
+                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-0">
+                                <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                                    <div className="w-1 h-6 md:h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight shrink-0">Settings</h2>
+                                        <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-3 min-w-0">
+                                            <h2 className="text-xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight shrink-0">Settings</h2>
                                             <div className="hidden md:inline h-5 w-px bg-gray-200 dark:bg-gray-700" />
-                                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
+                                            <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2 text-xs md:text-sm text-gray-600 dark:text-gray-300 min-w-0">
                                                 {lead?.companyName && (
-                                                    <span className="truncate max-w-[220px] md:max-w-[280px] font-medium">{lead.companyName}</span>
+                                                    <span className="truncate max-w-[200px] md:max-w-[280px] font-medium">{lead.companyName}</span>
                                                 )}
                                                 {lead?.leadContact && (
                                                     <>
-                                                        <span className="text-gray-300 dark:text-gray-600">•</span>
-                                                        <span className="truncate max-w-[160px]">{lead.leadContact}</span>
+                                                        <span className="hidden md:inline text-gray-300 dark:text-gray-600">•</span>
+                                                        <span className="truncate max-w-[200px] md:max-w-[160px]">{lead.leadContact}</span>
                                                     </>
                                                 )}
                                                 {lead?.email && (
                                                     <>
-                                                        <span className="text-gray-300 dark:text-gray-600">•</span>
+                                                        <span className="hidden md:inline text-gray-300 dark:text-gray-600">•</span>
                                                         <span className="truncate max-w-[200px] text-blue-600 dark:text-blue-400">{lead.email}</span>
                                                     </>
                                                 )}
                                             </div>
                                         </div>
-                                        {/* Mobile-only stacked info */}
-                                        <div className="md:hidden mt-1 text-xs text-gray-600 dark:text-gray-300 space-x-2">
-                                            {lead?.companyName && <span className="font-medium">{lead.companyName}</span>}
-                                            {lead?.leadContact && <span>• {lead.leadContact}</span>}
-                                            {lead?.email && <span>• {lead.email}</span>}
-                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-3">
+                                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:space-x-3 w-full md:w-auto">
                                     <Button 
                                         variant="plain" 
                                         onClick={handleCancelEdit}
-                                        className="px-6 py-2.5 rounded-xl font-medium"
+                                        className="px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-medium text-sm w-full md:w-auto"
                                     >
                                         Cancel
                                     </Button>
                                     <Button 
                                         variant="solid" 
                                         onClick={handleSaveChanges}
-                                        className="px-6 py-2.5 rounded-xl font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
+                                        className="px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-medium bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200 text-sm w-full md:w-auto"
                                     >
                                         Save Changes
                                     </Button>
                                 </div>
                             </div>
                             
-                            <div className="space-y-12">
+                            <div className="space-y-8 md:space-y-12">
                                 <div>
-                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
+                                    <h3 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white mb-4 md:mb-6 tracking-tight">
                                         Project Overview
                                     </h3>
-                                    <div className="rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-6">
+                                    <div className="rounded-xl md:rounded-2xl bg-gray-50/50 dark:bg-gray-800/30 backdrop-blur-sm p-4 md:p-6">
                                         <RichTextEditor
                                             content={editedContent}
                                             onChange={(content) => {
@@ -756,15 +774,15 @@ const LeadDetail = () => {
                                                     setEditedContent(content.html)
                                                 }
                                             }}
-                                            editorContentClass="min-h-[400px]"
+                                            editorContentClass="min-h-[300px] md:min-h-[400px]"
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
+                                    <h3 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white mb-4 md:mb-6 tracking-tight">
                                         Linked Clients
                                     </h3>
-                                    <div className="space-y-4">
+                                    <div className="space-y-3 md:space-y-4">
                                         <Select
                                             isMulti
                                             placeholder="Select clients to link with this lead"

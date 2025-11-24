@@ -256,7 +256,7 @@ const ProjectsList = () => {
     const addProject = useProjectsStore((s) => s.addProject)
 
     const [pageIndex, setPageIndex] = useState(1)
-    const [pageSize, setPageSize] = useState(10)
+    const [pageSize, setPageSize] = useState(100)
     const [sort, setSort] = useState({ key: '', order: '' })
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
@@ -265,6 +265,9 @@ const ProjectsList = () => {
     
     // Debounce timer refs
     const searchDebounceRef = useRef(null)
+    const tableScrollRef = useRef(null)
+    const topScrollbarRef = useRef(null)
+    const filtersCardRef = useRef(null)
     
     // Local search state for immediate UI updates
     const [localSearchValue, setLocalSearchValue] = useState('')
@@ -512,6 +515,7 @@ const ProjectsList = () => {
         })
         setLocalSearchValue('')
     }
+
 
     const pageTotal = filteredProjects.length
     const pageStart = (pageIndex - 1) * pageSize
