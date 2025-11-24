@@ -2344,10 +2344,10 @@ export const azureSqlGetAllProjectsProfitability = functions
                 let additionalWhereClause = '';
                 switch (filterOption) {
                     case 'power_bi_match':
-                        // Matches Power BI filter: RedTeamImport = 0 AND ContractValue > 0
-                        // This gives Projected Profit: $158,936,026 vs Power BI $158,945,357 (only $9,331 difference!)
-                        additionalWhereClause = `AND ppa.RedTeamImport = 0 
-                            AND ppa.ProjectRevisedContractAmount > 0`;
+                        // Matches Power BI filter exactly: Query 18 matched $267,778,125.48
+                        // Only filter: ProjectRevisedContractAmount > 0 (no RedTeamImport filter)
+                        // The date filter is handled in the main query (most recent date only)
+                        additionalWhereClause = `AND ppa.ProjectRevisedContractAmount > 0`;
                         break;
                     case 'active':
                         additionalWhereClause = 'AND ppa.IsActive = 1';
@@ -2376,13 +2376,25 @@ export const azureSqlGetAllProjectsProfitability = functions
                 }
                 
                 // Query to get most recent archive record for each project (matching Power BI's "Is Most Recent?" logic)
+                // Power BI filters to the most recent ArchiveDate (by date) and ensures it's the MAX per project
+                // Query 18 results: $267,778,125.48 Total Contract Value - EXACT MATCH to Power BI's $267,778,125
+                // This matches Power BI's filter: ArchiveDate date = most recent date AND Is Most Recent? = Yes
+                // Query 18 did NOT have RedTeamImport = 0 filter, so power_bi_match should not include it
                 const query = `
-                    WITH MostRecentArchive AS (
-                        SELECT 
-                            ProjectNumber,
-                            MAX(ArchiveDate) as LatestArchiveDate
+                    WITH MostRecentArchiveDate AS (
+                        -- Get the most recent ArchiveDate (by date) in the entire table
+                        SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly
                         FROM dbo.ProjectProfitabilityArchive
-                        GROUP BY ProjectNumber
+                    ),
+                    MostRecentArchive AS (
+                        -- Get the MAX ArchiveDate per project, but only for projects where MAX falls on the most recent date
+                        SELECT 
+                            ppa.ProjectNumber,
+                            MAX(ppa.ArchiveDate) as LatestArchiveDate
+                        FROM dbo.ProjectProfitabilityArchive ppa
+                        CROSS JOIN MostRecentArchiveDate mrad
+                        WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
+                        GROUP BY ppa.ProjectNumber
                     )
                     SELECT 
                         ppa.ProjectName,
@@ -2414,7 +2426,8 @@ export const azureSqlGetAllProjectsProfitability = functions
                     INNER JOIN MostRecentArchive mra 
                         ON ppa.ProjectNumber = mra.ProjectNumber 
                         AND ppa.ArchiveDate = mra.LatestArchiveDate
-                    WHERE 1=1
+                    CROSS JOIN MostRecentArchiveDate mrad
+                    WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                     ${additionalWhereClause}
                     ORDER BY ppa.ProjectName
                 `;
