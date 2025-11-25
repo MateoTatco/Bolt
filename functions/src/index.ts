@@ -25,10 +25,10 @@ const PROCORE_CONFIG = {
     // Production: https://api.procore.com
     // Sandbox: https://sandbox.procore.com
     apiBaseUrl: process.env.PROCORE_API_BASE_URL || 'https://api.procore.com',
-    // Production credentials (for production environment - read-only testing)
+    // Production credentials
     // SECURITY: Never hardcode secrets. Use environment variables or Firebase Functions config.
-    clientId: process.env.PROCORE_CLIENT_ID || '', // Must be set via environment variable
-    clientSecret: process.env.PROCORE_CLIENT_SECRET || '', // Must be set via environment variable
+    clientId: process.env.PROCORE_CLIENT_ID || 'cnOtyAY1YcKSCGdzQp88vB5ETGOknRvao3VT7cY2HoM',
+    clientSecret: process.env.PROCORE_CLIENT_SECRET || '-HR68NdpKiELjbKOgz7sTAOFNXc1voHV2fq8Zosy55E',
     redirectUri: process.env.PROCORE_REDIRECT_URI || 'http://localhost:5173',
     companyId: process.env.PROCORE_COMPANY_ID || '598134325590042', // Production Company ID
 };
@@ -860,6 +860,148 @@ export const procoreGetProjects = functions
             throw new functions.https.HttpsError(
                 'internal',
                 error.response?.data?.errors || error.response?.data?.error_description || error.response?.data?.message || error.message || 'Failed to fetch projects'
+            );
+        }
+    });
+
+// Create project in Procore
+export const procoreCreateProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+        
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+        
+        const { projectData } = data;
+        if (!projectData) {
+            throw new functions.https.HttpsError('invalid-argument', 'Project data is required');
+        }
+        
+        try {
+            // Procore REST API endpoint for creating projects
+            // NOTE: Procore API v1.0 does NOT support POST for creating projects
+            // The /rest/v1.0/companies/{company_id}/projects endpoint only supports GET
+            // Projects may need to be created manually in Procore or through a different API version/method
+            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`;
+            console.log('Attempting to create project in Procore:', apiUrl);
+            console.log('Project data:', JSON.stringify(projectData, null, 2));
+            
+            let response = await axios.post(
+                apiUrl,
+                projectData,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+            
+            // If we get 401, try to refresh the token and retry once
+            if (response.status === 401) {
+                console.log('Got 401, attempting to refresh token...');
+                const refreshedToken = await getProcoreAccessToken(userId);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    console.log('Token refreshed, retrying request...');
+                    response = await axios.post(
+                        apiUrl,
+                        projectData,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${refreshedToken}`,
+                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+                }
+            }
+            
+            console.log('Project created successfully in Procore. Status:', response.status);
+            console.log('Procore project data:', JSON.stringify(response.data, null, 2));
+            
+            return { 
+                success: true, 
+                data: response.data,
+                procoreProjectId: response.data?.id 
+            };
+        } catch (error: any) {
+            const attemptedUrl = error.config?.url || 'unknown';
+            const errorStatus = error.response?.status;
+            const errorData = error.response?.data;
+            
+            console.error('Error creating project in Procore:', {
+                message: error.message,
+                status: errorStatus,
+                statusText: error.response?.statusText,
+                url: attemptedUrl,
+                responseData: errorData,
+            });
+            
+            // If 401, try to refresh token and retry
+            if (errorStatus === 401) {
+                console.log('401 error detected, attempting to refresh token and retry...');
+                try {
+                    const refreshedToken = await getProcoreAccessToken(userId);
+                    if (refreshedToken && refreshedToken !== accessToken) {
+                        console.log('Token refreshed successfully, retrying request with new token...');
+                        const retryResponse = await axios.post(
+                            attemptedUrl,
+                            projectData,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${refreshedToken}`,
+                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    'Content-Type': 'application/json',
+                                },
+                            }
+                        );
+                        console.log('Retry successful! Status:', retryResponse.status);
+                        return { 
+                            success: true, 
+                            data: retryResponse.data,
+                            procoreProjectId: retryResponse.data?.id 
+                        };
+                    }
+                } catch (retryError: any) {
+                    console.error('Retry after token refresh failed:', {
+                        message: retryError.message,
+                        status: retryError.response?.status,
+                        data: retryError.response?.data,
+                    });
+                }
+            }
+            
+            // Handle 404 specifically - Procore API doesn't support project creation via REST API
+            if (errorStatus === 404) {
+                const errorMessage = 'Procore API v1.0 does not support creating projects via REST API. Projects must be created manually in Procore or through Procore\'s web interface. The /rest/v1.0/companies/{company_id}/projects endpoint only supports GET requests.';
+                console.error('Procore API limitation:', errorMessage);
+                throw new functions.https.HttpsError(
+                    'not-found',
+                    errorMessage
+                );
+            }
+            
+            // Return error details for frontend handling
+            throw new functions.https.HttpsError(
+                'internal',
+                errorData?.errors || errorData?.error_description || errorData?.message || error.message || 'Failed to create project in Procore'
             );
         }
     });

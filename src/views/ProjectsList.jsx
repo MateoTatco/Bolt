@@ -8,6 +8,7 @@ import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutline
 import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { components } from 'react-select'
+import { generateUniqueProjectNumber } from '@/utils/projectNumberGenerator'
 
 // Project options
 const marketOptions = [
@@ -400,6 +401,12 @@ const ProjectsList = () => {
         onConfirm: null,
         onCancel: null
     })
+    const [procoreErrorDialog, setProcoreErrorDialog] = useState({
+        isOpen: false,
+        projectId: null,
+        projectData: null,
+        error: null
+    })
     const [wizardData, setWizardData] = useState({
         ProjectName: '',
         ProjectNumber: '',
@@ -677,9 +684,11 @@ const ProjectsList = () => {
     
     const resetWizard = () => {
         setWizardStep(1)
+        // Generate unique project number when resetting wizard
+        const newProjectNumber = generateUniqueProjectNumber(projects)
         setWizardData({
             ProjectName: '',
-            ProjectNumber: '',
+            ProjectNumber: String(newProjectNumber),
             address: '',
             city: '',
             State: '',
@@ -735,11 +744,72 @@ const ProjectsList = () => {
                 BidType: wizardData.BidType || '',
                 favorite: false,
             }
-            await addProject(payload)
+            
+            const result = await addProject(payload, {
+                onProcoreError: (error, project) => {
+                    // Show error dialog with retry option
+                    setProcoreErrorDialog({
+                        isOpen: true,
+                        projectId: project.id,
+                        projectData: payload,
+                        error: error
+                    })
+                }
+            })
+            
             resetWizard()
             setIsCreateOpen(false)
         } catch (error) {
             console.error('Error creating project:', error)
+        }
+    }
+
+    const handleRetryProcoreSync = async () => {
+        if (!procoreErrorDialog.projectId || !procoreErrorDialog.projectData) {
+            setProcoreErrorDialog({ isOpen: false, projectId: null, projectData: null, error: null })
+            return
+        }
+        
+        try {
+            // Get the project from Firebase to get current data
+            const projectResponse = await FirebaseDbService.projects.getById(procoreErrorDialog.projectId)
+            if (!projectResponse.success) {
+                throw new Error('Project not found')
+            }
+            
+            const project = projectResponse.data
+            
+            // Try to sync with Procore again
+            const { ProcoreService } = await import('@/services/ProcoreService')
+            const { mapBoltToProcore, validateProcoreProject } = await import('@/configs/procoreFieldMapping')
+            
+            const procoreProjectData = mapBoltToProcore(project)
+            const validation = validateProcoreProject(procoreProjectData)
+            
+            if (!validation.isValid) {
+                throw new Error(`Missing required fields: ${validation.missingFields.join(', ')}`)
+            }
+            
+            const procoreResult = await ProcoreService.createProject(procoreProjectData)
+            
+            if (procoreResult.success && procoreResult.procoreProjectId) {
+                // Update project with Procore ID
+                await FirebaseDbService.projects.update(procoreErrorDialog.projectId, {
+                    procoreProjectId: procoreResult.procoreProjectId,
+                    procoreSyncStatus: 'synced',
+                    procoreSyncedAt: new Date().toISOString()
+                })
+                
+                // Reload projects to update UI
+                await loadProjects()
+                
+                // Close dialog and show success
+                setProcoreErrorDialog({ isOpen: false, projectId: null, projectData: null, error: null })
+                alert('Project successfully synced with Procore!')
+            }
+        } catch (error) {
+            console.error('Error retrying Procore sync:', error)
+            alert(`Failed to sync with Procore: ${error.message}`)
         }
     }
 
@@ -1477,11 +1547,15 @@ const ProjectsList = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2">Project Number</label>
+                                    <label className="block text-sm font-medium mb-2">
+                                        Project Number
+                                        <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(Auto-generated)</span>
+                                    </label>
                                     <Input 
                                         value={wizardData.ProjectNumber} 
-                                        onChange={(e) => setWizardData({ ...wizardData, ProjectNumber: e.target.value.replace(/[^0-9.]/g, '') })} 
-                                        placeholder="Enter project number"
+                                        readOnly
+                                        className="bg-gray-50 dark:bg-gray-700 cursor-not-allowed"
+                                        placeholder="Auto-generated project number"
                                     />
                                 </div>
                                 <div>
@@ -1736,6 +1810,46 @@ const ProjectsList = () => {
                     </div>
                 </div>
             )}
+
+            {/* Procore Sync Error Dialog */}
+            <Dialog 
+                isOpen={procoreErrorDialog.isOpen} 
+                onClose={() => setProcoreErrorDialog({ isOpen: false, projectId: null, projectData: null, error: null })}
+                width={600}
+            >
+                <div className="p-6">
+                    <h5 className="text-xl font-semibold mb-4">Procore Sync Information</h5>
+                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                        The project was created successfully in Bolt. However, Procore API v1.0 does not support creating projects via REST API.
+                    </p>
+                    {procoreErrorDialog.error && (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+                                <strong>API Limitation:</strong> {procoreErrorDialog.error.message || 'Procore API does not support project creation via REST API'}
+                            </p>
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
+                                The Procore REST API endpoint only supports reading projects (GET), not creating them (POST). Projects must be created manually in Procore's web interface.
+                            </p>
+                        </div>
+                    )}
+                    <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                        <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold mb-2">Next Steps:</p>
+                        <ol className="text-xs text-blue-700 dark:text-blue-300 list-decimal list-inside space-y-1">
+                            <li>Create the project manually in Procore using the same Project Number: <strong>{procoreErrorDialog.projectData?.ProjectNumber || 'N/A'}</strong></li>
+                            <li>Once created in Procore, you can manually link it by updating the project in Bolt</li>
+                            <li>Alternatively, we can implement a workaround to sync project data after manual creation</li>
+                        </ol>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-6">
+                        <Button 
+                            variant="twoTone" 
+                            onClick={() => setProcoreErrorDialog({ isOpen: false, projectId: null, projectData: null, error: null })}
+                        >
+                            Close
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
         </div>
     )
 }

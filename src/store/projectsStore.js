@@ -87,8 +87,11 @@ export const useProjectsStore = create((set, get) => ({
     },
 
     // Create new project
-    addProject: async (projectData) => {
+    addProject: async (projectData, options = {}) => {
+        const { skipProcoreSync = false, onProcoreError = null } = options
         set({ loading: true, error: null })
+        let procoreError = null
+        
         try {
             // Get all user IDs to set as default members
             const allUserIds = await getAllUserIds()
@@ -97,10 +100,63 @@ export const useProjectsStore = create((set, get) => ({
                 members: allUserIds // Set all users as default members
             }
             
+            // Save to Firebase first
             const response = await FirebaseDbService.projects.create(projectDataWithMembers)
             if (response.success) {
                 const newProject = response.data
                 const currentUserId = getCurrentUserId()
+                
+                // Try to sync with Procore (only for new projects with ProjectNumber)
+                if (!skipProcoreSync && projectData.ProjectNumber) {
+                    try {
+                        const { ProcoreService } = await import('@/services/ProcoreService')
+                        const { mapBoltToProcore, validateProcoreProject } = await import('@/configs/procoreFieldMapping')
+                        
+                        // Map Bolt fields to Procore format
+                        const procoreProjectData = mapBoltToProcore(projectData)
+                        
+                        // Validate required fields
+                        const validation = validateProcoreProject(procoreProjectData)
+                        if (!validation.isValid) {
+                            throw new Error(`Missing required fields for Procore: ${validation.missingFields.join(', ')}`)
+                        }
+                        
+                        // Create project in Procore
+                        const procoreResult = await ProcoreService.createProject(procoreProjectData)
+                        
+                        // Update Firebase project with Procore ID
+                        if (procoreResult.success && procoreResult.procoreProjectId) {
+                            await FirebaseDbService.projects.update(newProject.id, {
+                                procoreProjectId: procoreResult.procoreProjectId,
+                                procoreSyncStatus: 'synced',
+                                procoreSyncedAt: new Date().toISOString()
+                            })
+                            
+                            // Update local state
+                            newProject.procoreProjectId = procoreResult.procoreProjectId
+                            newProject.procoreSyncStatus = 'synced'
+                        }
+                    } catch (procoreSyncError) {
+                        console.error('Error syncing project to Procore:', procoreSyncError)
+                        procoreError = procoreSyncError
+                        
+                        // Update Firebase project with sync failure status
+                        await FirebaseDbService.projects.update(newProject.id, {
+                            procoreSyncStatus: 'failed',
+                            procoreSyncError: procoreSyncError.message || 'Unknown error',
+                            procoreSyncAttemptedAt: new Date().toISOString()
+                        })
+                        
+                        // Update local state
+                        newProject.procoreSyncStatus = 'failed'
+                        newProject.procoreSyncError = procoreSyncError.message
+                        
+                        // Call error callback if provided
+                        if (onProcoreError) {
+                            onProcoreError(procoreSyncError, newProject)
+                        }
+                    }
+                }
                 
                 set((state) => ({
                     projects: [...state.projects, newProject],
@@ -118,14 +174,20 @@ export const useProjectsStore = create((set, get) => ({
                     })
                 }
                 
+                // Show success message
+                const successMessage = procoreError 
+                    ? 'Project created in Bolt. Note: Procore API does not support automatic project creation - projects must be created manually in Procore.'
+                    : 'Project created successfully and synced with Procore!'
+                
                 toast.push(
                     React.createElement(
                         Notification,
-                        { type: 'success', duration: 2000, title: 'Success' },
-                        'Project created successfully!',
+                        { type: procoreError ? 'warning' : 'success', duration: 3000, title: 'Success' },
+                        successMessage,
                     ),
                 )
-                return newProject
+                
+                return { project: newProject, procoreError }
             } else {
                 throw new Error(response.error)
             }

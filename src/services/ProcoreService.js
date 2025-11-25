@@ -449,6 +449,22 @@ export const ProcoreService = {
             throw error
         }
     },
+
+    /**
+     * Create a project in Procore
+     * @param {Object} projectData - Project data formatted for Procore API
+     * @returns {Promise<Object>} Created project data from Procore
+     */
+    async createProject(projectData) {
+        try {
+            const createProjectFunction = httpsCallable(functions, 'procoreCreateProject')
+            const result = await createProjectFunction({ projectData })
+            return result.data
+        } catch (error) {
+            console.error('Error creating project in Procore:', error)
+            throw error
+        }
+    },
 }
 
 export default ProcoreService
