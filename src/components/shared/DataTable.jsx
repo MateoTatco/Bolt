@@ -221,7 +221,7 @@ function DataTable(props) {
     return (
         <Loading loading={Boolean(loading && data.length !== 0)} type="cover">
             <Table {...rest}>
-                <THead>
+                <THead className="sticky top-0 z-30 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     {table.getHeaderGroups().map((headerGroup) => (
                         <Tr key={headerGroup.id}>
                             {headerGroup.headers.map((header, headerIndex) => {
@@ -231,9 +231,9 @@ function DataTable(props) {
                                         key={header.id}
                                         colSpan={header.colSpan}
                                         className={classNames(
-                                            'whitespace-nowrap text-xs md:text-sm', // Smaller text on mobile
+                                            'whitespace-nowrap text-xs md:text-sm bg-white dark:bg-gray-800', // Smaller text on mobile, ensure background
                                             // Action column: sticky on desktop only
-                                            isActionsColumn && 'md:sticky md:right-0 md:z-10 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700'
+                                            isActionsColumn && 'md:sticky md:right-0 md:z-40 border-l border-gray-200 dark:border-gray-700'
                                         )}
                                         style={{ width: header.column.getSize?.() }}
                                     >

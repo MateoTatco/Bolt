@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { Card, Input, Select, Tag, Tooltip, Button, Checkbox, Skeleton } from '@/components/ui'
+import { Card, Input, Select, Tag, Tooltip, Button, Checkbox, Skeleton, DatePicker } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import Chart from '@/components/shared/Chart'
 import { HiOutlineCurrencyDollar } from 'react-icons/hi'
@@ -9,6 +9,7 @@ import { ProcoreService } from '@/services/ProcoreService'
 import { components } from 'react-select'
 import { useSessionUser } from '@/store/authStore'
 import { ADMIN } from '@/constants/roles.constant'
+import dayjs from 'dayjs'
 
 // Custom ValueContainer to show selected value or count badge
 const CustomValueContainer = ({ children, ...props }) => {
@@ -238,6 +239,24 @@ const ProjectProfitability = () => {
     // Loading and error states
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
+    
+    // Trend chart date range - default to last 6 months
+    const [trendDateRange, setTrendDateRange] = useState(() => {
+        const endDate = dayjs().endOf('day').toDate()
+        const startDate = dayjs().subtract(6, 'months').startOf('day').toDate()
+        return [startDate, endDate]
+    })
+    
+    // Track window size for responsive chart font
+    const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
+    
+    useEffect(() => {
+        const handleResize = () => {
+            setWindowWidth(window.innerWidth)
+        }
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
     
     // Sync scrollbars - moved after filteredProjects and visibleColumnsList are defined
 
@@ -889,18 +908,43 @@ const ProjectProfitability = () => {
             statusProfit[status] += proj.currentProjectedProfit || 0
         })
 
-        // Profitability trend (by month)
-        const monthlyProfit = {}
-        filteredProjects.forEach(proj => {
+        // Profitability trend (by contract start date, filtered by date range)
+        const dailyProfit = {}
+        let projectsForTrend = filteredProjects
+        
+        // Determine date range - use provided range or default to last 6 months
+        let startDate, endDate
+        if (trendDateRange[0] && trendDateRange[1]) {
+            startDate = dayjs(trendDateRange[0]).startOf('day')
+            endDate = dayjs(trendDateRange[1]).endOf('day')
+        } else {
+            // Default to last 6 months
+            endDate = dayjs().endOf('day')
+            startDate = dayjs().subtract(6, 'months').startOf('day')
+        }
+        
+        // Filter by date range
+        projectsForTrend = filteredProjects.filter(proj => {
+            if (!proj.contractStartDate) return false
+            const projDate = dayjs(proj.contractStartDate).startOf('day')
+            // Include projects where start date is within the range (inclusive)
+            const projDateValue = projDate.valueOf()
+            const startDateValue = startDate.valueOf()
+            const endDateValue = endDate.valueOf()
+            return projDateValue >= startDateValue && projDateValue <= endDateValue
+        })
+        
+        projectsForTrend.forEach(proj => {
             if (proj.contractStartDate) {
                 const date = proj.contractStartDate instanceof Date 
                     ? proj.contractStartDate 
                     : new Date(proj.contractStartDate)
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-                if (!monthlyProfit[monthKey]) {
-                    monthlyProfit[monthKey] = 0
+                // Use day-level grouping for better granularity
+                const dateKey = dayjs(date).format('YYYY-MM-DD')
+                if (!dailyProfit[dateKey]) {
+                    dailyProfit[dateKey] = 0
                 }
-                monthlyProfit[monthKey] += proj.currentProjectedProfit || 0
+                dailyProfit[dateKey] += proj.currentProjectedProfit || 0
             }
         })
 
@@ -908,17 +952,23 @@ const ProjectProfitability = () => {
         const statusLabels = Object.keys(statusProfit)
         const statusValues = Object.values(statusProfit)
 
-        // Format for area chart
-        const sortedMonths = Object.keys(monthlyProfit).sort()
-        const monthlyValues = sortedMonths.map(month => monthlyProfit[month])
+        // Format for area chart - sort by date
+        const sortedDates = Object.keys(dailyProfit).sort()
+        const dailyValues = sortedDates.map(date => dailyProfit[date])
+        // Format labels for x-axis: "1 Dec", "2 Dec", etc.
+        const formattedLabels = sortedDates.map(date => {
+            const d = dayjs(date)
+            return `${d.date()} ${d.format('MMM')}`
+        })
 
         return {
             statusLabels,
             statusValues,
-            monthlyLabels: sortedMonths,
-            monthlyValues,
+            trendLabels: formattedLabels,
+            trendValues: dailyValues,
+            trendRawDates: sortedDates, // Keep raw dates for reference
         }
-    }, [filteredProjects])
+    }, [filteredProjects, trendDateRange])
 
     const handleClearAllFilters = () => {
         setFilters({
@@ -1481,7 +1531,7 @@ const ProjectProfitability = () => {
                                                     const total = w.globals.seriesTotals.reduce((a, b) => a + b, 0)
                                                     return formatCurrency(total)
                                                 },
-                                                fontSize: '16px',
+                                                fontSize: windowWidth < 768 ? '11px' : windowWidth < 1024 ? '13px' : '16px',
                                                 fontWeight: 600,
                                             },
                                         },
@@ -1500,18 +1550,50 @@ const ProjectProfitability = () => {
                     />
                 </Card>
                 <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Profitability Trend</h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                        <h3 className="text-lg font-semibold">Profitability Trend</h3>
+                        <div className="flex items-center gap-2">
+                            <DatePicker.DatePickerRange
+                                value={trendDateRange}
+                                onChange={(range) => {
+                                    if (range && range[0] && range[1]) {
+                                        setTrendDateRange(range)
+                                    } else {
+                                        // Reset to last 6 months when cleared
+                                        const endDate = dayjs().endOf('day').toDate()
+                                        const startDate = dayjs().subtract(6, 'months').startOf('day').toDate()
+                                        setTrendDateRange([startDate, endDate])
+                                    }
+                                }}
+                                placeholder="Select date range (default: last 6 months)"
+                                size="sm"
+                                clearable
+                            />
+                        </div>
+                    </div>
                     <Chart
                         type="area"
                         series={[
                             {
                                 name: 'Projected Profit',
-                                data: chartData.monthlyValues,
+                                data: chartData.trendValues,
                             },
                         ]}
-                        xAxis={chartData.monthlyLabels}
+                        xAxis={chartData.trendLabels}
                         customOptions={{
+                            legend: {
+                                show: true,
+                                position: 'top',
+                                horizontalAlign: 'right',
+                            },
                             yaxis: {
+                                title: {
+                                    text: 'Projected Profit ($)',
+                                    style: {
+                                        fontSize: '12px',
+                                        fontWeight: 500,
+                                    },
+                                },
                                 labels: {
                                     formatter: function(val) {
                                         if (val >= 1000000) {
@@ -1524,24 +1606,32 @@ const ProjectProfitability = () => {
                                 },
                             },
                             xaxis: {
-                                labels: {
-                                    formatter: function(value) {
-                                        // Convert "2024-06" to "01 Jun"
-                                        if (typeof value !== 'string') {
-                                            value = String(value)
-                                        }
-                                        const parts = value.split('-')
-                                        if (parts.length === 2) {
-                                            const year = parts[0]
-                                            const month = parseInt(parts[1], 10)
-                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                                            if (month >= 1 && month <= 12) {
-                                                return `01 ${monthNames[month - 1]}`
-                                            }
-                                        }
-                                        return value
+                                categories: chartData.trendLabels,
+                                title: {
+                                    text: 'Contract Start Date',
+                                    style: {
+                                        fontSize: '12px',
+                                        fontWeight: 500,
                                     },
                                 },
+                                labels: {
+                                    rotate: -45,
+                                    rotateAlways: chartData.trendLabels.length > 10,
+                                    maxHeight: 60,
+                                    formatter: function(value, timestamp, opts) {
+                                        // ApexCharts passes the category index, get the actual category label
+                                        const index = typeof value === 'number' ? Math.floor(value) : (opts?.dataPointIndex ?? -1)
+                                        if (index >= 0 && index < chartData.trendLabels.length) {
+                                            return chartData.trendLabels[index]
+                                        }
+                                        // If value is already a string (category), return it
+                                        if (typeof value === 'string') {
+                                            return value
+                                        }
+                                        return String(value)
+                                    },
+                                },
+                                tickAmount: chartData.trendLabels.length > 20 ? 10 : undefined,
                             },
                             tooltip: {
                                 y: {
@@ -1549,23 +1639,33 @@ const ProjectProfitability = () => {
                                         return formatCurrency(val)
                                     },
                                 },
+                                x: {
+                                    formatter: function(value, opts) {
+                                        const index = opts.dataPointIndex
+                                        if (index >= 0 && index < chartData.trendRawDates.length) {
+                                            const date = dayjs(chartData.trendRawDates[index])
+                                            return date.format('MMM D, YYYY')
+                                        }
+                                        return value
+                                    },
+                                },
                             },
                         }}
                         height={350}
                     />
+                    {/* Axis Legends */}
+                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                                <span><strong>Contract Start Date</strong> - Shows when projects started (format: Day Month)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span><strong>Projected Profit</strong> - Total projected profit for projects starting on that date</span>
+                            </div>
+                        </div>
+                    </div>
                 </Card>
             </div>
-
-            {/* Legend for columns marked with asterisk */}
-            <Card className="mt-6 p-4 bg-gray-50 dark:bg-gray-800">
-                <h6 className="font-semibold mb-2 text-sm">Legend</h6>
-                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                    <p><strong>* Est. Cost At Completion:</strong> Using Budget Line Items + Commitments as alternative. Budget Views endpoint is not available in Procore API.</p>
-                    <p><strong>* Initial Estimated Profit:</strong> Calculated from Est. Cost At Completion (see above).</p>
-                    <p><strong>* Remaining Cost:</strong> Calculated from Est. Cost At Completion (see above).</p>
-                    <p><strong>* Archive Date:</strong> Endpoint not found in Procore API. Field may be empty until API endpoint is identified.</p>
-                </div>
-            </Card>
 
         </div>
     )
