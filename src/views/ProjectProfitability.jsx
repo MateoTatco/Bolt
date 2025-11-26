@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { Card, Input, Select, Tag, Tooltip, Button, Checkbox, Skeleton, DatePicker } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import Chart from '@/components/shared/Chart'
-import { HiOutlineCurrencyDollar } from 'react-icons/hi'
+import { HiOutlineCurrencyDollar, HiOutlineDownload } from 'react-icons/hi'
 import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { ProcoreService } from '@/services/ProcoreService'
@@ -10,6 +10,7 @@ import { components } from 'react-select'
 import { useSessionUser } from '@/store/authStore'
 import { ADMIN } from '@/constants/roles.constant'
 import dayjs from 'dayjs'
+import * as XLSX from 'xlsx'
 
 // Custom ValueContainer to show selected value or count badge
 const CustomValueContainer = ({ children, ...props }) => {
@@ -217,6 +218,13 @@ const ProjectProfitability = () => {
     // Check if user is admin
     const user = useSessionUser((state) => state.user)
     const isAdmin = user?.authority?.includes(ADMIN) || false
+    
+    // High z-index styles for Select dropdowns to appear above sticky headers
+    // Only override z-index, preserve all other styles
+    const selectMenuStyles = {
+        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+        menu: (provided) => ({ ...provided, zIndex: 9999 }),
+    }
     
     const [projects, setProjects] = useState([])
     const [filters, setFilters] = useState({
@@ -982,6 +990,64 @@ const ProjectProfitability = () => {
         setLocalSearchValue('')
     }
 
+    const handleExportToExcel = () => {
+        try {
+            // Prepare data for export - use filtered projects
+            const exportData = filteredProjects.map(project => {
+                const row = {}
+                
+                // Map all visible columns to Excel format
+                visibleColumnsList.forEach(column => {
+                    const key = column.meta?.key || column.accessorKey
+                    const header = column.header
+                    let value = project[key]
+                    
+                    // Format values based on column type
+                    if (value === null || value === undefined) {
+                        value = ''
+                    } else if (key.includes('Value') || key.includes('Profit') || key.includes('Cost') || key.includes('Retainage') || key.includes('Invoiced') || key.includes('Contract')) {
+                        // Currency fields
+                        value = value || 0
+                        value = typeof value === 'number' ? value : parseFloat(value) || 0
+                    } else if (key.includes('Percent') || key.includes('Complete')) {
+                        // Percentage fields
+                        value = value || 0
+                        value = typeof value === 'number' ? value : parseFloat(value) || 0
+                        value = `${value.toFixed(1)}%`
+                    } else if (key.includes('Date') || key === 'archiveDate') {
+                        // Date fields
+                        value = formatDate(value)
+                    } else if (key === 'isActive') {
+                        // Boolean fields
+                        value = value ? 'Yes' : 'No'
+                    } else {
+                        // String fields
+                        value = String(value || '')
+                    }
+                    
+                    row[header] = value
+                })
+                
+                return row
+            })
+            
+            // Create workbook and worksheet
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Projects')
+            
+            // Generate filename with current date
+            const dateStr = dayjs().format('YYYY-MM-DD')
+            const filename = `Project_Profitability_${dateStr}.xlsx`
+            
+            // Write file and trigger download
+            XLSX.writeFile(wb, filename)
+        } catch (error) {
+            console.error('Error exporting to Excel:', error)
+            alert(`Failed to export to Excel: ${error.message || 'Unknown error'}`)
+        }
+    }
+
 
     return (
         <div className="space-y-6">
@@ -993,6 +1059,14 @@ const ProjectProfitability = () => {
                         This report includes project details and projections from Azure SQL Database
                     </p>
                 </div>
+                <Button
+                    variant="solid"
+                    icon={<HiOutlineDownload />}
+                    onClick={handleExportToExcel}
+                    disabled={isLoading || filteredProjects.length === 0}
+                >
+                    Export to Excel
+                </Button>
             </div>
             
             {/* Error Message */}
@@ -1004,7 +1078,7 @@ const ProjectProfitability = () => {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-6">
+                <Card className="p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
@@ -1014,12 +1088,12 @@ const ProjectProfitability = () => {
                                 {formatCurrency(summaryValues.totalContractValue)}
                             </p>
                         </div>
-                        <div className="p-3 bg-blue-100 dark:bg-blue-500/20 rounded-lg">
-                            <HiOutlineCurrencyDollar className="text-2xl text-blue-600 dark:text-blue-400" />
+                        <div className="p-2 bg-blue-100 dark:bg-blue-500/20 rounded-lg">
+                            <HiOutlineCurrencyDollar className="text-xl text-blue-600 dark:text-blue-400" />
                         </div>
                     </div>
                 </Card>
-                <Card className="p-6">
+                <Card className="p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
@@ -1029,12 +1103,12 @@ const ProjectProfitability = () => {
                                 {formatCurrency(summaryValues.totalProjectedProfit)}
                             </p>
                         </div>
-                        <div className="p-3 bg-emerald-100 dark:bg-emerald-500/20 rounded-lg">
-                            <HiOutlineCurrencyDollar className="text-2xl text-emerald-600 dark:text-emerald-400" />
+                        <div className="p-2 bg-emerald-100 dark:bg-emerald-500/20 rounded-lg">
+                            <HiOutlineCurrencyDollar className="text-xl text-emerald-600 dark:text-emerald-400" />
                         </div>
                     </div>
                 </Card>
-                <Card className="p-6">
+                <Card className="p-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
@@ -1044,8 +1118,8 @@ const ProjectProfitability = () => {
                                 {formatCurrency(summaryValues.jobToDateCost)}
                             </p>
                         </div>
-                        <div className="p-3 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
-                            <HiOutlineCurrencyDollar className="text-2xl text-amber-600 dark:text-amber-400" />
+                        <div className="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
+                            <HiOutlineCurrencyDollar className="text-xl text-amber-600 dark:text-amber-400" />
                         </div>
                     </div>
                 </Card>
@@ -1096,6 +1170,7 @@ const ProjectProfitability = () => {
                                     options={projectOptions}
                                     menuPortalTarget={document.body}
                                     menuPosition="fixed"
+                                    styles={selectMenuStyles}
                                     value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
                                     onChange={(opt) => {
                                         setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
@@ -1117,6 +1192,7 @@ const ProjectProfitability = () => {
                                     options={projectStageOptions}
                                     menuPortalTarget={document.body}
                                     menuPosition="fixed"
+                                    styles={selectMenuStyles}
                                     value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
                                     onChange={(opt) => {
                                         setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
@@ -1139,6 +1215,7 @@ const ProjectProfitability = () => {
                                         options={projectSystemOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.projectSystem) ? filters.projectSystem : (filters.projectSystem ? [filters.projectSystem] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, projectSystem: opt && opt.length > 0 ? opt : null }))
@@ -1158,6 +1235,7 @@ const ProjectProfitability = () => {
                                         options={projectManagerOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, projectManager: opt && opt.length > 0 ? opt : null }))
@@ -1177,6 +1255,7 @@ const ProjectProfitability = () => {
                                         options={isActiveOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))
@@ -1217,6 +1296,9 @@ const ProjectProfitability = () => {
                                     isClearable
                                     isMulti
                                     options={projectOptions}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
+                                    styles={selectMenuStyles}
                                     value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
                                     onChange={(opt) => {
                                         setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
@@ -1236,6 +1318,9 @@ const ProjectProfitability = () => {
                                     isClearable
                                     isMulti
                                     options={projectStageOptions}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
+                                    styles={selectMenuStyles}
                                     value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
                                     onChange={(opt) => {
                                         setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
@@ -1256,6 +1341,9 @@ const ProjectProfitability = () => {
                                         isClearable
                                         isMulti
                                         options={projectSystemOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.projectSystem) ? filters.projectSystem : (filters.projectSystem ? [filters.projectSystem] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, projectSystem: opt && opt.length > 0 ? opt : null }))
@@ -1273,6 +1361,9 @@ const ProjectProfitability = () => {
                                         isClearable
                                         isMulti
                                         options={projectManagerOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, projectManager: opt && opt.length > 0 ? opt : null }))
@@ -1292,6 +1383,7 @@ const ProjectProfitability = () => {
                                         options={isActiveOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectMenuStyles}
                                         value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
                                         onChange={(opt) => {
                                             setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))

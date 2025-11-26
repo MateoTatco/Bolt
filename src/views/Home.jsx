@@ -181,6 +181,12 @@ const Home = () => {
     // Favorite: remove old handler, we'll pass entityType explicitly
     const toggleFavorite = useCrmStore((s) => s.toggleFavorite)
     const loadLeads = useCrmStore((s) => s.loadLeads)
+    
+    // Z-index fix for Select dropdowns to appear above sticky headers
+    const selectZIndexStyles = {
+        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+        menu: (provided) => ({ ...provided, zIndex: 9999 }),
+    }
     const loadClients = useCrmStore((s) => s.loadClients)
     const addLead = useCrmStore((s) => s.addLead)
     const addClient = useCrmStore((s) => s.addClient)
@@ -1611,6 +1617,7 @@ const Home = () => {
                                         options={leadStatusOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1635,6 +1642,7 @@ const Home = () => {
                                         options={methodOfContactOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1658,6 +1666,7 @@ const Home = () => {
                                         options={respondedOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={filters.responded}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1693,6 +1702,7 @@ const Home = () => {
                                         options={datePresetOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={datePresetOptions.find((o) => o.value === datePreset) || datePresetOptions[0]}
                                         onChange={(opt) => applyDatePreset(opt?.value || 'none')}
                                     />
@@ -1724,6 +1734,9 @@ const Home = () => {
                                         isClearable
                                         isMulti
                                         options={leadStatusOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1746,6 +1759,9 @@ const Home = () => {
                                         isClearable
                                         isMulti
                                         options={methodOfContactOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.methodOfContact) ? filters.methodOfContact : (filters.methodOfContact ? [filters.methodOfContact] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)

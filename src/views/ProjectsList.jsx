@@ -255,6 +255,12 @@ const ProjectsList = () => {
     const deleteProject = useProjectsStore((s) => s.deleteProject)
     const bulkDeleteProjects = useProjectsStore((s) => s.bulkDeleteProjects)
     const addProject = useProjectsStore((s) => s.addProject)
+    
+    // Z-index fix for Select dropdowns to appear above sticky headers
+    const selectZIndexStyles = {
+        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+        menu: (provided) => ({ ...provided, zIndex: 9999 }),
+    }
 
     const [pageIndex, setPageIndex] = useState(1)
     const [pageSize, setPageSize] = useState(100)
@@ -1086,6 +1092,7 @@ const ProjectsList = () => {
                                         options={marketOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.market) ? filters.market : (filters.market ? [filters.market] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1110,6 +1117,7 @@ const ProjectsList = () => {
                                         options={projectStatusOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectStatus) ? filters.projectStatus : (filters.projectStatus ? [filters.projectStatus] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1134,6 +1142,7 @@ const ProjectsList = () => {
                                         options={projectProbabilityOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectProbability) ? filters.projectProbability : (filters.projectProbability ? [filters.projectProbability] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1158,6 +1167,7 @@ const ProjectsList = () => {
                                         options={projectManagerOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1182,6 +1192,7 @@ const ProjectsList = () => {
                                         options={superintendentOptions}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.superintendent) ? filters.superintendent : (filters.superintendent ? [filters.superintendent] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1225,6 +1236,9 @@ const ProjectsList = () => {
                                         isClearable
                                         isMulti
                                         options={marketOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.market) ? filters.market : (filters.market ? [filters.market] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1247,6 +1261,9 @@ const ProjectsList = () => {
                                         isClearable
                                         isMulti
                                         options={projectStatusOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectStatus) ? filters.projectStatus : (filters.projectStatus ? [filters.projectStatus] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1269,6 +1286,9 @@ const ProjectsList = () => {
                                         isClearable
                                         isMulti
                                         options={projectProbabilityOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectProbability) ? filters.projectProbability : (filters.projectProbability ? [filters.projectProbability] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1291,6 +1311,9 @@ const ProjectsList = () => {
                                         isClearable
                                         isMulti
                                         options={projectManagerOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.projectManager) ? filters.projectManager : (filters.projectManager ? [filters.projectManager] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
@@ -1313,6 +1336,9 @@ const ProjectsList = () => {
                                         isClearable
                                         isMulti
                                         options={superintendentOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectZIndexStyles}
                                         value={Array.isArray(filters.superintendent) ? filters.superintendent : (filters.superintendent ? [filters.superintendent] : null)}
                                         onChange={(opt) => {
                                             setPageIndex(1)
