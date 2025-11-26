@@ -176,7 +176,7 @@ export const useProjectsStore = create((set, get) => ({
                 
                 // Show success message
                 const successMessage = procoreError 
-                    ? 'Project created in Bolt. Note: Procore API does not support automatic project creation - projects must be created manually in Procore.'
+                    ? `Project created in Bolt. Procore sync failed: ${procoreError.message || 'Unknown error'}.`
                     : 'Project created successfully and synced with Procore!'
                 
                 toast.push(

@@ -173,3 +173,6 @@ Body: { project data }
 5. Implement Phase 2-3 (Procore integration)
 6. Test with Procore sandbox/production environment
 
+
+
+

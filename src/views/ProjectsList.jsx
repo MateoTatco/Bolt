@@ -1818,29 +1818,35 @@ const ProjectsList = () => {
                 width={600}
             >
                 <div className="p-6">
-                    <h5 className="text-xl font-semibold mb-4">Procore Sync Information</h5>
+                    <h5 className="text-xl font-semibold mb-4">Procore Sync Failed</h5>
                     <p className="text-gray-600 dark:text-gray-400 mb-4">
-                        The project was created successfully in Bolt. However, Procore API v1.0 does not support creating projects via REST API.
+                        The project was created successfully in Bolt, but failed to sync with Procore.
                     </p>
                     {procoreErrorDialog.error && (
                         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
                             <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-                                <strong>API Limitation:</strong> {procoreErrorDialog.error.message || 'Procore API does not support project creation via REST API'}
+                                <strong>Error:</strong> {procoreErrorDialog.error.message || 'Unknown Procore sync error'}
                             </p>
                             <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
-                                The Procore REST API endpoint only supports reading projects (GET), not creating them (POST). Projects must be created manually in Procore's web interface.
+                                Please review the error details above, ensure your Procore configuration is correct, and try again.
                             </p>
                         </div>
                     )}
                     <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
                         <p className="text-sm text-blue-800 dark:text-blue-200 font-semibold mb-2">Next Steps:</p>
                         <ol className="text-xs text-blue-700 dark:text-blue-300 list-decimal list-inside space-y-1">
-                            <li>Create the project manually in Procore using the same Project Number: <strong>{procoreErrorDialog.projectData?.ProjectNumber || 'N/A'}</strong></li>
-                            <li>Once created in Procore, you can manually link it by updating the project in Bolt</li>
-                            <li>Alternatively, we can implement a workaround to sync project data after manual creation</li>
+                            <li>Confirm the project details in Bolt, especially the Project Number: <strong>{procoreErrorDialog.projectData?.ProjectNumber || 'N/A'}</strong></li>
+                            <li>Check your Procore permissions and required fields for project creation.</li>
+                            <li>Use the Retry Sync button below to attempt syncing the project again once any issues are resolved.</li>
                         </ol>
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
+                        <Button 
+                            variant="twoTone" 
+                            onClick={handleRetryProcoreSync}
+                        >
+                            Retry Sync
+                        </Button>
                         <Button 
                             variant="twoTone" 
                             onClick={() => setProcoreErrorDialog({ isOpen: false, projectId: null, projectData: null, error: null })}

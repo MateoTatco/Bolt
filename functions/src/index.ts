@@ -891,19 +891,26 @@ export const procoreCreateProject = functions
         if (!projectData) {
             throw new functions.https.HttpsError('invalid-argument', 'Project data is required');
         }
+
+        // Wrap project data per Procore API spec:
+        // POST /rest/v1.0/projects
+        // {
+        //   "company_id": <company_id>,
+        //   "project": { ... }
+        // }
+        const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects`;
+        const payload = {
+            company_id: Number(PROCORE_CONFIG.companyId),
+            project: projectData,
+        };
         
         try {
-            // Procore REST API endpoint for creating projects
-            // NOTE: Procore API v1.0 does NOT support POST for creating projects
-            // The /rest/v1.0/companies/{company_id}/projects endpoint only supports GET
-            // Projects may need to be created manually in Procore or through a different API version/method
-            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`;
-            console.log('Attempting to create project in Procore:', apiUrl);
-            console.log('Project data:', JSON.stringify(projectData, null, 2));
+            console.log('Creating project in Procore:', apiUrl);
+            console.log('Payload:', JSON.stringify(payload, null, 2));
             
             let response = await axios.post(
                 apiUrl,
-                projectData,
+                payload,
                 {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
@@ -921,7 +928,7 @@ export const procoreCreateProject = functions
                     console.log('Token refreshed, retrying request...');
                     response = await axios.post(
                         apiUrl,
-                        projectData,
+                        payload,
                         {
                             headers: {
                                 'Authorization': `Bearer ${refreshedToken}`,
@@ -942,7 +949,7 @@ export const procoreCreateProject = functions
                 procoreProjectId: response.data?.id 
             };
         } catch (error: any) {
-            const attemptedUrl = error.config?.url || 'unknown';
+            const attemptedUrl = error.config?.url || apiUrl;
             const errorStatus = error.response?.status;
             const errorData = error.response?.data;
             
@@ -963,7 +970,7 @@ export const procoreCreateProject = functions
                         console.log('Token refreshed successfully, retrying request with new token...');
                         const retryResponse = await axios.post(
                             attemptedUrl,
-                            projectData,
+                            payload,
                             {
                                 headers: {
                                     'Authorization': `Bearer ${refreshedToken}`,
@@ -986,16 +993,6 @@ export const procoreCreateProject = functions
                         data: retryError.response?.data,
                     });
                 }
-            }
-            
-            // Handle 404 specifically - Procore API doesn't support project creation via REST API
-            if (errorStatus === 404) {
-                const errorMessage = 'Procore API v1.0 does not support creating projects via REST API. Projects must be created manually in Procore or through Procore\'s web interface. The /rest/v1.0/companies/{company_id}/projects endpoint only supports GET requests.';
-                console.error('Procore API limitation:', errorMessage);
-                throw new functions.https.HttpsError(
-                    'not-found',
-                    errorMessage
-                );
             }
             
             // Return error details for frontend handling
