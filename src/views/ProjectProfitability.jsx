@@ -208,6 +208,7 @@ const projectManagerOptions = [
     { value: 'Marc Dunham', label: 'Marc Dunham' },
     { value: 'Heath Pickens', label: 'Heath Pickens' },
     { value: 'Harrison McKee', label: 'Harrison McKee' },
+    { value: 'Cindy Smith-Frawner', label: 'Cindy Smith-Frawner' },
 ]
 const isActiveOptions = [
     { value: true, label: 'Yes' },
@@ -365,6 +366,8 @@ const ProjectProfitability = () => {
 
     // Filter visibility preferences (per-user, stored in Firestore)
     const defaultFilterVisibility = {
+        project: true,
+        projectStage: true,
         projectSystem: false,
         projectManager: false,
         isActive: false,
@@ -1163,50 +1166,54 @@ const ProjectProfitability = () => {
                             style={{ overflow: showFiltersMobile ? 'visible' : 'hidden' }}
                         >
                             <div className="grid grid-cols-1 gap-4 pt-2">
-                                <Select
-                                    placeholder="Project"
-                                    isClearable
-                                    isMulti
-                                    options={projectOptions}
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    styles={selectMenuStyles}
-                                    value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
-                                    onChange={(opt) => {
-                                        setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
-                                <Select
-                                    placeholder="Project Stage"
-                                    isClearable
-                                    isMulti
-                                    options={projectStageOptions}
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    styles={selectMenuStyles}
-                                    value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
-                                    onChange={(opt) => {
-                                        setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
+                                {filterVisibility.project !== false && (
+                                    <Select
+                                        placeholder="Project"
+                                        isClearable
+                                        isMulti
+                                        options={projectOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
+                                        value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
+                                {filterVisibility.projectStage !== false && (
+                                    <Select
+                                        placeholder="Project Stage"
+                                        isClearable
+                                        isMulti
+                                        options={projectStageOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
+                                        value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
                                 {filterVisibility.projectSystem && (
                                     <Select
                                         placeholder="Project System"
@@ -1223,8 +1230,12 @@ const ProjectProfitability = () => {
                                         components={{
                                             ValueContainer: CustomValueContainer,
                                             MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
                                         }}
                                         controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectManager && (
@@ -1243,8 +1254,12 @@ const ProjectProfitability = () => {
                                         components={{
                                             ValueContainer: CustomValueContainer,
                                             MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
                                         }}
                                         controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.isActive && (
@@ -1291,50 +1306,54 @@ const ProjectProfitability = () => {
                                         }, 300)
                                     }}
                                 />
-                                <Select
-                                    placeholder="Project"
-                                    isClearable
-                                    isMulti
-                                    options={projectOptions}
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    styles={selectMenuStyles}
-                                    value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
-                                    onChange={(opt) => {
-                                        setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
-                                <Select
-                                    placeholder="Project Stage"
-                                    isClearable
-                                    isMulti
-                                    options={projectStageOptions}
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    styles={selectMenuStyles}
-                                    value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
-                                    onChange={(opt) => {
-                                        setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
+                                {filterVisibility.project !== false && (
+                                    <Select
+                                        placeholder="Project"
+                                        isClearable
+                                        isMulti
+                                        options={projectOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
+                                        value={Array.isArray(filters.project) ? filters.project : (filters.project ? [filters.project] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, project: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
+                                {filterVisibility.projectStage !== false && (
+                                    <Select
+                                        placeholder="Project Stage"
+                                        isClearable
+                                        isMulti
+                                        options={projectStageOptions}
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={selectMenuStyles}
+                                        value={Array.isArray(filters.projectStage) ? filters.projectStage : (filters.projectStage ? [filters.projectStage] : null)}
+                                        onChange={(opt) => {
+                                            setFilters(prev => ({ ...prev, projectStage: opt && opt.length > 0 ? opt : null }))
+                                        }}
+                                        components={{
+                                            ValueContainer: CustomValueContainer,
+                                            MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
+                                        }}
+                                        controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
+                                    />
+                                )}
                                 {filterVisibility.projectSystem && (
                                     <Select
                                         placeholder="Project System"
@@ -1351,8 +1370,12 @@ const ProjectProfitability = () => {
                                         components={{
                                             ValueContainer: CustomValueContainer,
                                             MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
                                         }}
                                         controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.projectManager && (
@@ -1371,8 +1394,12 @@ const ProjectProfitability = () => {
                                         components={{
                                             ValueContainer: CustomValueContainer,
                                             MultiValue: CustomMultiValue,
+                                            MenuList: CustomMenuList,
+                                            Option: CustomOption,
+                                            Placeholder: CustomPlaceholder,
                                         }}
                                         controlShouldRenderValue={false}
+                                        hideSelectedOptions={false}
                                     />
                                 )}
                                 {filterVisibility.isActive && (
@@ -1441,6 +1468,20 @@ const ProjectProfitability = () => {
                                     <Tag className="text-xs">Project filters</Tag>
                                 </h6>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.project !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('project', checked)}
+                                        />
+                                        <span>Project</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.projectStage !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('projectStage', checked)}
+                                        />
+                                        <span>Project Stage</span>
+                                    </label>
                                     <label className="flex items-center gap-2 text-sm">
                                         <Checkbox
                                             checked={filterVisibility.projectSystem !== false}
