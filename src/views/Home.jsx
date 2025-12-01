@@ -2003,7 +2003,7 @@ const Home = () => {
                     indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
                     onCheckBoxChange={(checked, row) => handleRowSelectChange(checked, row)}
                     onIndeterminateCheckBoxChange={(checked, rows) => handleSelectAllChange(checked, rows)}
-                    className="card"
+                    className="table-compact"
                     rowClassName={(row) => {
                         // row here is the original data object
                         return checkboxChecked(row) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
