@@ -187,33 +187,85 @@ const TableSkeleton = ({ rows = 10 }) => {
     )
 }
 
-// Filter options
-const projectStageOptions = [
-    { value: 'Closed', label: 'Closed' },
-    { value: 'Not Awarded', label: 'Not Awarded' },
-    { value: 'Pre-Construction', label: 'Pre-Construction' },
-    { value: 'Bidding', label: 'Bidding' },
-    { value: 'Course of Construction', label: 'Course of Construction' },
-]
-const projectSystemOptions = [
-    { value: 'Red Team', label: 'Red Team' },
-    { value: 'Procore', label: 'Procore' },
-]
-const projectManagerOptions = [
-    { value: 'Brett Tatum', label: 'Brett Tatum' },
-    { value: 'Jamey Montgomery', label: 'Jamey Montgomery' },
-    { value: 'Joe Lassiter', label: 'Joe Lassiter' },
-    { value: 'Simon Cox', label: 'Simon Cox' },
-    { value: 'Trey Roberts', label: 'Trey Roberts' },
-    { value: 'Marc Dunham', label: 'Marc Dunham' },
-    { value: 'Heath Pickens', label: 'Heath Pickens' },
-    { value: 'Harrison McKee', label: 'Harrison McKee' },
-    { value: 'Cindy Smith-Frawner', label: 'Cindy Smith-Frawner' },
-]
-const isActiveOptions = [
-    { value: true, label: 'Yes' },
-    { value: false, label: 'No' },
-]
+// Shared helper to normalize "isActive" from different DB representations
+const isProjectActive = (proj) => {
+    const val = proj?.isActive
+    return val === true || val === 1 || val === 'true' || val === '1'
+}
+
+// Generic helper to apply all filters to a list of projects
+const applyProjectFilters = (projects, filters) => {
+    const { search, project, projectStage, projectSystem, projectManager, isActive } = filters
+
+    return projects.filter((proj) => {
+        if (search) {
+            const term = search.toLowerCase()
+            const hay = `${proj.projectNumber || ''} ${proj.projectName || ''} ${proj.projectManager || ''}`.toLowerCase()
+            if (!hay.includes(term)) return false
+        }
+
+        if (project) {
+            if (Array.isArray(project)) {
+                if (project.length > 0 && !project.some(p => p.value === proj.projectName)) return false
+            } else if (project.value) {
+                if (proj.projectName !== project.value) return false
+            }
+        }
+
+        if (projectStage) {
+            if (Array.isArray(projectStage)) {
+                if (projectStage.length > 0 && !projectStage.some(s => s.value === proj.projectStatus)) return false
+            } else if (projectStage.value) {
+                if (proj.projectStatus !== projectStage.value) return false
+            }
+        }
+
+        if (projectSystem) {
+            if (Array.isArray(projectSystem)) {
+                if (projectSystem.length > 0 && !projectSystem.some(s => s.value === proj.projectSystem)) return false
+            } else if (projectSystem.value) {
+                if (proj.projectSystem !== projectSystem.value) return false
+            }
+        }
+
+        if (projectManager) {
+            if (Array.isArray(projectManager)) {
+                if (projectManager.length > 0 && !projectManager.some(pm => pm.value === proj.projectManager)) return false
+            } else if (projectManager.value) {
+                if (proj.projectManager !== projectManager.value) return false
+            }
+        }
+
+        if (isActive !== null && isActive !== undefined) {
+            const projIsActive = isProjectActive(proj)
+
+            if (Array.isArray(isActive)) {
+                if (isActive.length > 0) {
+                    const activeValues = isActive.map(opt => opt.value)
+                    const matches = activeValues.some(val => {
+                        if (val === true || val === 'true' || val === 1 || val === '1') {
+                            return projIsActive
+                        }
+                        if (val === false || val === 'false' || val === 0 || val === '0') {
+                            return !projIsActive
+                        }
+                        return false
+                    })
+                    if (!matches) return false
+                }
+            } else if (isActive.value !== undefined) {
+                const val = isActive.value
+                if (val === true || val === 'true' || val === 1 || val === '1') {
+                    if (!projIsActive) return false
+                } else if (val === false || val === 'false' || val === 0 || val === '0') {
+                    if (projIsActive) return false
+                }
+            }
+        }
+
+        return true
+    })
+}
 
 const ProjectProfitability = () => {
     // Check if user is admin
@@ -240,7 +292,6 @@ const ProjectProfitability = () => {
     const [localSearchValue, setLocalSearchValue] = useState('')
     const [showFiltersMobile, setShowFiltersMobile] = useState(false)
     const [showMoreFilters, setShowMoreFilters] = useState(false)
-    const [projectOptions, setProjectOptions] = useState([])
     const searchDebounceRef = useRef(null)
     const tableScrollRef = useRef(null)
     const topScrollbarRef = useRef(null)
@@ -282,13 +333,6 @@ const ProjectProfitability = () => {
                 
                 if (projectsData && projectsData.length > 0) {
                     setProjects(projectsData)
-                    
-                    // Update project options for filters
-                    const uniqueProjects = [...new Set(projectsData.map(p => p.projectName))].map(name => ({
-                        value: name,
-                        label: name,
-                    }))
-                    setProjectOptions(uniqueProjects)
                 } else {
                     setError('No projects found.')
                 }
@@ -433,95 +477,116 @@ const ProjectProfitability = () => {
 
     // All test functions and Procore connection handlers removed - no longer needed with Azure SQL
 
-    // Filter projects
+    // Filter projects (then apply sort)
     const filteredProjects = useMemo(() => {
-        const { search, project, projectStage, projectSystem, projectManager, isActive } = filters
-        
-        return projects
-            .filter((proj) => {
-                if (search) {
-                    const term = search.toLowerCase()
-                    const hay = `${proj.projectNumber || ''} ${proj.projectName || ''} ${proj.projectManager || ''}`.toLowerCase()
-                    if (!hay.includes(term)) return false
-                }
-                
-                if (project) {
-                    if (Array.isArray(project)) {
-                        if (project.length > 0 && !project.some(p => p.value === proj.projectName)) return false
-                    } else if (project.value) {
-                        if (proj.projectName !== project.value) return false
-                    }
-                }
-                
-                if (projectStage) {
-                    if (Array.isArray(projectStage)) {
-                        if (projectStage.length > 0 && !projectStage.some(s => s.value === proj.projectStatus)) return false
-                    } else if (projectStage.value) {
-                        if (proj.projectStatus !== projectStage.value) return false
-                    }
-                }
-                
-                if (projectSystem) {
-                    if (Array.isArray(projectSystem)) {
-                        if (projectSystem.length > 0 && !projectSystem.some(s => s.value === proj.projectSystem)) return false
-                    } else if (projectSystem.value) {
-                        if (proj.projectSystem !== projectSystem.value) return false
-                    }
-                }
-                
-                if (projectManager) {
-                    if (Array.isArray(projectManager)) {
-                        if (projectManager.length > 0 && !projectManager.some(pm => pm.value === proj.projectManager)) return false
-                    } else if (projectManager.value) {
-                        if (proj.projectManager !== projectManager.value) return false
-                    }
-                }
-                
-                if (isActive !== null && isActive !== undefined) {
-                    const projIsActive = proj.isActive === true || proj.isActive === 1 || proj.isActive === 'true' || proj.isActive === '1'
-                    
-                    if (Array.isArray(isActive)) {
-                        if (isActive.length > 0) {
-                            const activeValues = isActive.map(opt => opt.value)
-                            const matches = activeValues.some(val => {
-                                if (val === true || val === 'true' || val === 1 || val === '1') {
-                                    return projIsActive
-                                }
-                                if (val === false || val === 'false' || val === 0 || val === '0') {
-                                    return !projIsActive
-                                }
-                                return false
-                            })
-                            if (!matches) return false
-                        }
-                    } else if (isActive.value !== undefined) {
-                        const val = isActive.value
-                        if (val === true || val === 'true' || val === 1 || val === '1') {
-                            if (!projIsActive) return false
-                        } else if (val === false || val === 'false' || val === 0 || val === '0') {
-                            if (projIsActive) return false
-                        }
-                    }
-                }
-                
-                return true
-            })
-            .sort((a, b) => {
-                const { key, order } = sort
-                if (!key || !order) return 0
-                const dir = order === 'asc' ? 1 : -1
-                const av = a[key]
-                const bv = b[key]
-                if (av === bv) return 0
-                return av > bv ? dir : -dir
-            })
+        const baseFiltered = applyProjectFilters(projects, filters)
+
+        return baseFiltered.sort((a, b) => {
+            const { key, order } = sort
+            if (!key || !order) return 0
+            const dir = order === 'asc' ? 1 : -1
+            const av = a[key]
+            const bv = b[key]
+            if (av === bv) return 0
+            return av > bv ? dir : -dir
+        })
     }, [projects, filters, sort])
 
+    // Dynamic filter option datasets (each ignores its own filter but respects the others)
+    const projectsForProjectOptions = useMemo(
+        () => applyProjectFilters(projects, { ...filters, project: null }),
+        [projects, filters]
+    )
+    const projectsForProjectStageOptions = useMemo(
+        () => applyProjectFilters(projects, { ...filters, projectStage: null }),
+        [projects, filters]
+    )
+    const projectsForProjectSystemOptions = useMemo(
+        () => applyProjectFilters(projects, { ...filters, projectSystem: null }),
+        [projects, filters]
+    )
+    const projectsForProjectManagerOptions = useMemo(
+        () => applyProjectFilters(projects, { ...filters, projectManager: null }),
+        [projects, filters]
+    )
+    const projectsForIsActiveOptions = useMemo(
+        () => applyProjectFilters(projects, { ...filters, isActive: null }),
+        [projects, filters]
+    )
+
+    // Dynamic filter options built from the current dataset
+    const projectOptions = useMemo(() => {
+        const names = new Set()
+        projectsForProjectOptions.forEach(p => {
+            if (p.projectName) {
+                names.add(p.projectName)
+            }
+        })
+        return Array.from(names)
+            .sort((a, b) => a.localeCompare(b))
+            .map(name => ({ value: name, label: name }))
+    }, [projectsForProjectOptions])
+
+    const projectStageOptions = useMemo(() => {
+        const stages = new Set()
+        projectsForProjectStageOptions.forEach(p => {
+            if (p.projectStatus) {
+                stages.add(p.projectStatus)
+            }
+        })
+        return Array.from(stages)
+            .sort((a, b) => a.localeCompare(b))
+            .map(stage => ({ value: stage, label: stage }))
+    }, [projectsForProjectStageOptions])
+
+    const projectSystemOptions = useMemo(() => {
+        const systems = new Set()
+        projectsForProjectSystemOptions.forEach(p => {
+            if (p.projectSystem) {
+                systems.add(p.projectSystem)
+            }
+        })
+        return Array.from(systems)
+            .sort((a, b) => a.localeCompare(b))
+            .map(system => ({ value: system, label: system }))
+    }, [projectsForProjectSystemOptions])
+
+    const projectManagerOptions = useMemo(() => {
+        const managers = new Set()
+        projectsForProjectManagerOptions.forEach(p => {
+            if (p.projectManager) {
+                managers.add(p.projectManager)
+            }
+        })
+        return Array.from(managers)
+            .sort((a, b) => a.localeCompare(b))
+            .map(manager => ({ value: manager, label: manager }))
+    }, [projectsForProjectManagerOptions])
+
+    const isActiveOptions = useMemo(() => {
+        let hasActive = false
+        let hasInactive = false
+        projectsForIsActiveOptions.forEach(p => {
+            if (isProjectActive(p)) {
+                hasActive = true
+            } else {
+                hasInactive = true
+            }
+        })
+        const opts = []
+        if (hasActive) {
+            opts.push({ value: true, label: 'Yes' })
+        }
+        if (hasInactive) {
+            opts.push({ value: false, label: 'No' })
+        }
+        return opts
+    }, [projectsForIsActiveOptions])
+
     // Calculate summary values
-    // Note: Using all projects (not filtered) to match Power BI totals
-    // Power BI shows totals for all projects regardless of filters
+    // Now based on the currently filtered projects (so KPIs react to filters)
     const summaryValues = useMemo(() => {
-        return projects.reduce(
+        return filteredProjects.reduce(
             (acc, proj) => {
                 acc.totalContractValue += proj.totalContractValue || 0
                 acc.totalProjectedProfit += proj.currentProjectedProfit || 0
@@ -530,7 +595,7 @@ const ProjectProfitability = () => {
             },
             { totalContractValue: 0, totalProjectedProfit: 0, jobToDateCost: 0 }
         )
-    }, [projects])
+    }, [filteredProjects])
 
     const formatCurrency = (value) => {
         if (!value && value !== 0) return '-'

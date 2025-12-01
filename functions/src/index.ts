@@ -2602,7 +2602,7 @@ export const azureSqlGetAllProjectsProfitability = functions
                         projectName: row.ProjectName || 'Unknown Project',
                         projectNumber: row.ProjectNumber?.toString() || '',
                         projectManager: row.ProjectManager || '',
-                        projectSystem: 'Procore', // Data comes from Procore via database
+                        projectSystem: (row.RedTeamImport === 1 || row.RedTeamImport === true) ? 'Red Team' : 'Procore',
                         projectStatus: row.ProjectStage || row.ContractStatus || 'Active',
                         
                         // Financial fields - directly from database (matches Power BI)
