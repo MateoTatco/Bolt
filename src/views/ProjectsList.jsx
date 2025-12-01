@@ -1,10 +1,10 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip, Dialog, DatePicker, Checkbox, Dropdown } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useProjectsStore } from '@/store/projectsStore'
 import ProjectsBulkDataManager from '@/components/ProjectsBulkDataManager'
-import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus, HiOutlineDotsHorizontal } from 'react-icons/hi'
+import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus, HiOutlineDotsHorizontal, HiOutlineRefresh } from 'react-icons/hi'
 import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { components } from 'react-select'
@@ -255,6 +255,7 @@ const ProjectsList = () => {
     const deleteProject = useProjectsStore((s) => s.deleteProject)
     const bulkDeleteProjects = useProjectsStore((s) => s.bulkDeleteProjects)
     const addProject = useProjectsStore((s) => s.addProject)
+    const syncAllFromProcore = useProjectsStore((s) => s.syncAllFromProcore)
     
     // Z-index fix for Select dropdowns to appear above sticky headers
     const selectZIndexStyles = {
@@ -278,6 +279,19 @@ const ProjectsList = () => {
     
     // Local search state for immediate UI updates
     const [localSearchValue, setLocalSearchValue] = useState('')
+    
+    // Optimized search handler with useCallback to prevent re-renders
+    const handleSearchChange = useCallback((e) => {
+        const value = e.target.value
+        // Update UI immediately for responsive feel
+        setLocalSearchValue(value)
+        // Debounce the actual filter update
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+        searchDebounceRef.current = setTimeout(() => {
+            setPageIndex(1)
+            setFilters({ search: value })
+        }, 150)
+    }, [setFilters])
     
     // Column visibility & order persistence
     const defaultProjectKeys = [
@@ -1043,6 +1057,21 @@ const ProjectsList = () => {
                     >
                         Bulk Import / Export
                     </Button>
+                    <Button
+                        variant="twoTone"
+                        icon={<HiOutlineRefresh />}
+                        onClick={async () => {
+                            try {
+                                await syncAllFromProcore()
+                            } catch (error) {
+                                console.error('Sync failed:', error)
+                            }
+                        }}
+                        className="w-full sm:w-auto"
+                        loading={loading}
+                    >
+                        Sync All from Procore
+                    </Button>
                 </div>
             </div>
 
@@ -1056,15 +1085,7 @@ const ProjectsList = () => {
                                 <Input
                                     placeholder="Search by Project Number, Name, City, State, PM..."
                                     value={localSearchValue}
-                                    onChange={(e) => {
-                                        const value = e.target.value
-                                        setLocalSearchValue(value)
-                                        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                                        searchDebounceRef.current = setTimeout(() => {
-                                            setPageIndex(1)
-                                            setFilters({ search: value })
-                                        }, 300)
-                                    }}
+                                    onChange={handleSearchChange}
                                 />
                             </div>
                             <Button 
@@ -1220,15 +1241,7 @@ const ProjectsList = () => {
                                 <Input
                                     placeholder="Search by Project Number, Name, City, State, PM..."
                                     value={localSearchValue}
-                                    onChange={(e) => {
-                                        const value = e.target.value
-                                        setLocalSearchValue(value)
-                                        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-                                        searchDebounceRef.current = setTimeout(() => {
-                                            setPageIndex(1)
-                                            setFilters({ search: value })
-                                        }, 300)
-                                    }}
+                                    onChange={handleSearchChange}
                                 />
                                 {filterVisibility.market && (
                                     <Select
@@ -1851,7 +1864,18 @@ const ProjectsList = () => {
                     {procoreErrorDialog.error && (
                         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
                             <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-                                <strong>Error:</strong> {procoreErrorDialog.error.message || 'Unknown Procore sync error'}
+                                <strong>Error:</strong>{' '}
+                                {(() => {
+                                    const error = procoreErrorDialog.error
+                                    if (!error) return 'Unknown Procore sync error'
+                                    if (typeof error === 'string') return error
+                                    if (error?.details) return error.details
+                                    if (error?.message) return error.message
+                                    if (error?.originalError?.details) return error.originalError.details
+                                    if (error?.originalError?.message) return error.originalError.message
+                                    if (error?.code) return `Error ${error.code}: ${error.message || 'Unknown error'}`
+                                    return 'Unknown Procore sync error'
+                                })()}
                             </p>
                             <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
                                 Please review the error details above, ensure your Procore configuration is correct, and try again.

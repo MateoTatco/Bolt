@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router'
 import { Card, Button, Input, Select, DatePicker, Alert, Tag, Dialog } from '@/components/ui'
 import { RichTextEditor } from '@/components/shared'
-import { HiOutlineArrowLeft, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog, HiOutlineUser } from 'react-icons/hi'
+import { HiOutlineArrowLeft, HiOutlineClipboardList, HiOutlinePaperClip, HiOutlineClock, HiOutlineCog, HiOutlineUser, HiOutlineRefresh } from 'react-icons/hi'
 import TasksManager from '@/components/TasksManager'
 import AttachmentsManager from '@/components/Attachments/AttachmentsManager'
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
@@ -98,6 +98,7 @@ const ProjectDetail = () => {
     const [activeTab, setActiveTab] = useState('overview')
     const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'saved' })
     const [showCancelDialog, setShowCancelDialog] = useState(false)
+    const [isSyncingFromProcore, setIsSyncingFromProcore] = useState(false)
 
     // Overview (uses Notes)
     const [overviewHtml, setOverviewHtml] = useState('')
@@ -270,6 +271,36 @@ const ProjectDetail = () => {
             })
         } catch (e) {
             console.error('Save settings failed:', e)
+        }
+    }
+
+    const handleSyncFromProcore = async () => {
+        if (!project || !project.procoreProjectId) {
+            alert('This project is not linked to Procore yet.')
+            return
+        }
+        setIsSyncingFromProcore(true)
+        try {
+            const { ProcoreService } = await import('@/services/ProcoreService')
+            const { mapProcoreToBolt } = await import('@/configs/procoreFieldMapping')
+
+            const procoreData = await ProcoreService.getProject(project.procoreProjectId)
+            const mapped = mapProcoreToBolt(procoreData?.data || procoreData)
+
+            if (!mapped || Object.keys(mapped).length === 0) {
+                alert('No mappable fields were returned from Procore for this project.')
+                return
+            }
+
+            // Procore should win: apply Procore-mapped fields over current Bolt project
+            await updateProject(project.id, mapped, { skipProcoreSync: true })
+            setAlertBanner({ visible: true, kind: 'saved' })
+            setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
+        } catch (error) {
+            console.error('Error syncing project from Procore:', error)
+            alert(error?.message || 'Failed to sync project from Procore.')
+        } finally {
+            setIsSyncingFromProcore(false)
         }
     }
 
@@ -498,7 +529,20 @@ const ProjectDetail = () => {
                                         <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
                                         <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Project Information</h2>
                                     </div>
-                                    <Button size="sm" variant="twoTone" onClick={() => setActiveTab('settings')}>Edit Information</Button>
+                                    <div className="flex items-center gap-2">
+                                        {project?.procoreProjectId && (
+                                            <Button 
+                                                size="sm" 
+                                                variant="twoTone" 
+                                                icon={<HiOutlineRefresh />}
+                                                onClick={handleSyncFromProcore}
+                                                loading={isSyncingFromProcore}
+                                            >
+                                                Sync from Procore
+                                            </Button>
+                                        )}
+                                        <Button size="sm" variant="twoTone" onClick={() => setActiveTab('settings')}>Edit Information</Button>
+                                    </div>
                                 </div>
                                 <Card>
                                     <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">

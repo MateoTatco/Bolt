@@ -138,22 +138,36 @@ export const useProjectsStore = create((set, get) => ({
                         }
                     } catch (procoreSyncError) {
                         console.error('Error syncing project to Procore:', procoreSyncError)
-                        procoreError = procoreSyncError
+                        
+                        // Extract error message from Firebase error
+                        let errorMessage = 'Unknown error'
+                        if (procoreSyncError?.message) {
+                            errorMessage = procoreSyncError.message
+                        } else if (procoreSyncError?.details) {
+                            errorMessage = procoreSyncError.details
+                        } else if (typeof procoreSyncError === 'string') {
+                            errorMessage = procoreSyncError
+                        } else if (procoreSyncError?.code) {
+                            errorMessage = `Error ${procoreSyncError.code}: ${procoreSyncError.message || 'Unknown error'}`
+                        }
+                        
+                        procoreError = new Error(errorMessage)
+                        procoreError.originalError = procoreSyncError
                         
                         // Update Firebase project with sync failure status
                         await FirebaseDbService.projects.update(newProject.id, {
                             procoreSyncStatus: 'failed',
-                            procoreSyncError: procoreSyncError.message || 'Unknown error',
+                            procoreSyncError: errorMessage,
                             procoreSyncAttemptedAt: new Date().toISOString()
                         })
                         
                         // Update local state
                         newProject.procoreSyncStatus = 'failed'
-                        newProject.procoreSyncError = procoreSyncError.message
+                        newProject.procoreSyncError = errorMessage
                         
                         // Call error callback if provided
                         if (onProcoreError) {
-                            onProcoreError(procoreSyncError, newProject)
+                            onProcoreError(procoreError, newProject)
                         }
                     }
                 }
@@ -206,7 +220,7 @@ export const useProjectsStore = create((set, get) => ({
 
     // Update project
     updateProject: async (id, projectData, options = {}) => {
-        const { silent = false } = options
+        const { silent = false, skipProcoreSync = false } = options
         set({ loading: true, error: null })
         try {
             // Get original project for comparison
@@ -277,6 +291,59 @@ export const useProjectsStore = create((set, get) => ({
                         ),
                     )
                 }
+
+                // Sync updates to Procore (Bolt -> Procore) when applicable
+                // NOTE: Bulk import uses FirebaseDbService directly and never calls updateProject,
+                // so bulk imports will NOT create or update projects in Procore.
+                if (!skipProcoreSync) {
+                    try {
+                        // Only attempt sync if this project is linked to Procore or has a ProjectNumber
+                        const effectiveOriginal = originalProject || {}
+                        const effectiveUpdated = { ...effectiveOriginal, ...projectData }
+
+                        const { buildProcoreSyncUpdate } = await import('@/configs/procoreFieldMapping')
+                        const { ProcoreService } = await import('@/services/ProcoreService')
+
+                        const syncUpdate = buildProcoreSyncUpdate(effectiveOriginal, effectiveUpdated)
+
+                        if (syncUpdate) {
+                            // Use direct PATCH endpoint if we have procoreProjectId (more reliable)
+                            // Otherwise fall back to Sync endpoint with origin_id
+                            if (effectiveUpdated.procoreProjectId) {
+                                // Extract project data (without id/origin_id) for PATCH endpoint
+                                const { id, origin_id, ...projectData } = syncUpdate
+                                
+                                // Fire-and-forget style; we don't want to block the UI on Procore sync
+                                ProcoreService.updateProject(effectiveUpdated.procoreProjectId, projectData)
+                                    .then((result) => {
+                                        console.log('Procore update successful for project:', {
+                                            projectId: id,
+                                            procoreProjectId: effectiveUpdated.procoreProjectId,
+                                            procoreResult: result,
+                                        })
+                                    })
+                                    .catch((syncError) => {
+                                        console.error('Error updating project in Procore:', syncError)
+                                    })
+                            } else {
+                                // Fallback to Sync endpoint for projects without procoreProjectId
+                                ProcoreService.syncProjects([syncUpdate])
+                                    .then((result) => {
+                                        console.log('Procore sync successful for project update:', {
+                                            projectId: id,
+                                            procoreResult: result,
+                                        })
+                                    })
+                                    .catch((syncError) => {
+                                        console.error('Error syncing updated project to Procore:', syncError)
+                                    })
+                            }
+                        }
+                    } catch (syncSetupError) {
+                        console.error('Error preparing Procore sync payload for project update:', syncSetupError)
+                    }
+                }
+
                 return updatedProject
             } else {
                 throw new Error(response.error)
@@ -438,9 +505,12 @@ export const useProjectsStore = create((set, get) => ({
     },
 
     // Import data
+    // NOTE: Bulk import does NOT create projects in Procore - only individual project creation (addProject) syncs to Procore
+    // This is intentional to prevent bulk imports from creating hundreds of projects in Procore
     importData: async (data, options = {}) => {
         set({ loading: true, error: null })
         try {
+            // Bulk import only saves to Firebase - NO Procore sync
             const response = await FirebaseDbService.projects.importData(data, options)
             if (response.success) {
                 // Reload projects after import
@@ -474,6 +544,53 @@ export const useProjectsStore = create((set, get) => ({
     // Bulk delete all
     bulkDelete: async (ids) => {
         return get().bulkDeleteProjects(ids)
+    },
+
+    // Sync all projects from Procore to Bolt
+    syncAllFromProcore: async () => {
+        set({ loading: true, error: null })
+        try {
+            const { ProcoreService } = await import('@/services/ProcoreService')
+            const result = await ProcoreService.syncAllProjectsToBolt()
+            
+            // Reload projects after sync
+            await get().loadProjects()
+            
+            set({ loading: false })
+            const errorMessage = result.errorDetails 
+                ? ` ${result.errorCount} error(s): ${result.errorDetails}`
+                : result.errorCount > 0 
+                    ? ` ${result.errorCount} error(s). Check console for details.`
+                    : ''
+            
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { 
+                        type: result.errorCount > 0 ? 'warning' : 'success', 
+                        duration: result.errorCount > 0 ? 5000 : 3000, 
+                        title: 'Sync Complete' 
+                    },
+                    `Synced ${result.syncedCount || 0} project(s) from Procore.${errorMessage}`,
+                ),
+            )
+            
+            // Log errors to console for debugging
+            if (result.errorCount > 0 && result.errors) {
+                console.error('Sync errors:', result.errors)
+            }
+            return result
+        } catch (error) {
+            set({ error: error.message, loading: false })
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2500, title: 'Error' },
+                    `Failed to sync projects from Procore: ${error.message || 'Unknown error'}`,
+                ),
+            )
+            throw error
+        }
     },
 }))
 

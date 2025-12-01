@@ -995,11 +995,712 @@ export const procoreCreateProject = functions
                 }
             }
             
+            // Build a detailed error message
+            let errorMessage = 'Failed to create project in Procore';
+            
+            if (errorData) {
+                // Try to extract meaningful error messages
+                if (errorData.errors && typeof errorData.errors === 'object') {
+                    const errorMessages = Object.entries(errorData.errors)
+                        .map(([key, value]) => {
+                            if (Array.isArray(value)) {
+                                return `${key}: ${value.join(', ')}`;
+                            }
+                            return `${key}: ${value}`;
+                        })
+                        .join('; ');
+                    if (errorMessages) errorMessage = errorMessages;
+                } else if (errorData.error_description) {
+                    errorMessage = errorData.error_description;
+                } else if (errorData.message) {
+                    errorMessage = errorData.message;
+                } else if (typeof errorData === 'string') {
+                    errorMessage = errorData;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            // Add status code if available
+            if (errorStatus) {
+                errorMessage = `[HTTP ${errorStatus}] ${errorMessage}`;
+            }
+            
+            console.error('Final error message:', errorMessage);
+            
             // Return error details for frontend handling
             throw new functions.https.HttpsError(
                 'internal',
-                errorData?.errors || errorData?.error_description || errorData?.message || error.message || 'Failed to create project in Procore'
+                errorMessage
             );
+        }
+    });
+
+// Update a single project in Procore via PATCH /rest/v1.0/projects/{id}
+// This is more reliable than the Sync endpoint when we have a procoreProjectId
+export const procoreUpdateProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+
+        const { projectId, projectData } = data as { projectId: number | string; projectData: any };
+        if (!projectId) {
+            throw new functions.https.HttpsError('invalid-argument', 'projectId is required');
+        }
+        if (!projectData || typeof projectData !== 'object') {
+            throw new functions.https.HttpsError('invalid-argument', 'projectData is required');
+        }
+
+        const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectId}`;
+        const companyId = Number(PROCORE_CONFIG.companyId);
+
+        // Structure per Procore API: { company_id, project: { ... } }
+        const payload = {
+            company_id: companyId,
+            project: projectData,
+        };
+
+        try {
+            console.log(`Updating project ${projectId} in Procore via PATCH /projects/{id}`);
+            console.log('Payload:', JSON.stringify(payload, null, 2));
+
+            let response = await axios.patch(
+                apiUrl,
+                payload,
+                {
+                    params: {
+                        run_configurable_validations: false,
+                    },
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            // Handle 401 with a single retry after token refresh
+            if (response.status === 401) {
+                console.log('Got 401 on update, attempting to refresh token...');
+                const refreshedToken = await getProcoreAccessToken(userId);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    console.log('Token refreshed, retrying PATCH /projects/{id} request...');
+                    response = await axios.patch(
+                        apiUrl,
+                        payload,
+                        {
+                            params: {
+                                run_configurable_validations: false,
+                            },
+                            headers: {
+                                'Authorization': `Bearer ${refreshedToken}`,
+                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+                }
+            }
+
+            console.log('Project updated successfully. Status:', response.status);
+            return {
+                success: true,
+                data: response.data,
+            };
+        } catch (error: any) {
+            const attemptedUrl = error.config?.url || apiUrl;
+            const errorStatus = error.response?.status;
+            const errorData = error.response?.data;
+
+            console.error('Error updating project in Procore:', {
+                message: error.message,
+                status: errorStatus,
+                statusText: error.response?.statusText,
+                url: attemptedUrl,
+                responseData: errorData,
+            });
+
+            // Build detailed error message
+            let errorMessage = 'Failed to update project';
+            
+            if (errorData) {
+                // Try to extract meaningful error messages
+                if (errorData.errors && typeof errorData.errors === 'object') {
+                    const errorMessages = Object.entries(errorData.errors)
+                        .map(([key, value]) => {
+                            if (Array.isArray(value)) {
+                                return `${key}: ${value.join(', ')}`;
+                            }
+                            return `${key}: ${value}`;
+                        })
+                        .join('; ');
+                    if (errorMessages) errorMessage = errorMessages;
+                } else if (errorData.error_description) {
+                    errorMessage = errorData.error_description;
+                } else if (errorData.message) {
+                    errorMessage = errorData.message;
+                } else if (typeof errorData === 'string') {
+                    errorMessage = errorData;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            // Add status code if available
+            if (errorStatus) {
+                errorMessage = `[HTTP ${errorStatus}] ${errorMessage}`;
+            }
+            
+            console.error('Final update error message:', errorMessage);
+
+            throw new functions.https.HttpsError(
+                'internal',
+                errorMessage
+            );
+        }
+    });
+
+// Sync (create/update) projects in Procore via /rest/v1.0/projects/sync
+// Used as fallback for projects without procoreProjectId (using origin_id)
+export const procoreSyncProjects = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+
+        const { updates } = data as { updates: any[] };
+        if (!Array.isArray(updates) || updates.length === 0) {
+            throw new functions.https.HttpsError('invalid-argument', 'At least one update is required');
+        }
+
+        const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/sync`;
+        const companyId = Number(PROCORE_CONFIG.companyId);
+
+        const payload = {
+            company_id: companyId,
+            updates,
+        };
+
+        try {
+            console.log('Syncing projects in Procore via /projects/sync');
+            console.log('Payload:', JSON.stringify(payload, null, 2));
+
+            let response = await axios.patch(
+                apiUrl,
+                payload,
+                {
+                    params: {
+                        company_id: companyId,
+                    },
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            // Handle 401 with a single retry after token refresh
+            if (response.status === 401) {
+                console.log('Got 401 on sync, attempting to refresh token...');
+                const refreshedToken = await getProcoreAccessToken(userId);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    console.log('Token refreshed, retrying /projects/sync request...');
+                    response = await axios.patch(
+                        apiUrl,
+                        payload,
+                        {
+                            params: {
+                                company_id: companyId,
+                            },
+                            headers: {
+                                'Authorization': `Bearer ${refreshedToken}`,
+                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+                }
+            }
+
+            console.log('Projects synced successfully. Status:', response.status);
+            return {
+                success: true,
+                data: response.data,
+            };
+        } catch (error: any) {
+            const attemptedUrl = error.config?.url || apiUrl;
+            const errorStatus = error.response?.status;
+            const errorData = error.response?.data;
+
+            console.error('Error syncing projects in Procore:', {
+                message: error.message,
+                status: errorStatus,
+                statusText: error.response?.statusText,
+                url: attemptedUrl,
+                responseData: errorData,
+            });
+
+            // Build detailed error message
+            let errorMessage = 'Failed to sync projects';
+            
+            if (errorData) {
+                // Try to extract meaningful error messages
+                if (errorData.errors && typeof errorData.errors === 'object') {
+                    const errorMessages = Object.entries(errorData.errors)
+                        .map(([key, value]) => {
+                            if (Array.isArray(value)) {
+                                return `${key}: ${value.join(', ')}`;
+                            }
+                            return `${key}: ${value}`;
+                        })
+                        .join('; ');
+                    if (errorMessages) errorMessage = errorMessages;
+                } else if (errorData.error_description) {
+                    errorMessage = errorData.error_description;
+                } else if (errorData.message) {
+                    errorMessage = errorData.message;
+                } else if (typeof errorData === 'string') {
+                    errorMessage = errorData;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            // Add status code if available
+            if (errorStatus) {
+                errorMessage = `[HTTP ${errorStatus}] ${errorMessage}`;
+            }
+            
+            console.error('Final sync error message:', errorMessage);
+
+            throw new functions.https.HttpsError(
+                'internal',
+                errorMessage
+            );
+        }
+    });
+
+// Get a single project from Procore by its Procore project ID
+export const procoreGetProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+
+        const { procoreProjectId } = data as { procoreProjectId: number | string };
+        if (!procoreProjectId) {
+            throw new functions.https.HttpsError('invalid-argument', 'procoreProjectId is required');
+        }
+
+        const projectId = Number(procoreProjectId);
+        if (Number.isNaN(projectId)) {
+            throw new functions.https.HttpsError('invalid-argument', 'procoreProjectId must be a number');
+        }
+
+        const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectId}`;
+
+        try {
+            console.log('Fetching project from Procore:', apiUrl);
+
+            let response = await axios.get(apiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                },
+            });
+
+            if (response.status === 401) {
+                console.log('Got 401 when fetching project, attempting token refresh...');
+                const refreshedToken = await getProcoreAccessToken(userId);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    console.log('Token refreshed, retrying GET project...');
+                    response = await axios.get(apiUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${refreshedToken}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                    });
+                }
+            }
+
+            console.log('Fetched project from Procore. Status:', response.status);
+            return {
+                success: true,
+                data: response.data,
+            };
+        } catch (error: any) {
+            const attemptedUrl = error.config?.url || apiUrl;
+            const errorStatus = error.response?.status;
+            const errorData = error.response?.data;
+
+            console.error('Error fetching project from Procore:', {
+                message: error.message,
+                status: errorStatus,
+                statusText: error.response?.statusText,
+                url: attemptedUrl,
+                responseData: errorData,
+            });
+
+            throw new functions.https.HttpsError(
+                'internal',
+                errorData?.errors || errorData?.error_description || errorData?.message || error.message || 'Failed to fetch project from Procore'
+            );
+        }
+    });
+
+// Sync all linked projects from Procore to Bolt
+// This function fetches all projects from Firebase that have procoreProjectId,
+// then fetches each from Procore and updates Firebase with Procore data
+export const procoreSyncAllProjectsToBolt = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540, // 9 minutes (max for HTTP functions)
+        memory: '512MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+
+        try {
+            // Get all projects from Firebase that have procoreProjectId
+            const projectsRef = admin.firestore().collection('projects');
+            const snapshot = await projectsRef
+                .where('procoreProjectId', '!=', null)
+                .get();
+
+            if (snapshot.empty) {
+                return {
+                    success: true,
+                    syncedCount: 0,
+                    message: 'No projects linked to Procore found.',
+                };
+            }
+
+            const projects = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            })) as Array<{ id: string; procoreProjectId?: number | string; ProjectName?: string; projectName?: string; [key: string]: any }>;
+
+            console.log(`Found ${projects.length} projects linked to Procore. Starting sync...`);
+
+            let syncedCount = 0;
+            let errorCount = 0;
+            const errors: Array<{ projectId: string; projectName: string; error: string }> = [];
+
+            // Process projects in batches to avoid timeout
+            const batchSize = 10;
+            for (let i = 0; i < projects.length; i += batchSize) {
+                const batch = projects.slice(i, i + batchSize);
+                
+                await Promise.all(
+                    batch.map(async (project) => {
+                        try {
+                            const procoreProjectId = project.procoreProjectId;
+                            if (!procoreProjectId) return;
+
+                            // Fetch project from Procore
+                            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${procoreProjectId}`;
+                            const response = await axios.get(apiUrl, {
+                                headers: {
+                                    'Authorization': `Bearer ${accessToken}`,
+                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                },
+                            });
+
+                            const procoreData = response.data;
+
+                            // Map Procore data to Bolt format (inline mapping)
+                            const mapped: any = {};
+                            if (procoreData.name !== undefined) mapped.ProjectName = procoreData.name || '';
+                            if (procoreData.project_number !== undefined) mapped.ProjectNumber = procoreData.project_number || '';
+                            if (procoreData.address !== undefined) mapped.address = procoreData.address || '';
+                            if (procoreData.city !== undefined) mapped.city = procoreData.city || '';
+                            if (procoreData.state_code !== undefined) mapped.State = procoreData.state_code || '';
+                            if (procoreData.zip !== undefined) mapped.zip = procoreData.zip || '';
+                            if (procoreData.start_date !== undefined) mapped.StartDate = procoreData.start_date || null;
+                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = procoreData.completion_date || null;
+                            if (procoreData.total_value !== undefined) mapped.EstimatedValue = procoreData.total_value;
+                            if (procoreData.square_feet !== undefined) mapped.SquareFeet = procoreData.square_feet;
+                            // Map project stage/status
+                            if (procoreData.project_stage?.name) {
+                                const stageMap: { [key: string]: string } = {
+                                    'Pre-Construction': 'Pre-Construction',
+                                    'Construction': 'Course of Construction',
+                                    'Complete': 'Complete',
+                                    'Warranty': 'Warranty',
+                                    'Post Construction': 'Post Construction',
+                                };
+                                mapped.ProjectStatus = stageMap[procoreData.project_stage.name] || 'Pre-Construction';
+                            } else if (procoreData.stage_name) {
+                                const stageMap: { [key: string]: string } = {
+                                    'Pre-Construction': 'Pre-Construction',
+                                    'Construction': 'Course of Construction',
+                                    'Complete': 'Complete',
+                                    'Warranty': 'Warranty',
+                                    'Post Construction': 'Post Construction',
+                                };
+                                mapped.ProjectStatus = stageMap[procoreData.stage_name] || 'Pre-Construction';
+                            }
+
+                            if (mapped && Object.keys(mapped).length > 0) {
+                                // Update Firebase project (skip Procore sync to avoid loops)
+                                await projectsRef.doc(project.id).update({
+                                    ...mapped,
+                                    procoreLastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                    procoreSyncStatus: 'synced',
+                                });
+                                syncedCount++;
+                                console.log(`Synced project ${project.id} (${project.ProjectName || project.projectName})`);
+                            }
+                        } catch (error: any) {
+                            errorCount++;
+                            const errorMsg = error?.message || error?.toString() || 'Unknown error';
+                            const projectName = project.ProjectName || project.projectName || project.id;
+                            errors.push({
+                                projectId: project.id,
+                                projectName: projectName,
+                                error: errorMsg
+                            });
+                            console.error(`Failed to sync project ${project.id} (${projectName}):`, errorMsg, error);
+
+                            // Update sync status to failed
+                            try {
+                                await projectsRef.doc(project.id).update({
+                                    procoreSyncStatus: 'failed',
+                                    procoreSyncError: error.message,
+                                    procoreSyncAttemptedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                });
+                            } catch (updateError) {
+                                console.error(`Failed to update sync status for project ${project.id}:`, updateError);
+                            }
+                        }
+                    })
+                );
+            }
+
+            return {
+                success: true,
+                syncedCount,
+                errorCount,
+                totalProjects: projects.length,
+                errors: errors.slice(0, 10), // Return first 10 errors
+                errorDetails: errors.length > 0 ? errors.map(e => `${e.projectName}: ${e.error}`).join('; ') : null
+            };
+        } catch (error: any) {
+            console.error('Error syncing all projects from Procore:', error);
+            throw new functions.https.HttpsError(
+                'internal',
+                error.message || 'Failed to sync projects from Procore'
+            );
+        }
+    });
+
+// Scheduled function to automatically sync all projects from Procore to Bolt
+// Runs every 6 hours
+export const procoreScheduledSync = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540, // 9 minutes
+        memory: '512MB',
+    })
+    .pubsub
+    .schedule('every 6 hours')
+    .onRun(async (context) => {
+        console.log('Starting scheduled Procore → Bolt sync...');
+
+        try {
+            // Get all users with Procore tokens (we'll use the first one we find)
+            const usersRef = admin.firestore().collection('users');
+            const usersSnapshot = await usersRef
+                .where('procoreAccessToken', '!=', null)
+                .limit(1)
+                .get();
+
+            if (usersSnapshot.empty) {
+                console.log('No users with Procore tokens found. Skipping scheduled sync.');
+                return null;
+            }
+
+            const userId = usersSnapshot.docs[0].id;
+
+            // Get access token for this user
+            const accessToken = await getProcoreAccessToken(userId);
+            if (!accessToken) {
+                console.log('Could not get valid Procore access token. Skipping scheduled sync.');
+                return null;
+            }
+
+            // Get all projects from Firebase that have procoreProjectId
+            const projectsRef = admin.firestore().collection('projects');
+            const snapshot = await projectsRef
+                .where('procoreProjectId', '!=', null)
+                .get();
+
+            if (snapshot.empty) {
+                console.log('No projects linked to Procore found. Scheduled sync complete.');
+                return null;
+            }
+
+            const projects = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            })) as Array<{ id: string; procoreProjectId?: number | string; [key: string]: any }>;
+
+            console.log(`Found ${projects.length} projects linked to Procore. Starting scheduled sync...`);
+
+            let syncedCount = 0;
+            let errorCount = 0;
+
+            // Process projects in batches
+            const batchSize = 10;
+            for (let i = 0; i < projects.length; i += batchSize) {
+                const batch = projects.slice(i, i + batchSize);
+                
+                await Promise.all(
+                    batch.map(async (project) => {
+                        try {
+                            const procoreProjectId = project.procoreProjectId;
+                            if (!procoreProjectId) return;
+
+                            // Fetch project from Procore
+                            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${procoreProjectId}`;
+                            const response = await axios.get(apiUrl, {
+                                headers: {
+                                    'Authorization': `Bearer ${accessToken}`,
+                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                },
+                            });
+
+                            const procoreData = response.data;
+
+                            // Map Procore data to Bolt format (inline mapping)
+                            const mapped: any = {};
+                            if (procoreData.name !== undefined) mapped.ProjectName = procoreData.name || '';
+                            if (procoreData.project_number !== undefined) mapped.ProjectNumber = procoreData.project_number || '';
+                            if (procoreData.address !== undefined) mapped.address = procoreData.address || '';
+                            if (procoreData.city !== undefined) mapped.city = procoreData.city || '';
+                            if (procoreData.state_code !== undefined) mapped.State = procoreData.state_code || '';
+                            if (procoreData.zip !== undefined) mapped.zip = procoreData.zip || '';
+                            if (procoreData.start_date !== undefined) mapped.StartDate = procoreData.start_date || null;
+                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = procoreData.completion_date || null;
+                            if (procoreData.total_value !== undefined) mapped.EstimatedValue = procoreData.total_value;
+                            if (procoreData.square_feet !== undefined) mapped.SquareFeet = procoreData.square_feet;
+                            // Map project stage/status
+                            if (procoreData.project_stage?.name) {
+                                const stageMap: { [key: string]: string } = {
+                                    'Pre-Construction': 'Pre-Construction',
+                                    'Construction': 'Course of Construction',
+                                    'Complete': 'Complete',
+                                    'Warranty': 'Warranty',
+                                    'Post Construction': 'Post Construction',
+                                };
+                                mapped.ProjectStatus = stageMap[procoreData.project_stage.name] || 'Pre-Construction';
+                            } else if (procoreData.stage_name) {
+                                const stageMap: { [key: string]: string } = {
+                                    'Pre-Construction': 'Pre-Construction',
+                                    'Construction': 'Course of Construction',
+                                    'Complete': 'Complete',
+                                    'Warranty': 'Warranty',
+                                    'Post Construction': 'Post Construction',
+                                };
+                                mapped.ProjectStatus = stageMap[procoreData.stage_name] || 'Pre-Construction';
+                            }
+
+                            if (mapped && Object.keys(mapped).length > 0) {
+                                // Update Firebase project
+                                await projectsRef.doc(project.id).update({
+                                    ...mapped,
+                                    procoreLastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                    procoreSyncStatus: 'synced',
+                                });
+                                syncedCount++;
+                            }
+                        } catch (error: any) {
+                            errorCount++;
+                            console.error(`Failed to sync project ${project.id}:`, error.message);
+
+                            // Update sync status to failed
+                            try {
+                                await projectsRef.doc(project.id).update({
+                                    procoreSyncStatus: 'failed',
+                                    procoreSyncError: error.message,
+                                    procoreSyncAttemptedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                });
+                            } catch (updateError) {
+                                console.error(`Failed to update sync status for project ${project.id}:`, updateError);
+                            }
+                        }
+                    })
+                );
+            }
+
+            console.log(`Scheduled sync complete. Synced: ${syncedCount}, Errors: ${errorCount}`);
+            return null;
+        } catch (error: any) {
+            console.error('Error in scheduled Procore sync:', error);
+            return null; // Don't throw - scheduled functions should not fail
         }
     });
 

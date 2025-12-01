@@ -802,14 +802,33 @@ export const FirebaseDbService = {
         getAll: async () => {
             try {
                 const projectsRef = collection(db, 'projects')
-                const snapshot = await getDocs(projectsRef)
+                // Order by createdAt descending (newest first)
+                const q = query(projectsRef, orderBy('createdAt', 'desc'))
+                const snapshot = await getDocs(q)
                 const projects = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }))
                 return { success: true, data: projects }
             } catch (error) {
-                return { success: false, error: error.message }
+                // If orderBy fails (e.g., no createdAt field), fall back to unsorted
+                try {
+                    const projectsRef = collection(db, 'projects')
+                    const snapshot = await getDocs(projectsRef)
+                    const projects = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }))
+                    // Sort by createdAt if available, otherwise by id
+                    projects.sort((a, b) => {
+                        const aTime = a.createdAt?.toMillis?.() || a.createdAt || 0
+                        const bTime = b.createdAt?.toMillis?.() || b.createdAt || 0
+                        return bTime - aTime // Descending (newest first)
+                    })
+                    return { success: true, data: projects }
+                } catch (fallbackError) {
+                    return { success: false, error: error.message }
+                }
             }
         },
 

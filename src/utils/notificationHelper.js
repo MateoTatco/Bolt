@@ -232,6 +232,24 @@ export async function notifyEntityUpdated({
         return { success: false, error: 'User IDs required' }
     }
 
+    // Helper to remove undefined values from object
+    const removeUndefined = (obj) => {
+        const cleaned = {}
+        Object.keys(obj).forEach(key => {
+            if (obj[key] !== undefined) {
+                if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                    const cleanedNested = removeUndefined(obj[key])
+                    if (Object.keys(cleanedNested).length > 0) {
+                        cleaned[key] = cleanedNested
+                    }
+                } else {
+                    cleaned[key] = obj[key]
+                }
+            }
+        })
+        return cleaned
+    }
+
     const notifications = await Promise.all(
         userIds.map(userId =>
             createNotification({
@@ -242,11 +260,11 @@ export async function notifyEntityUpdated({
                 entityType,
                 entityId,
                 relatedUserId: updatedBy,
-                metadata: {
+                metadata: removeUndefined({
                     entityName,
                     changes,
                     ...metadata
-                }
+                })
             })
         )
     )

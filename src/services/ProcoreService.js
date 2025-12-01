@@ -462,6 +462,89 @@ export const ProcoreService = {
             return result.data
         } catch (error) {
             console.error('Error creating project in Procore:', error)
+            
+            // Extract error message from Firebase error
+            let errorMessage = 'Unknown error'
+            if (error?.details) {
+                errorMessage = error.details
+            } else if (error?.message) {
+                errorMessage = error.message
+            } else if (typeof error === 'string') {
+                errorMessage = error
+            } else if (error?.code) {
+                errorMessage = `Error ${error.code}: ${error.message || 'Unknown error'}`
+            }
+            
+            // Create a new error with the extracted message
+            const enhancedError = new Error(errorMessage)
+            enhancedError.code = error?.code
+            enhancedError.originalError = error
+            throw enhancedError
+        }
+    },
+
+    /**
+     * Sync all linked projects from Procore to Bolt
+     * @returns {Promise<Object>} Sync result with counts and errors
+     */
+    async syncAllProjectsToBolt() {
+        try {
+            const syncAllFunction = httpsCallable(functions, 'procoreSyncAllProjectsToBolt')
+            const result = await syncAllFunction()
+            return result.data
+        } catch (error) {
+            console.error('Error syncing all projects from Procore:', error)
+            throw error
+        }
+    },
+
+    /**
+     * Update a single project in Procore using PATCH /rest/v1.0/projects/{id}
+     * This is the preferred method when we have a procoreProjectId
+     * @param {number|string} projectId - Procore project ID
+     * @param {Object} projectData - Project data to update (in Procore format)
+     * @returns {Promise<Object>} Result from Procore update endpoint
+     */
+    async updateProject(projectId, projectData) {
+        try {
+            const updateFunction = httpsCallable(functions, 'procoreUpdateProject')
+            const result = await updateFunction({ projectId, projectData })
+            return result.data
+        } catch (error) {
+            console.error('Error updating project in Procore:', error)
+            throw error
+        }
+    },
+
+    /**
+     * Sync (create/update) projects in Procore using the /projects/sync endpoint
+     * Used as fallback for projects without procoreProjectId (using origin_id)
+     * @param {Array<Object>} updates - Array of project sync payloads (id/origin_id + changed fields)
+     * @returns {Promise<Object>} Result from Procore sync endpoint
+     */
+    async syncProjects(updates) {
+        try {
+            const syncFunction = httpsCallable(functions, 'procoreSyncProjects')
+            const result = await syncFunction({ updates })
+            return result.data
+        } catch (error) {
+            console.error('Error syncing projects in Procore:', error)
+            throw error
+        }
+    },
+
+    /**
+     * Get a single project from Procore by its Procore project ID
+     * @param {number|string} procoreProjectId - Procore project ID
+     * @returns {Promise<Object>} Project data from Procore
+     */
+    async getProject(procoreProjectId) {
+        try {
+            const getProjectFunction = httpsCallable(functions, 'procoreGetProject')
+            const result = await getProjectFunction({ procoreProjectId })
+            return result.data
+        } catch (error) {
+            console.error('Error getting project from Procore:', error)
             throw error
         }
     },
