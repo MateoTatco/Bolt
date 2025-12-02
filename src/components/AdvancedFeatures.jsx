@@ -20,6 +20,7 @@ const AdvancedFeatures = () => {
 
     const [showHistory, setShowHistory] = useState(false)
     const [showConflicts, setShowConflicts] = useState(false)
+    const [showDevTools, setShowDevTools] = useState(false)
 
     // Online/Offline detection
     useEffect(() => {
@@ -58,8 +59,84 @@ const AdvancedFeatures = () => {
         }
     }
 
+    const handleShowTatcoContact = () => {
+        try {
+            // Get current type from localStorage or default to 'lead'
+            const currentType = localStorage.getItem('crmCurrentType') || 'lead'
+            const storageSuffix = currentType === 'client' ? 'client' : 'lead'
+            
+            // Get current visible columns
+            const rawVisible = localStorage.getItem(`crmVisibleColumns_${storageSuffix}`)
+            const visibleColumns = rawVisible ? JSON.parse(rawVisible) : {}
+            
+            // Force visibility
+            visibleColumns.tatcoContact = true
+            localStorage.setItem(`crmVisibleColumns_${storageSuffix}`, JSON.stringify(visibleColumns))
+            
+            // Get current column order
+            const rawOrder = localStorage.getItem(`crmColumnOrder_${storageSuffix}`)
+            const columnOrder = rawOrder ? JSON.parse(rawOrder) : []
+            
+            // Force column order
+            if (!columnOrder.includes('tatcoContact')) {
+                const newOrder = [...columnOrder]
+                const leadContactIndex = newOrder.indexOf('leadContact')
+                if (leadContactIndex !== -1) {
+                    newOrder.splice(leadContactIndex + 1, 0, 'tatcoContact')
+                } else {
+                    newOrder.unshift('tatcoContact')
+                }
+                localStorage.setItem(`crmColumnOrder_${storageSuffix}`, JSON.stringify(newOrder))
+            }
+            
+            // Dispatch event to notify Home.jsx to refresh
+            window.dispatchEvent(new CustomEvent('crmColumnsUpdated'))
+            
+            // Optionally reload the page to see changes immediately
+            if (window.location.pathname === '/home') {
+                window.location.reload()
+            }
+        } catch (error) {
+            console.error('Error updating Tatco Contact column:', error)
+        }
+    }
+
     return (
         <div className="space-y-4">
+            {/* Dev Tools Buttons */}
+            <div className="flex justify-end gap-2 mb-4">
+                <Button 
+                    onClick={() => setShowDevTools(!showDevTools)}
+                    variant="twoTone"
+                    size="sm"
+                    className="text-xs"
+                >
+                    {showDevTools ? 'Hide Dev Tools' : 'Dev Only'}
+                </Button>
+                <Button 
+                    onClick={handleShowTatcoContact}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                >
+                    Show Tatco Contact
+                </Button>
+            </div>
+
+            {/* Development Tools - Hidden by default */}
+            {showDevTools && (
+                <Card className="p-4">
+                    <h3 className="text-lg font-semibold mb-4">Column Debug Info</h3>
+                    <div className="space-y-2">
+                        <p><strong>Current Type:</strong> {localStorage.getItem('crmCurrentType') || 'lead'}</p>
+                        <p><strong>Column Order (Lead):</strong> {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}</p>
+                        <p><strong>Visible Columns (Lead):</strong> {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}</p>
+                        <p><strong>Column Order (Client):</strong> {localStorage.getItem('crmColumnOrder_client') || 'Not set'}</p>
+                        <p><strong>Visible Columns (Client):</strong> {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}</p>
+                    </div>
+                </Card>
+            )}
+
             {/* Status Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="p-4">

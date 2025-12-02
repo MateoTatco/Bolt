@@ -5,8 +5,6 @@ import DataTable from '@/components/shared/DataTable'
 import { useCrmStore } from '@/store/crmStore'
 import { leadStatusOptions, methodOfContactOptions, projectMarketOptions } from '@/mock/data/leadsData'
 import { HiOutlineStar, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineUpload, HiOutlinePlus, HiOutlineDotsHorizontal } from 'react-icons/hi'
-import FirebaseTest from '@/components/FirebaseTest'
-import FirebaseAdvancedTest from '@/components/FirebaseAdvancedTest'
 import BulkDataManager from '@/components/BulkDataManager'
 import { migrateMarketOptions, resetAndMigrateLeads } from '@/utils/migrateMarketOptions'
 import { removeClientNumberFromClients, resetAndMigrateClients } from '@/utils/removeClientNumber'
@@ -1002,10 +1000,6 @@ const Home = () => {
         const finalCols = ordered.filter((c) => {
             const key = c.meta?.key || c.accessorKey || c.id
             const isVisible = visibleColumns[key] !== false
-            // Debug log for tatcoContact column
-            if (key === 'tatcoContact') {
-                console.log('Tatco Contact column visibility:', { key, isVisible, visibleColumns: visibleColumns[key] })
-            }
             return isVisible
         })
         return finalCols
@@ -1027,7 +1021,6 @@ const Home = () => {
     const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false)
     const [createType, setCreateType] = useState('') // 'lead' or 'client'
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
-    const [showDevTools, setShowDevTools] = useState(false)
     
     // Multi-step wizard state
     const [wizardStep, setWizardStep] = useState(1)
@@ -1341,194 +1334,12 @@ const Home = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Dev Only Toggle Button */}
-            <div className="flex justify-end gap-2">
-                <Button 
-                    onClick={() => setShowDevTools(!showDevTools)}
-                    variant="twoTone"
-                    size="sm"
-                    className="text-xs"
-                >
-                    {showDevTools ? 'Hide Dev Tools' : 'Dev Only'}
-                </Button>
-                <Button 
-                    onClick={() => {
-                        // Force visibility
-                        setVisibleColumns(prev => ({ ...prev, tatcoContact: true }))
-                        
-                        // Force column order
-                        setColumnOrder(prev => {
-                            if (!prev.includes('tatcoContact')) {
-                                const newOrder = [...prev]
-                                const leadContactIndex = newOrder.indexOf('leadContact')
-                                if (leadContactIndex !== -1) {
-                                    newOrder.splice(leadContactIndex + 1, 0, 'tatcoContact')
-                                } else {
-                                    newOrder.unshift('tatcoContact')
-                                }
-                                return newOrder
-                            }
-                            return prev
-                        })
-                        
-                        console.log('Forced Tatco Contact column to be visible and in order')
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                >
-                    Show Tatco Contact
-                </Button>
-            </div>
-
-            {/* Development Tools - Hidden by default */}
-            {showDevTools && (
-                <>
-                    {/* Column Debug Info */}
-                    <Card className="p-4">
-                        <h3 className="text-lg font-semibold mb-4">Column Debug Info</h3>
-                        <div className="space-y-2">
-                            <p><strong>Current Type:</strong> {(filters.type && filters.type.value) || 'lead'}</p>
-                            <p><strong>Column Order:</strong> {JSON.stringify(columnOrder)}</p>
-                            <p><strong>Visible Columns:</strong> {JSON.stringify(visibleColumns)}</p>
-                            <p><strong>Tatco Contact Visible:</strong> {String(visibleColumns.tatcoContact !== false)}</p>
-                            <p><strong>Total Columns:</strong> {orderedAndVisibleColumns.length}</p>
-                        </div>
-                        <div className="mt-4">
-                            <Button 
-                                onClick={() => {
-                                    // Clear localStorage and reset to defaults
-                                    const currentType = (filters.type && filters.type.value) || 'lead'
-                                    const storageSuffix = currentType === 'client' ? 'client' : 'lead'
-                                    
-                                    localStorage.removeItem(`crmColumnOrder_${storageSuffix}`)
-                                    localStorage.removeItem(`crmVisibleColumns_${storageSuffix}`)
-                                    
-                                    // Reset to default order with tatcoContact
-                                    const defaultOrder = [
-                                        'companyName',
-                                        'leadContact',
-                                        'tatcoContact',
-                                        'email',
-                                        'phone',
-                                        'methodOfContact',
-                                        'projectMarket',
-                                        'dateLastContacted',
-                                        'status',
-                                        'responded',
-                                        'actions',
-                                    ]
-                                    setColumnOrder(defaultOrder)
-                                    
-                                    // Reset visibility
-                                    const defaultVisible = defaultOrder.reduce((acc, key) => ({ ...acc, [key]: true }), {})
-                                    setVisibleColumns(defaultVisible)
-                                    
-                                    console.log('Reset column order and visibility to defaults')
-                                }}
-                                variant="solid"
-                                size="sm"
-                                className="bg-red-600 hover:bg-red-700"
-                            >
-                                Reset Column Order
-                            </Button>
-                        </div>
-                    </Card>
-                    
-                    {/* Firebase Test Component - Remove this after testing */}
-                    <FirebaseTest />
-                    
-                    {/* Market Options Migration */}
-                    <Card className="p-4">
-                        <h3 className="text-lg font-semibold mb-4">Market Options Migration</h3>
-                        <div className="flex gap-2">
-                            <Button 
-                                onClick={async () => {
-                                    const result = await migrateMarketOptions()
-                                    console.log('Migration result:', result)
-                                    alert(`Migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
-                                }}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                Migrate Existing Leads
-                            </Button>
-                            <Button 
-                                onClick={async () => {
-                                    if (confirm('This will delete all existing leads and re-import with new market options. Continue?')) {
-                                        const result = await resetAndMigrateLeads()
-                                        console.log('Reset and migration result:', result)
-                                        alert(`Reset and migration completed! Imported: ${result.imported} leads`)
-                                    }
-                                }}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                Reset & Re-import Leads
-                            </Button>
-                        </div>
-                    </Card>
-                    
-                    {/* Firebase Advanced Test Component - Remove this after testing */}
-                    <FirebaseAdvancedTest />
-                    
-                    {/* Client Number Removal Migration */}
-                    <Card className="p-4">
-                        <h3 className="text-lg font-semibold mb-4">Remove Client Number Field</h3>
-                        <div className="flex gap-2">
-                            <Button 
-                                onClick={async () => {
-                                    const result = await removeClientNumberFromClients()
-                                    console.log('Client number removal result:', result)
-                                    alert(`Client number removal completed! Updated: ${result.updated}, Skipped: ${result.skipped}`)
-                                }}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                Remove Client Number from Existing Clients
-                            </Button>
-                            <Button 
-                                onClick={async () => {
-                                    if (confirm('This will delete all existing clients and re-import without clientNumber field. Continue?')) {
-                                        const result = await resetAndMigrateClients()
-                                        console.log('Reset and migration result:', result)
-                                        alert(`Reset and migration completed! Imported: ${result.imported} clients`)
-                                    }
-                                }}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                Reset & Re-import Clients (No Client Number)
-                            </Button>
-                        </div>
-                    </Card>
-                </>
-            )}
-            
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
                 <h1 className="text-2xl font-bold">CRM</h1>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <Button
-                        variant="twoTone"
-                        icon={<HiOutlinePlus />}
-                        onClick={handleCreateClick}
-                        className="w-full sm:w-auto"
-                    >
-                        Create
-                    </Button>
-                    <Button
-                        variant="solid"
-                        icon={<HiOutlineUpload />}
-                        onClick={() => setIsBulkManagerOpen(true)}
-                        className="w-full sm:w-auto"
-                    >
-                        Bulk Import / Export
-                    </Button>
-                </div>
             </div>
 
             {/* Top entity toggle - above the dashboard/table */}
-            <div className="flex items-center justify-start -mt-2">
+            <div className="flex items-center justify-between gap-3 -mt-2">
                 <div className="inline-flex items-center rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/60 backdrop-blur px-1 shadow-sm">
                     <Button
                         size="sm"
@@ -1567,6 +1378,24 @@ const Home = () => {
                             <span>🏢</span>
                             <span className="font-medium">Clients</span>
                         </span>
+                    </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="twoTone"
+                        icon={<HiOutlinePlus />}
+                        onClick={handleCreateClick}
+                        size="sm"
+                    >
+                        Create
+                    </Button>
+                    <Button
+                        variant="solid"
+                        icon={<HiOutlineUpload />}
+                        onClick={() => setIsBulkManagerOpen(true)}
+                        size="sm"
+                    >
+                        Bulk Import / Export
                     </Button>
                 </div>
             </div>

@@ -2,8 +2,6 @@ import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
-// Import testing guide for development
-import './utils/firebaseTestingGuide'
 import { auth } from '@/configs/firebase.config'
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 

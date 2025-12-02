@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { FormItem, Form } from '@/components/ui/Form'
@@ -27,13 +27,22 @@ const SignInForm = (props) => {
         handleSubmit,
         formState: { errors },
         control,
+        reset,
     } = useForm({
         defaultValues: {
-            email: 'admin-01@tatco.construction',
-            password: '123Qwe',
+            email: '',
+            password: '',
         },
         resolver: zodResolver(validationSchema),
     })
+
+    // Reset form to empty values on mount to ensure clean state
+    useEffect(() => {
+        reset({
+            email: '',
+            password: '',
+        })
+    }, [reset])
 
     const { signIn } = useAuth()
 
@@ -67,9 +76,11 @@ const SignInForm = (props) => {
                         render={({ field }) => (
                             <Input
                                 type="email"
-                                placeholder="Email"
-                                autoComplete="off"
-                                {...field}
+                                placeholder="email"
+                                autoComplete="email"
+                                value={field.value || ''}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
                             />
                         )}
                     />
@@ -90,9 +101,11 @@ const SignInForm = (props) => {
                         render={({ field }) => (
                             <PasswordInput
                                 type="text"
-                                placeholder="Password"
-                                autoComplete="off"
-                                {...field}
+                                placeholder="password"
+                                autoComplete="current-password"
+                                value={field.value || ''}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
                             />
                         )}
                     />
