@@ -1353,6 +1353,9 @@ export const procoreGetProject = functions
             console.log('Fetching project from Procore:', apiUrl);
 
             let response = await axios.get(apiUrl, {
+                params: {
+                    company_id: PROCORE_CONFIG.companyId,
+                },
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Procore-Company-Id': PROCORE_CONFIG.companyId,
@@ -1365,6 +1368,9 @@ export const procoreGetProject = functions
                 if (refreshedToken && refreshedToken !== accessToken) {
                     console.log('Token refreshed, retrying GET project...');
                     response = await axios.get(apiUrl, {
+                        params: {
+                            company_id: PROCORE_CONFIG.companyId,
+                        },
                         headers: {
                             'Authorization': `Bearer ${refreshedToken}`,
                             'Procore-Company-Id': PROCORE_CONFIG.companyId,
@@ -1456,33 +1462,152 @@ export const procoreSyncAllProjectsToBolt = functions
                 
                 await Promise.all(
                     batch.map(async (project) => {
+                        let apiUrl = ''; // Declare outside try block for error logging
                         try {
                             const procoreProjectId = project.procoreProjectId;
                             if (!procoreProjectId) return;
 
-                            // Fetch project from Procore
-                            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${procoreProjectId}`;
-                            const response = await axios.get(apiUrl, {
-                                headers: {
-                                    'Authorization': `Bearer ${accessToken}`,
-                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                },
-                            });
+                            // Ensure project ID is a number (Procore API requires integer)
+                            const projectIdNum = Number(procoreProjectId);
+                            if (Number.isNaN(projectIdNum)) {
+                                throw new Error(`Invalid Procore project ID: ${procoreProjectId} (must be a number)`);
+                            }
+
+                            // Try v2.0 endpoint first (more modern format)
+                            // Format: /rest/v2.0/companies/{company_id}/projects/{project_id}
+                            apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}`;
+                            let response;
+                            
+                            try {
+                                response = await axios.get(apiUrl, {
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                });
+                            } catch (v2Error: any) {
+                                // If v2.0 fails with 404 or 400, try v1.0 format
+                                if (v2Error?.response?.status === 404 || v2Error?.response?.status === 400) {
+                                    console.log(`v2.0 endpoint failed for project ${projectIdNum}, trying v1.0 format...`);
+                                    // Fallback to v1.0 endpoint format
+                                    apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectIdNum}`;
+                                    response = await axios.get(apiUrl, {
+                                        params: {
+                                            company_id: PROCORE_CONFIG.companyId,
+                                        },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } else {
+                                    throw v2Error;
+                                }
+                            }
 
                             const procoreData = response.data;
 
                             // Map Procore data to Bolt format (inline mapping)
                             const mapped: any = {};
+                            
+                            // Basic project info
                             if (procoreData.name !== undefined) mapped.ProjectName = procoreData.name || '';
                             if (procoreData.project_number !== undefined) mapped.ProjectNumber = procoreData.project_number || '';
                             if (procoreData.address !== undefined) mapped.address = procoreData.address || '';
                             if (procoreData.city !== undefined) mapped.city = procoreData.city || '';
                             if (procoreData.state_code !== undefined) mapped.State = procoreData.state_code || '';
                             if (procoreData.zip !== undefined) mapped.zip = procoreData.zip || '';
-                            if (procoreData.start_date !== undefined) mapped.StartDate = procoreData.start_date || null;
-                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = procoreData.completion_date || null;
-                            if (procoreData.total_value !== undefined) mapped.EstimatedValue = procoreData.total_value;
+                            
+                            // Helper function to normalize dates and prevent timezone shifts
+                            // Procore sends dates as YYYY-MM-DD strings. When JavaScript's Date() parses these,
+                            // it treats them as UTC midnight, which can shift the date back a day in local timezones.
+                            // By appending 'T12:00:00' (without timezone), JavaScript will interpret it as local time.
+                            const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                if (!dateStr) return null;
+                                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                    return `${dateStr}T12:00:00`;
+                                }
+                                return dateStr;
+                            };
+                            
+                            // Dates - main project dates (normalized to prevent timezone shifts)
+                            if (procoreData.start_date !== undefined) mapped.StartDate = normalizeDate(procoreData.start_date);
+                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = normalizeDate(procoreData.completion_date);
+                            if (procoreData.projected_finish_date !== undefined) mapped.ProjectedFinishDate = normalizeDate(procoreData.projected_finish_date);
+                            if (procoreData.actual_start_date !== undefined) mapped.EstStart = normalizeDate(procoreData.actual_start_date);
+                            
+                            // Created At - convert from date-time to date
+                            if (procoreData.created_at !== undefined) {
+                                const createdAt = procoreData.created_at;
+                                if (createdAt) {
+                                    // Extract date part from ISO date-time string (YYYY-MM-DDTHH:mm:ssZ -> YYYY-MM-DD)
+                                    const datePart = createdAt.split('T')[0];
+                                    // Normalize date to prevent timezone shifts
+                                    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                        if (!dateStr) return null;
+                                        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                            return `${dateStr}T12:00:00`;
+                                        }
+                                        return dateStr;
+                                    };
+                                    mapped.CreatedAt = normalizeDate(datePart);
+                                } else {
+                                    mapped.CreatedAt = null;
+                                }
+                            }
+                            
+                            // Financial values
+                            if (procoreData.total_value !== undefined) {
+                                // Convert string to number if needed
+                                const value = typeof procoreData.total_value === 'string' 
+                                    ? parseFloat(procoreData.total_value) 
+                                    : procoreData.total_value;
+                                mapped.EstimatedValue = !Number.isNaN(value) ? value : null;
+                            }
+                            
+                            // Square feet
                             if (procoreData.square_feet !== undefined) mapped.SquareFeet = procoreData.square_feet;
+                            
+                            // Client Reference ID (origin_id)
+                            if (procoreData.origin_id !== undefined) mapped.ClientReferenceId = procoreData.origin_id || '';
+                            
+                            // Archived status (inverse of active)
+                            if (procoreData.active !== undefined) mapped.Archived = !procoreData.active;
+                            
+                            // Calculate Est Duration (days) from start_date to completion_date
+                            if (procoreData.start_date && procoreData.completion_date) {
+                                try {
+                                    const start = new Date(procoreData.start_date);
+                                    const completion = new Date(procoreData.completion_date);
+                                    if (!Number.isNaN(start.getTime()) && !Number.isNaN(completion.getTime())) {
+                                        const diffTime = completion.getTime() - start.getTime();
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays >= 0) {
+                                            mapped.EstDuration = diffDays;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to calculate Est Duration for project ${project.id}:`, e);
+                                }
+                            }
+                            
+                            // Calculate Actual Duration (days) from actual_start_date to actual_completion_date (if available)
+                            if (procoreData.actual_start_date && procoreData.actual_completion_date) {
+                                try {
+                                    const actualStart = new Date(procoreData.actual_start_date);
+                                    const actualCompletion = new Date(procoreData.actual_completion_date);
+                                    if (!Number.isNaN(actualStart.getTime()) && !Number.isNaN(actualCompletion.getTime())) {
+                                        const diffTime = actualCompletion.getTime() - actualStart.getTime();
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays >= 0) {
+                                            mapped.ActualDuration = diffDays;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to calculate Actual Duration for project ${project.id}:`, e);
+                                }
+                            }
+                            
                             // Map project stage/status
                             if (procoreData.project_stage?.name) {
                                 const stageMap: { [key: string]: string } = {
@@ -1504,6 +1629,339 @@ export const procoreSyncAllProjectsToBolt = functions
                                 mapped.ProjectStatus = stageMap[procoreData.stage_name] || 'Pre-Construction';
                             }
 
+                            // Fetch project dates to get additional date fields
+                            try {
+                                // Try v2.0 endpoint first
+                                let projectDatesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/project_dates`;
+                                let projectDatesResponse;
+                                
+                                try {
+                                    projectDatesResponse = await axios.get(projectDatesUrl, {
+                                        params: { per_page: 100 },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } catch (v2Error: any) {
+                                    // Fallback to v1.0 endpoint
+                                    if (v2Error?.response?.status === 404 || v2Error?.response?.status === 400) {
+                                        projectDatesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectIdNum}/project_dates`;
+                                        projectDatesResponse = await axios.get(projectDatesUrl, {
+                                            params: {
+                                                company_id: PROCORE_CONFIG.companyId,
+                                                per_page: 100,
+                                            },
+                                            headers: {
+                                                'Authorization': `Bearer ${accessToken}`,
+                                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                            },
+                                        });
+                                    } else {
+                                        throw v2Error;
+                                    }
+                                }
+
+                                // Extract project dates array (v1.0 uses project_dates, v2.0 uses data)
+                                // Handle different response structures
+                                let projectDates: any[] = [];
+                                if (Array.isArray(projectDatesResponse.data)) {
+                                    projectDates = projectDatesResponse.data;
+                                } else if (Array.isArray(projectDatesResponse.data.data)) {
+                                    projectDates = projectDatesResponse.data.data;
+                                } else if (Array.isArray(projectDatesResponse.data.project_dates)) {
+                                    projectDates = projectDatesResponse.data.project_dates;
+                                } else if (projectDatesResponse.data && typeof projectDatesResponse.data === 'object') {
+                                    // If it's an object, try to find an array property
+                                    const possibleArrays = ['data', 'project_dates', 'dates'];
+                                    for (const key of possibleArrays) {
+                                        if (Array.isArray(projectDatesResponse.data[key])) {
+                                            projectDates = projectDatesResponse.data[key];
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // Map project dates by name to Bolt fields
+                                // Create a flexible matching function
+                                const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                
+                                for (const projectDate of projectDates) {
+                                    const dateName = normalizeName(projectDate.name || '');
+                                    const dateValue = projectDate.date || projectDate.actual_date || null;
+                                    
+                                    // Helper to normalize dates (prevent timezone shifts)
+                                    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                        if (!dateStr) return null;
+                                        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                            return `${dateStr}T12:00:00`;
+                                        }
+                                        return dateStr;
+                                    };
+                                    
+                                    // Match by normalized name patterns (normalize dates to prevent timezone shifts)
+                                    if (dateName.includes('communicatedstart') || dateName.includes('communicatedstartdate')) {
+                                        mapped.CommunicatedStartDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('communicatedfinish') || dateName.includes('communicatedfinishdate') || dateName.includes('communicatedfinish')) {
+                                        mapped.CommunicatedFinishDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('estfinish') || dateName.includes('estimatedfinish') || dateName.includes('estfinishdate')) {
+                                        mapped.EstFinish = normalizeDate(dateValue);
+                                    } else if (dateName.includes('actualfinish') || dateName.includes('actualfinishdate')) {
+                                        mapped.ActualFinishDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('biddue') || dateName.includes('bidduedate')) {
+                                        mapped.BidDueDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('projectreview') || dateName.includes('projectreviewdate')) {
+                                        mapped.ProjectReviewDate = normalizeDate(dateValue);
+                                    }
+                                }
+                            } catch (projectDatesError: any) {
+                                // Log but don't fail the entire sync if project dates fail
+                                console.warn(`Failed to fetch project dates for project ${project.id} (${projectIdNum}):`, projectDatesError?.message || projectDatesError);
+                            }
+
+                            // Fetch financial data from project status snapshots
+                            try {
+                                // First, get available budget views for this project
+                                const budgetViewsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/project_status_snapshots/budget_views`;
+                                let budgetViewsResponse;
+                                
+                                try {
+                                    budgetViewsResponse = await axios.get(budgetViewsUrl, {
+                                        params: { per_page: 10 },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } catch (budgetViewsError: any) {
+                                    // If 403 (forbidden), user doesn't have access to budget views - skip silently
+                                    if (budgetViewsError?.response?.status === 403) {
+                                        console.log(`Budget views not accessible for project ${project.id} (${projectIdNum}): Access denied. Skipping financial data fetch.`);
+                                        throw budgetViewsError; // Will be caught by outer catch
+                                    }
+                                    // If v2.0 fails for other reasons, skip financial data fetch
+                                    throw budgetViewsError;
+                                }
+
+                                const budgetViews = budgetViewsResponse.data.data || [];
+                                
+                                if (budgetViews.length > 0) {
+                                    // Use the first budget view (typically the default/main one)
+                                    const budgetViewId = budgetViews[0].id;
+                                    
+                                    // Get the latest project status snapshot for this budget view
+                                    const snapshotsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/budget_view/${budgetViewId}/project_status_snapshots`;
+                                    const snapshotsResponse = await axios.get(snapshotsUrl, {
+                                        params: {
+                                            per_page: 1,
+                                            sort: '-created_at', // Get most recent
+                                        },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+
+                                    const snapshots = snapshotsResponse.data.data || [];
+                                    
+                                    if (snapshots.length > 0) {
+                                        const latestSnapshot = snapshots[0];
+                                        
+                                        // Extract financial data from budget columns
+                                        // Budget columns are typically in a 'budget_columns' or 'columns' array
+                                        // Each column has an id and a value
+                                        if (latestSnapshot.budget_columns || latestSnapshot.columns) {
+                                            const budgetColumns = latestSnapshot.budget_columns || latestSnapshot.columns || [];
+                                            
+                                            // Look for specific budget column types/names
+                                            // These might be identified by column_id or name
+                                            for (const column of budgetColumns) {
+                                                const columnName = (column.name || '').toLowerCase();
+                                                
+                                                // Try to match by common column names/IDs
+                                                // Note: These might need adjustment based on actual Procore column names
+                                                if (columnName.includes('revised contract') || columnName.includes('revised_contract')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.ProjectRevisedContractAmount = value;
+                                                    }
+                                                } else if (columnName.includes('estimated cost') || columnName.includes('est cost') || columnName.includes('cost at completion')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.EstimatedCostAtCompletion = value;
+                                                    }
+                                                } else if (columnName.includes('estimated profit') || columnName.includes('est profit') || columnName.includes('projected profit')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.EstimatedProjectProfit = value;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Also check for direct fields in the snapshot
+                                        if (latestSnapshot.revised_contract !== undefined) {
+                                            const value = parseFloat(latestSnapshot.revised_contract);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.ProjectRevisedContractAmount = value;
+                                            }
+                                        }
+                                        if (latestSnapshot.estimated_cost_at_completion !== undefined) {
+                                            const value = parseFloat(latestSnapshot.estimated_cost_at_completion);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.EstimatedCostAtCompletion = value;
+                                            }
+                                        }
+                                        if (latestSnapshot.estimated_profit !== undefined || latestSnapshot.estimated_project_profit !== undefined) {
+                                            const value = parseFloat(latestSnapshot.estimated_profit || latestSnapshot.estimated_project_profit);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.EstimatedProjectProfit = value;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (financialError: any) {
+                                // Log but don't fail the entire sync if financial data fetch fails
+                                // 403 errors are common if user doesn't have access to budget views
+                                const errorStatus = financialError?.response?.status;
+                                if (errorStatus === 403) {
+                                    console.log(`Financial data not available for project ${project.id} (${projectIdNum}): Access denied (403). User may not have budget view permissions.`);
+                                } else {
+                                    console.warn(`Failed to fetch financial data for project ${project.id} (${projectIdNum}):`, financialError?.message || financialError);
+                                }
+                            }
+
+                            // Fetch financial data from Prime Contracts as fallback/alternative
+                            try {
+                                console.log(`Attempting to fetch Prime Contracts for project ${project.id} (${projectIdNum})...`);
+                                // Get all Prime Contracts for this project
+                                const primeContractsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/prime_contracts`;
+                                const primeContractsResponse = await axios.get(primeContractsUrl, {
+                                    params: {
+                                        project_id: projectIdNum,
+                                        per_page: 100, // Get all contracts
+                                    },
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                });
+
+                                console.log(`Prime Contracts API response status: ${primeContractsResponse.status}`);
+                                console.log(`Prime Contracts API response data type: ${Array.isArray(primeContractsResponse.data) ? 'array' : typeof primeContractsResponse.data}`);
+                                if (primeContractsResponse.data) {
+                                    console.log(`Prime Contracts API response preview: ${JSON.stringify(primeContractsResponse.data).substring(0, 300)}`);
+                                }
+
+                                const primeContracts = Array.isArray(primeContractsResponse.data) 
+                                    ? primeContractsResponse.data 
+                                    : [];
+                                
+                                console.log(`Found ${primeContracts.length} Prime Contract(s) for project ${project.id}`);
+
+                                if (primeContracts.length > 0) {
+                                    // Sum up revised_contract amounts from all Prime Contracts
+                                    let totalRevisedContract = 0;
+                                    let totalGrandTotal = 0;
+                                    
+                                    // Also try to get detailed contract data for the first/main contract
+                                    // to see if it has additional financial fields
+                                    try {
+                                        const mainContractId = primeContracts[0].id;
+                                        if (mainContractId) {
+                                            const showContractUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/prime_contracts/${mainContractId}`;
+                                            const showContractResponse = await axios.get(showContractUrl, {
+                                                params: { view: 'extended' }, // Use extended view to get all fields
+                                                headers: {
+                                                    'Authorization': `Bearer ${accessToken}`,
+                                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                                },
+                                            });
+                                            
+                                            const contractData = showContractResponse.data.data || showContractResponse.data;
+                                            
+                                            // Check for profit-related fields in the detailed contract response
+                                            if (contractData.projected_profit !== undefined) {
+                                                const value = parseFloat(contractData.projected_profit);
+                                                if (!Number.isNaN(value)) {
+                                                    mapped.EstimatedProjectProfit = value;
+                                                }
+                                            } else if (contractData.estimated_profit !== undefined) {
+                                                const value = parseFloat(contractData.estimated_profit);
+                                                if (!Number.isNaN(value)) {
+                                                    mapped.EstimatedProjectProfit = value;
+                                                }
+                                            }
+                                            
+                                            // Also check for cost at completion
+                                            if (contractData.estimated_cost_at_completion !== undefined || contractData.cost_at_completion !== undefined) {
+                                                const value = parseFloat(contractData.estimated_cost_at_completion || contractData.cost_at_completion);
+                                                if (!Number.isNaN(value) && mapped.EstimatedCostAtCompletion === undefined) {
+                                                    mapped.EstimatedCostAtCompletion = value;
+                                                }
+                                            }
+                                        }
+                                    } catch (showContractError: any) {
+                                        // Log but continue with list data
+                                        console.log(`Could not fetch detailed Prime Contract data for project ${project.id}:`, showContractError?.message || 'Unknown error');
+                                    }
+                                    
+                                    for (const contract of primeContracts) {
+                                        // revised_contract is the revised contract amount
+                                        if (contract.revised_contract) {
+                                            const value = parseFloat(contract.revised_contract);
+                                            if (!Number.isNaN(value)) {
+                                                totalRevisedContract += value;
+                                            }
+                                        }
+                                        
+                                        // grand_total is total of line items including markup
+                                        if (contract.grand_total) {
+                                            const value = parseFloat(contract.grand_total);
+                                            if (!Number.isNaN(value)) {
+                                                totalGrandTotal += value;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Use the sum of revised_contract as Revised Contract Amount
+                                    // Only set if we haven't already set it from budget views
+                                    if (totalRevisedContract > 0 && mapped.ProjectRevisedContractAmount === undefined) {
+                                        mapped.ProjectRevisedContractAmount = totalRevisedContract;
+                                    }
+                                    
+                                    // Calculate Estimated Project Profit if we have both Revised Contract Amount and Estimated Cost at Completion
+                                    // Formula: Projected Profit = Revised Contract Amount - Estimated Cost at Completion
+                                    // Only calculate if we haven't already set it from the detailed contract data
+                                    if (mapped.EstimatedProjectProfit === undefined && mapped.ProjectRevisedContractAmount && mapped.EstimatedCostAtCompletion) {
+                                        const projectedProfit = mapped.ProjectRevisedContractAmount - mapped.EstimatedCostAtCompletion;
+                                        if (!Number.isNaN(projectedProfit)) {
+                                            mapped.EstimatedProjectProfit = projectedProfit;
+                                        }
+                                    }
+                                    
+                                    // Note: Prime Contracts don't typically have Estimated Cost at Completion
+                                    // or Estimated Project Profit - those are project-level calculations
+                                    // But we can log what we found for debugging
+                                    console.log(`Prime Contracts for project ${project.id}: Found ${primeContracts.length} contract(s), Total Revised Contract: ${totalRevisedContract}, Total Grand Total: ${totalGrandTotal}`);
+                                }
+                            } catch (primeContractsError: any) {
+                                // Log but don't fail the entire sync if Prime Contracts fetch fails
+                                const errorStatus = primeContractsError?.response?.status;
+                                const errorData = primeContractsError?.response?.data;
+                                console.error(`Prime Contracts fetch error for project ${project.id} (${projectIdNum}):`, {
+                                    status: errorStatus,
+                                    message: primeContractsError?.message,
+                                    data: errorData,
+                                    url: primeContractsError?.config?.url
+                                });
+                                if (errorStatus === 403 || errorStatus === 404) {
+                                    console.log(`Prime Contracts not accessible for project ${project.id} (${projectIdNum}): ${errorStatus === 403 ? 'Access denied' : 'Not found'}.`);
+                                } else {
+                                    console.warn(`Failed to fetch Prime Contracts for project ${project.id} (${projectIdNum}):`, primeContractsError?.message || primeContractsError);
+                                }
+                            }
+
                             if (mapped && Object.keys(mapped).length > 0) {
                                 // Update Firebase project (skip Procore sync to avoid loops)
                                 await projectsRef.doc(project.id).update({
@@ -1516,14 +1974,54 @@ export const procoreSyncAllProjectsToBolt = functions
                             }
                         } catch (error: any) {
                             errorCount++;
-                            const errorMsg = error?.message || error?.toString() || 'Unknown error';
+                            const errorStatus = error?.response?.status;
+                            const errorData = error?.response?.data;
+                            
+                            // Extract detailed error message
+                            let errorMsg = 'Unknown error';
+                            if (errorData) {
+                                if (errorData.errors && typeof errorData.errors === 'object') {
+                                    const errorMessages = Object.entries(errorData.errors)
+                                        .map(([key, value]) => {
+                                            if (Array.isArray(value)) {
+                                                return `${key}: ${value.join(', ')}`;
+                                            }
+                                            return `${key}: ${value}`;
+                                        })
+                                        .join('; ');
+                                    if (errorMessages) errorMsg = errorMessages;
+                                } else if (errorData.error_description) {
+                                    errorMsg = errorData.error_description;
+                                } else if (errorData.message) {
+                                    errorMsg = errorData.message;
+                                } else if (typeof errorData === 'string') {
+                                    errorMsg = errorData;
+                                }
+                            } else if (error?.message) {
+                                errorMsg = error.message;
+                            }
+                            
+                            // Add status code if available
+                            if (errorStatus) {
+                                errorMsg = `Request failed with status code ${errorStatus}${errorMsg ? `: ${errorMsg}` : ''}`;
+                            }
+                            
                             const projectName = project.ProjectName || project.projectName || project.id;
+                            const procoreProjectId = project.procoreProjectId;
                             errors.push({
                                 projectId: project.id,
                                 projectName: projectName,
                                 error: errorMsg
                             });
-                            console.error(`Failed to sync project ${project.id} (${projectName}):`, errorMsg, error);
+                            console.error(`Failed to sync project ${project.id} (${projectName}) [Procore ID: ${procoreProjectId}]:`, {
+                                message: errorMsg,
+                                status: errorStatus,
+                                statusText: error?.response?.statusText,
+                                url: error?.config?.url || apiUrl,
+                                procoreProjectId: procoreProjectId,
+                                responseData: errorData,
+                                fullError: error
+                            });
 
                             // Update sync status to failed
                             try {
@@ -1624,29 +2122,145 @@ export const procoreScheduledSync = functions
                             const procoreProjectId = project.procoreProjectId;
                             if (!procoreProjectId) return;
 
-                            // Fetch project from Procore
-                            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${procoreProjectId}`;
-                            const response = await axios.get(apiUrl, {
-                                headers: {
-                                    'Authorization': `Bearer ${accessToken}`,
-                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                },
-                            });
+                            // Ensure project ID is a number (Procore API requires integer)
+                            const projectIdNum = Number(procoreProjectId);
+                            if (Number.isNaN(projectIdNum)) {
+                                throw new Error(`Invalid Procore project ID: ${procoreProjectId} (must be a number)`);
+                            }
+
+                            // Try v2.0 endpoint first (more modern format)
+                            let apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}`;
+                            let response;
+                            
+                            try {
+                                response = await axios.get(apiUrl, {
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                });
+                            } catch (v2Error: any) {
+                                // If v2.0 fails with 404 or 400, try v1.0 format
+                                if (v2Error?.response?.status === 404 || v2Error?.response?.status === 400) {
+                                    // Fallback to v1.0 endpoint format
+                                    apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectIdNum}`;
+                                    response = await axios.get(apiUrl, {
+                                        params: {
+                                            company_id: PROCORE_CONFIG.companyId,
+                                        },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } else {
+                                    throw v2Error;
+                                }
+                            }
 
                             const procoreData = response.data;
 
                             // Map Procore data to Bolt format (inline mapping)
                             const mapped: any = {};
+                            
+                            // Basic project info
                             if (procoreData.name !== undefined) mapped.ProjectName = procoreData.name || '';
                             if (procoreData.project_number !== undefined) mapped.ProjectNumber = procoreData.project_number || '';
                             if (procoreData.address !== undefined) mapped.address = procoreData.address || '';
                             if (procoreData.city !== undefined) mapped.city = procoreData.city || '';
                             if (procoreData.state_code !== undefined) mapped.State = procoreData.state_code || '';
                             if (procoreData.zip !== undefined) mapped.zip = procoreData.zip || '';
-                            if (procoreData.start_date !== undefined) mapped.StartDate = procoreData.start_date || null;
-                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = procoreData.completion_date || null;
-                            if (procoreData.total_value !== undefined) mapped.EstimatedValue = procoreData.total_value;
+                            
+                            // Helper function to normalize dates and prevent timezone shifts
+                            // Procore sends dates as YYYY-MM-DD strings. When JavaScript's Date() parses these,
+                            // it treats them as UTC midnight, which can shift the date back a day in local timezones.
+                            // By appending 'T12:00:00' (without timezone), JavaScript will interpret it as local time.
+                            const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                if (!dateStr) return null;
+                                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                    return `${dateStr}T12:00:00`;
+                                }
+                                return dateStr;
+                            };
+                            
+                            // Dates - main project dates (normalized to prevent timezone shifts)
+                            if (procoreData.start_date !== undefined) mapped.StartDate = normalizeDate(procoreData.start_date);
+                            if (procoreData.completion_date !== undefined) mapped.CompletionDate = normalizeDate(procoreData.completion_date);
+                            if (procoreData.projected_finish_date !== undefined) mapped.ProjectedFinishDate = normalizeDate(procoreData.projected_finish_date);
+                            if (procoreData.actual_start_date !== undefined) mapped.EstStart = normalizeDate(procoreData.actual_start_date);
+                            
+                            // Created At - convert from date-time to date
+                            if (procoreData.created_at !== undefined) {
+                                const createdAt = procoreData.created_at;
+                                if (createdAt) {
+                                    // Extract date part from ISO date-time string (YYYY-MM-DDTHH:mm:ssZ -> YYYY-MM-DD)
+                                    const datePart = createdAt.split('T')[0];
+                                    // Normalize date to prevent timezone shifts
+                                    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                        if (!dateStr) return null;
+                                        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                            return `${dateStr}T12:00:00`;
+                                        }
+                                        return dateStr;
+                                    };
+                                    mapped.CreatedAt = normalizeDate(datePart);
+                                } else {
+                                    mapped.CreatedAt = null;
+                                }
+                            }
+                            
+                            // Financial values
+                            if (procoreData.total_value !== undefined) {
+                                // Convert string to number if needed
+                                const value = typeof procoreData.total_value === 'string' 
+                                    ? parseFloat(procoreData.total_value) 
+                                    : procoreData.total_value;
+                                mapped.EstimatedValue = !Number.isNaN(value) ? value : null;
+                            }
+                            
+                            // Square feet
                             if (procoreData.square_feet !== undefined) mapped.SquareFeet = procoreData.square_feet;
+                            
+                            // Client Reference ID (origin_id)
+                            if (procoreData.origin_id !== undefined) mapped.ClientReferenceId = procoreData.origin_id || '';
+                            
+                            // Archived status (inverse of active)
+                            if (procoreData.active !== undefined) mapped.Archived = !procoreData.active;
+                            
+                            // Calculate Est Duration (days) from start_date to completion_date
+                            if (procoreData.start_date && procoreData.completion_date) {
+                                try {
+                                    const start = new Date(procoreData.start_date);
+                                    const completion = new Date(procoreData.completion_date);
+                                    if (!Number.isNaN(start.getTime()) && !Number.isNaN(completion.getTime())) {
+                                        const diffTime = completion.getTime() - start.getTime();
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays >= 0) {
+                                            mapped.EstDuration = diffDays;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to calculate Est Duration for project ${project.id}:`, e);
+                                }
+                            }
+                            
+                            // Calculate Actual Duration (days) from actual_start_date to actual_completion_date (if available)
+                            if (procoreData.actual_start_date && procoreData.actual_completion_date) {
+                                try {
+                                    const actualStart = new Date(procoreData.actual_start_date);
+                                    const actualCompletion = new Date(procoreData.actual_completion_date);
+                                    if (!Number.isNaN(actualStart.getTime()) && !Number.isNaN(actualCompletion.getTime())) {
+                                        const diffTime = actualCompletion.getTime() - actualStart.getTime();
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays >= 0) {
+                                            mapped.ActualDuration = diffDays;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn(`Failed to calculate Actual Duration for project ${project.id}:`, e);
+                                }
+                            }
+                            
                             // Map project stage/status
                             if (procoreData.project_stage?.name) {
                                 const stageMap: { [key: string]: string } = {
@@ -1666,6 +2280,339 @@ export const procoreScheduledSync = functions
                                     'Post Construction': 'Post Construction',
                                 };
                                 mapped.ProjectStatus = stageMap[procoreData.stage_name] || 'Pre-Construction';
+                            }
+
+                            // Fetch project dates to get additional date fields
+                            try {
+                                // Try v2.0 endpoint first
+                                let projectDatesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/project_dates`;
+                                let projectDatesResponse;
+                                
+                                try {
+                                    projectDatesResponse = await axios.get(projectDatesUrl, {
+                                        params: { per_page: 100 },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } catch (v2Error: any) {
+                                    // Fallback to v1.0 endpoint
+                                    if (v2Error?.response?.status === 404 || v2Error?.response?.status === 400) {
+                                        projectDatesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectIdNum}/project_dates`;
+                                        projectDatesResponse = await axios.get(projectDatesUrl, {
+                                            params: {
+                                                company_id: PROCORE_CONFIG.companyId,
+                                                per_page: 100,
+                                            },
+                                            headers: {
+                                                'Authorization': `Bearer ${accessToken}`,
+                                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                            },
+                                        });
+                                    } else {
+                                        throw v2Error;
+                                    }
+                                }
+
+                                // Extract project dates array (v1.0 uses project_dates, v2.0 uses data)
+                                // Handle different response structures
+                                let projectDates: any[] = [];
+                                if (Array.isArray(projectDatesResponse.data)) {
+                                    projectDates = projectDatesResponse.data;
+                                } else if (Array.isArray(projectDatesResponse.data.data)) {
+                                    projectDates = projectDatesResponse.data.data;
+                                } else if (Array.isArray(projectDatesResponse.data.project_dates)) {
+                                    projectDates = projectDatesResponse.data.project_dates;
+                                } else if (projectDatesResponse.data && typeof projectDatesResponse.data === 'object') {
+                                    // If it's an object, try to find an array property
+                                    const possibleArrays = ['data', 'project_dates', 'dates'];
+                                    for (const key of possibleArrays) {
+                                        if (Array.isArray(projectDatesResponse.data[key])) {
+                                            projectDates = projectDatesResponse.data[key];
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // Map project dates by name to Bolt fields
+                                // Create a flexible matching function
+                                const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                
+                                for (const projectDate of projectDates) {
+                                    const dateName = normalizeName(projectDate.name || '');
+                                    const dateValue = projectDate.date || projectDate.actual_date || null;
+                                    
+                                    // Helper to normalize dates (prevent timezone shifts)
+                                    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+                                        if (!dateStr) return null;
+                                        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                                            return `${dateStr}T12:00:00`;
+                                        }
+                                        return dateStr;
+                                    };
+                                    
+                                    // Match by normalized name patterns (normalize dates to prevent timezone shifts)
+                                    if (dateName.includes('communicatedstart') || dateName.includes('communicatedstartdate')) {
+                                        mapped.CommunicatedStartDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('communicatedfinish') || dateName.includes('communicatedfinishdate') || dateName.includes('communicatedfinish')) {
+                                        mapped.CommunicatedFinishDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('estfinish') || dateName.includes('estimatedfinish') || dateName.includes('estfinishdate')) {
+                                        mapped.EstFinish = normalizeDate(dateValue);
+                                    } else if (dateName.includes('actualfinish') || dateName.includes('actualfinishdate')) {
+                                        mapped.ActualFinishDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('biddue') || dateName.includes('bidduedate')) {
+                                        mapped.BidDueDate = normalizeDate(dateValue);
+                                    } else if (dateName.includes('projectreview') || dateName.includes('projectreviewdate')) {
+                                        mapped.ProjectReviewDate = normalizeDate(dateValue);
+                                    }
+                                }
+                            } catch (projectDatesError: any) {
+                                // Log but don't fail the entire sync if project dates fail
+                                console.warn(`Failed to fetch project dates for project ${project.id} (${projectIdNum}):`, projectDatesError?.message || projectDatesError);
+                            }
+
+                            // Fetch financial data from project status snapshots
+                            try {
+                                // First, get available budget views for this project
+                                const budgetViewsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/project_status_snapshots/budget_views`;
+                                let budgetViewsResponse;
+                                
+                                try {
+                                    budgetViewsResponse = await axios.get(budgetViewsUrl, {
+                                        params: { per_page: 10 },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+                                } catch (budgetViewsError: any) {
+                                    // If 403 (forbidden), user doesn't have access to budget views - skip silently
+                                    if (budgetViewsError?.response?.status === 403) {
+                                        console.log(`Budget views not accessible for project ${project.id} (${projectIdNum}): Access denied. Skipping financial data fetch.`);
+                                        throw budgetViewsError; // Will be caught by outer catch
+                                    }
+                                    // If v2.0 fails for other reasons, skip financial data fetch
+                                    throw budgetViewsError;
+                                }
+
+                                const budgetViews = budgetViewsResponse.data.data || [];
+                                
+                                if (budgetViews.length > 0) {
+                                    // Use the first budget view (typically the default/main one)
+                                    const budgetViewId = budgetViews[0].id;
+                                    
+                                    // Get the latest project status snapshot for this budget view
+                                    const snapshotsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/budget_view/${budgetViewId}/project_status_snapshots`;
+                                    const snapshotsResponse = await axios.get(snapshotsUrl, {
+                                        params: {
+                                            per_page: 1,
+                                            sort: '-created_at', // Get most recent
+                                        },
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
+
+                                    const snapshots = snapshotsResponse.data.data || [];
+                                    
+                                    if (snapshots.length > 0) {
+                                        const latestSnapshot = snapshots[0];
+                                        
+                                        // Extract financial data from budget columns
+                                        // Budget columns are typically in a 'budget_columns' or 'columns' array
+                                        // Each column has an id and a value
+                                        if (latestSnapshot.budget_columns || latestSnapshot.columns) {
+                                            const budgetColumns = latestSnapshot.budget_columns || latestSnapshot.columns || [];
+                                            
+                                            // Look for specific budget column types/names
+                                            // These might be identified by column_id or name
+                                            for (const column of budgetColumns) {
+                                                const columnName = (column.name || '').toLowerCase();
+                                                
+                                                // Try to match by common column names/IDs
+                                                // Note: These might need adjustment based on actual Procore column names
+                                                if (columnName.includes('revised contract') || columnName.includes('revised_contract')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.ProjectRevisedContractAmount = value;
+                                                    }
+                                                } else if (columnName.includes('estimated cost') || columnName.includes('est cost') || columnName.includes('cost at completion')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.EstimatedCostAtCompletion = value;
+                                                    }
+                                                } else if (columnName.includes('estimated profit') || columnName.includes('est profit') || columnName.includes('projected profit')) {
+                                                    const value = parseFloat(column.value || column.total || 0);
+                                                    if (!Number.isNaN(value)) {
+                                                        mapped.EstimatedProjectProfit = value;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Also check for direct fields in the snapshot
+                                        if (latestSnapshot.revised_contract !== undefined) {
+                                            const value = parseFloat(latestSnapshot.revised_contract);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.ProjectRevisedContractAmount = value;
+                                            }
+                                        }
+                                        if (latestSnapshot.estimated_cost_at_completion !== undefined) {
+                                            const value = parseFloat(latestSnapshot.estimated_cost_at_completion);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.EstimatedCostAtCompletion = value;
+                                            }
+                                        }
+                                        if (latestSnapshot.estimated_profit !== undefined || latestSnapshot.estimated_project_profit !== undefined) {
+                                            const value = parseFloat(latestSnapshot.estimated_profit || latestSnapshot.estimated_project_profit);
+                                            if (!Number.isNaN(value)) {
+                                                mapped.EstimatedProjectProfit = value;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (financialError: any) {
+                                // Log but don't fail the entire sync if financial data fetch fails
+                                // 403 errors are common if user doesn't have access to budget views
+                                const errorStatus = financialError?.response?.status;
+                                if (errorStatus === 403) {
+                                    console.log(`Financial data not available for project ${project.id} (${projectIdNum}): Access denied (403). User may not have budget view permissions.`);
+                                } else {
+                                    console.warn(`Failed to fetch financial data for project ${project.id} (${projectIdNum}):`, financialError?.message || financialError);
+                                }
+                            }
+
+                            // Fetch financial data from Prime Contracts as fallback/alternative
+                            try {
+                                console.log(`Attempting to fetch Prime Contracts for project ${project.id} (${projectIdNum})...`);
+                                // Get all Prime Contracts for this project
+                                const primeContractsUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/prime_contracts`;
+                                const primeContractsResponse = await axios.get(primeContractsUrl, {
+                                    params: {
+                                        project_id: projectIdNum,
+                                        per_page: 100, // Get all contracts
+                                    },
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                    },
+                                });
+
+                                console.log(`Prime Contracts API response status: ${primeContractsResponse.status}`);
+                                console.log(`Prime Contracts API response data type: ${Array.isArray(primeContractsResponse.data) ? 'array' : typeof primeContractsResponse.data}`);
+                                if (primeContractsResponse.data) {
+                                    console.log(`Prime Contracts API response preview: ${JSON.stringify(primeContractsResponse.data).substring(0, 300)}`);
+                                }
+
+                                const primeContracts = Array.isArray(primeContractsResponse.data) 
+                                    ? primeContractsResponse.data 
+                                    : [];
+                                
+                                console.log(`Found ${primeContracts.length} Prime Contract(s) for project ${project.id}`);
+
+                                if (primeContracts.length > 0) {
+                                    // Sum up revised_contract amounts from all Prime Contracts
+                                    let totalRevisedContract = 0;
+                                    let totalGrandTotal = 0;
+                                    
+                                    // Also try to get detailed contract data for the first/main contract
+                                    // to see if it has additional financial fields
+                                    try {
+                                        const mainContractId = primeContracts[0].id;
+                                        if (mainContractId) {
+                                            const showContractUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v2.0/companies/${PROCORE_CONFIG.companyId}/projects/${projectIdNum}/prime_contracts/${mainContractId}`;
+                                            const showContractResponse = await axios.get(showContractUrl, {
+                                                params: { view: 'extended' }, // Use extended view to get all fields
+                                                headers: {
+                                                    'Authorization': `Bearer ${accessToken}`,
+                                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                                },
+                                            });
+                                            
+                                            const contractData = showContractResponse.data.data || showContractResponse.data;
+                                            
+                                            // Check for profit-related fields in the detailed contract response
+                                            if (contractData.projected_profit !== undefined) {
+                                                const value = parseFloat(contractData.projected_profit);
+                                                if (!Number.isNaN(value)) {
+                                                    mapped.EstimatedProjectProfit = value;
+                                                }
+                                            } else if (contractData.estimated_profit !== undefined) {
+                                                const value = parseFloat(contractData.estimated_profit);
+                                                if (!Number.isNaN(value)) {
+                                                    mapped.EstimatedProjectProfit = value;
+                                                }
+                                            }
+                                            
+                                            // Also check for cost at completion
+                                            if (contractData.estimated_cost_at_completion !== undefined || contractData.cost_at_completion !== undefined) {
+                                                const value = parseFloat(contractData.estimated_cost_at_completion || contractData.cost_at_completion);
+                                                if (!Number.isNaN(value) && mapped.EstimatedCostAtCompletion === undefined) {
+                                                    mapped.EstimatedCostAtCompletion = value;
+                                                }
+                                            }
+                                        }
+                                    } catch (showContractError: any) {
+                                        // Log but continue with list data
+                                        console.log(`Could not fetch detailed Prime Contract data for project ${project.id}:`, showContractError?.message || 'Unknown error');
+                                    }
+                                    
+                                    for (const contract of primeContracts) {
+                                        // revised_contract is the revised contract amount
+                                        if (contract.revised_contract) {
+                                            const value = parseFloat(contract.revised_contract);
+                                            if (!Number.isNaN(value)) {
+                                                totalRevisedContract += value;
+                                            }
+                                        }
+                                        
+                                        // grand_total is total of line items including markup
+                                        if (contract.grand_total) {
+                                            const value = parseFloat(contract.grand_total);
+                                            if (!Number.isNaN(value)) {
+                                                totalGrandTotal += value;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Use the sum of revised_contract as Revised Contract Amount
+                                    // Only set if we haven't already set it from budget views
+                                    if (totalRevisedContract > 0 && mapped.ProjectRevisedContractAmount === undefined) {
+                                        mapped.ProjectRevisedContractAmount = totalRevisedContract;
+                                    }
+                                    
+                                    // Calculate Estimated Project Profit if we have both Revised Contract Amount and Estimated Cost at Completion
+                                    // Formula: Projected Profit = Revised Contract Amount - Estimated Cost at Completion
+                                    // Only calculate if we haven't already set it from the detailed contract data
+                                    if (mapped.EstimatedProjectProfit === undefined && mapped.ProjectRevisedContractAmount && mapped.EstimatedCostAtCompletion) {
+                                        const projectedProfit = mapped.ProjectRevisedContractAmount - mapped.EstimatedCostAtCompletion;
+                                        if (!Number.isNaN(projectedProfit)) {
+                                            mapped.EstimatedProjectProfit = projectedProfit;
+                                        }
+                                    }
+                                    
+                                    // Note: Prime Contracts don't typically have Estimated Cost at Completion
+                                    // or Estimated Project Profit - those are project-level calculations
+                                    // But we can log what we found for debugging
+                                    console.log(`Prime Contracts for project ${project.id}: Found ${primeContracts.length} contract(s), Total Revised Contract: ${totalRevisedContract}, Total Grand Total: ${totalGrandTotal}`);
+                                }
+                            } catch (primeContractsError: any) {
+                                // Log but don't fail the entire sync if Prime Contracts fetch fails
+                                const errorStatus = primeContractsError?.response?.status;
+                                const errorData = primeContractsError?.response?.data;
+                                console.error(`Prime Contracts fetch error for project ${project.id} (${projectIdNum}):`, {
+                                    status: errorStatus,
+                                    message: primeContractsError?.message,
+                                    data: errorData,
+                                    url: primeContractsError?.config?.url
+                                });
+                                if (errorStatus === 403 || errorStatus === 404) {
+                                    console.log(`Prime Contracts not accessible for project ${project.id} (${projectIdNum}): ${errorStatus === 403 ? 'Access denied' : 'Not found'}.`);
+                                } else {
+                                    console.warn(`Failed to fetch Prime Contracts for project ${project.id} (${projectIdNum}):`, primeContractsError?.message || primeContractsError);
+                                }
                             }
 
                             if (mapped && Object.keys(mapped).length > 0) {
