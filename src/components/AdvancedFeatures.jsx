@@ -1,9 +1,38 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Button, Card, Alert, Badge, Dialog, Input, Select } from '@/components/ui'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
+import { useSessionUser } from '@/store/authStore'
+
+// Authorized emails that can access Advanced Features Dashboard
+const AUTHORIZED_EMAILS = [
+    'admin-01@tatco.construction',
+    'brett@tatco.construction'
+]
 
 const AdvancedFeatures = () => {
+    const navigate = useNavigate()
+    const user = useSessionUser((state) => state.user)
+    
+    // Check authorization on mount
+    useEffect(() => {
+        const userEmail = user?.email?.toLowerCase() || ''
+        const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
+        
+        if (!isAuthorized) {
+            // Redirect unauthorized users to home page
+            navigate('/home', { replace: true })
+        }
+    }, [user, navigate])
+    
+    // Don't render anything if unauthorized (will redirect)
+    const userEmail = user?.email?.toLowerCase() || ''
+    const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
+    
+    if (!isAuthorized) {
+        return null
+    }
     const {
         isOnline,
         lastSyncTime,

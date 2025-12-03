@@ -4,7 +4,13 @@ import {
     NAV_ITEM_TYPE_COLLAPSE,
 } from '@/constants/navigation.constant'
 
-const navigationConfig = [
+// Authorized emails that can access Advanced Features Dashboard
+const AUTHORIZED_EMAILS = [
+    'admin-01@tatco.construction',
+    'brett@tatco.construction'
+]
+
+const baseNavigationConfig = [
     {
         key: 'home',
         path: '/home',
@@ -46,5 +52,22 @@ const navigationConfig = [
         subMenu: [],
     },
 ]
+
+// Function to get navigation config filtered by user email
+export const getNavigationConfig = (userEmail) => {
+    const userEmailLower = userEmail?.toLowerCase() || ''
+    const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmailLower)
+    
+    // Filter out advancedFeatures if user is not authorized
+    return baseNavigationConfig.filter(nav => {
+        if (nav.key === 'advancedFeatures' && !isAuthorized) {
+            return false
+        }
+        return true
+    })
+}
+
+// Default export for backward compatibility (will be filtered in components that use it)
+const navigationConfig = baseNavigationConfig
 
 export default navigationConfig
