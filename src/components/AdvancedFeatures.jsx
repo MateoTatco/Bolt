@@ -178,6 +178,12 @@ const AdvancedFeatures = () => {
 
         setIsDeleting(true)
         try {
+            console.log('Calling deleteProjectFromAzure with:', {
+                projectNumber: investigationProjectNumber.trim(),
+                projectName: projectName || undefined,
+                archiveDate: archiveDate || undefined,
+                confirmDelete: true,
+            })
             const result = await ProcoreService.deleteProjectFromAzure({
                 projectNumber: investigationProjectNumber.trim(),
                 projectName: projectName || undefined,
@@ -185,13 +191,18 @@ const AdvancedFeatures = () => {
                 confirmDelete: true,
             })
             console.log('Deletion result:', result)
-            alert(`✅ Successfully deleted ${result.deleted} record(s)`)
             
-            // Refresh investigation results
-            await handleInvestigateProject()
+            if (result && result.success !== false) {
+                alert(`✅ Successfully deleted ${result.deleted || 0} record(s)`)
+                // Refresh investigation results
+                await handleInvestigateProject()
+            } else {
+                alert(`⚠️ Deletion completed but result was unexpected: ${JSON.stringify(result)}`)
+            }
         } catch (error) {
             console.error('Error deleting project:', error)
-            alert(`Error deleting project: ${error.message || 'Unknown error'}`)
+            const errorMessage = error?.message || error?.details || error?.code || 'Unknown error'
+            alert(`❌ Error deleting project: ${errorMessage}`)
         } finally {
             setIsDeleting(false)
         }
@@ -224,6 +235,12 @@ const AdvancedFeatures = () => {
 
         setIsDeleting(true) // Reuse loading state
         try {
+            console.log('Calling promoteProjectToRecentDate with:', {
+                projectNumber: investigationProjectNumber.trim(),
+                sourceArchiveDate: sourceArchiveDate,
+                sourceProjectName: projectName || undefined,
+                confirmPromote: true,
+            })
             const result = await ProcoreService.promoteProjectToRecentDate({
                 projectNumber: investigationProjectNumber.trim(),
                 sourceArchiveDate: sourceArchiveDate,
@@ -231,13 +248,18 @@ const AdvancedFeatures = () => {
                 confirmPromote: true,
             })
             console.log('Promotion result:', result)
-            alert(`✅ Successfully promoted record to most recent archive date (${result.promotedToDate})`)
             
-            // Refresh investigation results
-            await handleInvestigateProject()
+            if (result && result.success !== false) {
+                alert(`✅ Successfully promoted record to most recent archive date (${result.promotedToDate || 'N/A'})`)
+                // Refresh investigation results
+                await handleInvestigateProject()
+            } else {
+                alert(`⚠️ Promotion completed but result was unexpected: ${JSON.stringify(result)}`)
+            }
         } catch (error) {
             console.error('Error promoting project:', error)
-            alert(`Error promoting project: ${error.message || 'Unknown error'}`)
+            const errorMessage = error?.message || error?.details || error?.code || 'Unknown error'
+            alert(`❌ Error promoting project: ${errorMessage}`)
         } finally {
             setIsDeleting(false)
         }
@@ -400,7 +422,7 @@ const AdvancedFeatures = () => {
                                                             size="sm"
                                                             variant="solid"
                                                             color="red"
-                                                            onClick={() => handleDeleteProject(record.projectName, record.archiveDate)}
+                                                            onClick={() => handleDeleteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
                                                             disabled={isDeleting}
                                                         >
                                                             Delete This Record
@@ -494,7 +516,7 @@ const AdvancedFeatures = () => {
                                                                 size="sm"
                                                                 variant="solid"
                                                                 color="blue"
-                                                                onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly)}
+                                                                onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
                                                                 disabled={isDeleting}
                                                             >
                                                                 Promote to Recent

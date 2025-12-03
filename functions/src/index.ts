@@ -4602,6 +4602,7 @@ export const azureSqlDeleteProject = functions
 
         try {
             console.log(`⚠️ DELETING project records - Number: ${projectNumber}, Name filter: ${projectName || 'ALL'}, ArchiveDate filter: ${archiveDate || 'ALL'}`);
+            console.log('Delete request data:', JSON.stringify({ projectNumber, projectName, archiveDate, confirmDelete }, null, 2));
             const azureSqlConfig = getAzureSqlConfig();
             const pool = await sql.connect(azureSqlConfig);
             console.log('✅ Connected to Azure SQL Database');
@@ -4614,17 +4615,36 @@ export const azureSqlDeleteProject = functions
 
                 let deleteQuery = '';
                 
-                // If we have both projectName and archiveDate, use exact match to ensure only one record
+                // If we have both projectName and archiveDate, use date-only match to ensure we find the record
+                // (The archiveDate from frontend might be an ISO string with time, but DB might have different time component)
                 if (projectName && archiveDate) {
+                    console.log(`  Received archiveDate: ${archiveDate} (type: ${typeof archiveDate})`);
+                    // Parse archiveDate - it might be a string or Date object
+                    let archiveDateObj: Date;
+                    if (archiveDate instanceof Date) {
+                        archiveDateObj = archiveDate;
+                    } else if (typeof archiveDate === 'string') {
+                        archiveDateObj = new Date(archiveDate);
+                        if (isNaN(archiveDateObj.getTime())) {
+                            throw new Error(`Invalid archiveDate format: ${archiveDate}`);
+                        }
+                    } else {
+                        throw new Error(`Invalid archiveDate type: ${typeof archiveDate}`);
+                    }
+                    
+                    const dateOnlyStr = archiveDateObj.toISOString().split('T')[0];
+                    console.log(`  Parsed to date-only: ${dateOnlyStr}`);
+                    
+                    // Use date-only comparison to avoid time component mismatches
                     deleteQuery = `
-                        DELETE FROM dbo.ProjectProfitabilityArchive
+                        DELETE TOP (1) FROM dbo.ProjectProfitabilityArchive
                         WHERE ProjectNumber = @projectNumber
                             AND ProjectName = @projectName
-                            AND ArchiveDate = @archiveDate
+                            AND CAST(ArchiveDate AS DATE) = CAST(@archiveDate AS DATE)
                     `;
                     request.input('projectName', sql.NVarChar, projectName);
-                    request.input('archiveDate', sql.DateTime2, new Date(archiveDate));
-                    console.log(`  Deleting exact record: ProjectName="${projectName}", ArchiveDate="${archiveDate}"`);
+                    request.input('archiveDate', sql.Date, archiveDateObj);
+                    console.log(`  Deleting record: ProjectName="${projectName}", ArchiveDate (date only)="${dateOnlyStr}"`);
                 } else {
                     // Fallback: use TOP (1) to ensure only one record is deleted
                     deleteQuery = `
@@ -4639,16 +4659,72 @@ export const azureSqlDeleteProject = functions
                     }
 
                     if (archiveDate) {
+                        // Parse archiveDate - it might be a string or Date object
+                        let archiveDateObj: Date;
+                        if (archiveDate instanceof Date) {
+                            archiveDateObj = archiveDate;
+                        } else if (typeof archiveDate === 'string') {
+                            archiveDateObj = new Date(archiveDate);
+                            if (isNaN(archiveDateObj.getTime())) {
+                                throw new Error(`Invalid archiveDate format: ${archiveDate}`);
+                            }
+                        } else {
+                            throw new Error(`Invalid archiveDate type: ${typeof archiveDate}`);
+                        }
                         // Use date-only match if exact datetime not available
                         deleteQuery += ` AND CAST(ArchiveDate AS DATE) = CAST(@archiveDate AS DATE)`;
-                        request.input('archiveDate', sql.DateTime2, new Date(archiveDate));
-                        console.log(`  Filtering by archive date: ${archiveDate}`);
+                        request.input('archiveDate', sql.DateTime2, archiveDateObj);
+                        console.log(`  Filtering by archive date: ${archiveDateObj.toISOString()}`);
                     }
                 }
 
                 // First, get count of records that will be deleted
-                const countQuery = deleteQuery.replace('DELETE FROM', 'SELECT COUNT(*) as RecordCount FROM');
-                const countResult = await request.query(countQuery);
+                // Build a separate count query with the same WHERE conditions
+                let countQuery = 'SELECT COUNT(*) as RecordCount FROM dbo.ProjectProfitabilityArchive WHERE ProjectNumber = @projectNumber';
+                const countRequest = pool.request();
+                countRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                
+                if (projectName && archiveDate) {
+                    // Parse archiveDate for count query
+                    let archiveDateObj: Date;
+                    if (archiveDate instanceof Date) {
+                        archiveDateObj = archiveDate;
+                    } else if (typeof archiveDate === 'string') {
+                        archiveDateObj = new Date(archiveDate);
+                        if (isNaN(archiveDateObj.getTime())) {
+                            throw new Error(`Invalid archiveDate format: ${archiveDate}`);
+                        }
+                    } else {
+                        throw new Error(`Invalid archiveDate type: ${typeof archiveDate}`);
+                    }
+                    // Use date-only comparison to match the delete query
+                    countQuery += ' AND ProjectName = @projectName AND CAST(ArchiveDate AS DATE) = CAST(@archiveDate AS DATE)';
+                    countRequest.input('projectName', sql.NVarChar, projectName);
+                    countRequest.input('archiveDate', sql.Date, archiveDateObj);
+                } else {
+                    if (projectName) {
+                        countQuery += ' AND ProjectName = @projectName';
+                        countRequest.input('projectName', sql.NVarChar, projectName);
+                    }
+                    if (archiveDate) {
+                        // Parse archiveDate - it might be a string or Date object
+                        let archiveDateObj: Date;
+                        if (archiveDate instanceof Date) {
+                            archiveDateObj = archiveDate;
+                        } else if (typeof archiveDate === 'string') {
+                            archiveDateObj = new Date(archiveDate);
+                            if (isNaN(archiveDateObj.getTime())) {
+                                throw new Error(`Invalid archiveDate format: ${archiveDate}`);
+                            }
+                        } else {
+                            throw new Error(`Invalid archiveDate type: ${typeof archiveDate}`);
+                        }
+                        countQuery += ' AND CAST(ArchiveDate AS DATE) = CAST(@archiveDate AS DATE)';
+                        countRequest.input('archiveDate', sql.DateTime2, archiveDateObj);
+                    }
+                }
+                
+                const countResult = await countRequest.query(countQuery);
                 const recordCount = countResult.recordset[0]?.RecordCount || 0;
 
                 if (recordCount === 0) {
@@ -4685,9 +4761,18 @@ export const azureSqlDeleteProject = functions
 
         } catch (error: any) {
             console.error('Error deleting project from Azure SQL Database:', error);
+            const errorMessage = error?.message || error?.toString() || 'Unknown error';
+            const errorCode = error?.code || 'internal';
+            console.error('Error details:', {
+                message: errorMessage,
+                code: errorCode,
+                stack: error?.stack,
+                response: error?.response?.data,
+            });
             throw new functions.https.HttpsError(
-                'internal',
-                `Failed to delete project: ${error.message || 'Unknown error'}`
+                errorCode === 'unauthenticated' ? 'unauthenticated' : 
+                errorCode === 'invalid-argument' ? 'invalid-argument' : 'internal',
+                `Failed to delete project: ${errorMessage}`
             );
         }
     });
@@ -4730,6 +4815,7 @@ export const azureSqlPromoteProject = functions
 
         try {
             console.log(`🔄 PROMOTING project record - Number: ${projectNumber}, From Date: ${sourceArchiveDate}, Name: ${sourceProjectName || 'ALL'}`);
+            console.log('Promote request data:', JSON.stringify({ projectNumber, sourceArchiveDate, sourceProjectName, confirmPromote }, null, 2));
             const azureSqlConfig = getAzureSqlConfig();
             const pool = await sql.connect(azureSqlConfig);
             console.log('✅ Connected to Azure SQL Database');
@@ -4760,9 +4846,22 @@ export const azureSqlPromoteProject = functions
                         AND CAST(ArchiveDate AS DATE) = CAST(@sourceArchiveDate AS DATE)
                 `;
 
+                // Parse sourceArchiveDate - it might be a string or Date object
+                let sourceArchiveDateObj: Date;
+                if (sourceArchiveDate instanceof Date) {
+                    sourceArchiveDateObj = sourceArchiveDate;
+                } else if (typeof sourceArchiveDate === 'string') {
+                    sourceArchiveDateObj = new Date(sourceArchiveDate);
+                    if (isNaN(sourceArchiveDateObj.getTime())) {
+                        throw new Error(`Invalid sourceArchiveDate format: ${sourceArchiveDate}`);
+                    }
+                } else {
+                    throw new Error(`Invalid sourceArchiveDate type: ${typeof sourceArchiveDate}`);
+                }
+                
                 const request = pool.request();
                 request.input('projectNumber', sql.NVarChar, projectNumber.toString());
-                request.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+                request.input('sourceArchiveDate', sql.Date, sourceArchiveDateObj);
 
                 if (sourceProjectName) {
                     findSourceQuery += ` AND ProjectName = @sourceProjectName`;
@@ -4815,7 +4914,7 @@ export const azureSqlPromoteProject = functions
                 `;
                 const checkSourceRequest = pool.request();
                 checkSourceRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
-                checkSourceRequest.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+                checkSourceRequest.input('sourceArchiveDate', sql.Date, sourceArchiveDateObj);
                 
                 if (sourceProjectName) {
                     checkSourceQuery += ` AND ProjectName = @sourceProjectName`;
@@ -4858,7 +4957,7 @@ export const azureSqlPromoteProject = functions
 
                 const insertRequest = pool.request();
                 insertRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
-                insertRequest.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+                insertRequest.input('sourceArchiveDate', sql.Date, sourceArchiveDateObj);
                 insertRequest.input('mostRecentDate', sql.Date, mostRecentDate);
 
                 if (sourceProjectName) {
@@ -4893,9 +4992,19 @@ export const azureSqlPromoteProject = functions
 
         } catch (error: any) {
             console.error('Error promoting project in Azure SQL Database:', error);
+            const errorMessage = error?.message || error?.toString() || 'Unknown error';
+            const errorCode = error?.code || 'internal';
+            console.error('Error details:', {
+                message: errorMessage,
+                code: errorCode,
+                stack: error?.stack,
+                response: error?.response?.data,
+            });
             throw new functions.https.HttpsError(
-                'internal',
-                `Failed to promote project: ${error.message || 'Unknown error'}`
+                errorCode === 'unauthenticated' ? 'unauthenticated' : 
+                errorCode === 'invalid-argument' ? 'invalid-argument' : 
+                errorCode === 'not-found' ? 'not-found' : 'internal',
+                `Failed to promote project: ${errorMessage}`
             );
         }
     });
