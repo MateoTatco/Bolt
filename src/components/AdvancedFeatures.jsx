@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Button, Card, Alert, Badge, Dialog, Input, Select } from '@/components/ui'
 import { useCrmStore } from '@/store/crmStore'
+import { ProcoreService } from '@/services/ProcoreService'
 
 const AdvancedFeatures = () => {
     const {
@@ -21,6 +22,12 @@ const AdvancedFeatures = () => {
     const [showHistory, setShowHistory] = useState(false)
     const [showConflicts, setShowConflicts] = useState(false)
     const [showDevTools, setShowDevTools] = useState(false)
+    const [showAzureSqlTools, setShowAzureSqlTools] = useState(false)
+    const [investigationProjectNumber, setInvestigationProjectNumber] = useState('')
+    const [investigationResults, setInvestigationResults] = useState(null)
+    const [isInvestigating, setIsInvestigating] = useState(false)
+    const [deleteConfirmText, setDeleteConfirmText] = useState('')
+    const [isDeleting, setIsDeleting] = useState(false)
 
     // Online/Offline detection
     useEffect(() => {
@@ -101,6 +108,112 @@ const AdvancedFeatures = () => {
         }
     }
 
+    const handleInvestigateProject = async () => {
+        if (!investigationProjectNumber.trim()) {
+            alert('Please enter a project number')
+            return
+        }
+
+        setIsInvestigating(true)
+        setInvestigationResults(null)
+        try {
+            const results = await ProcoreService.investigateProjectInAzure(investigationProjectNumber.trim())
+            setInvestigationResults(results)
+            console.log('Investigation results:', results)
+        } catch (error) {
+            console.error('Error investigating project:', error)
+            alert(`Error investigating project: ${error.message || 'Unknown error'}`)
+        } finally {
+            setIsInvestigating(false)
+        }
+    }
+
+    const handleDeleteProject = async (projectName, archiveDate) => {
+        if (!investigationProjectNumber.trim()) {
+            alert('Project number is required')
+            return
+        }
+
+        // Require explicit confirmation
+        const confirmMessage = `⚠️ WARNING: This will permanently delete project records from Azure SQL Database!\n\n` +
+            `Project Number: ${investigationProjectNumber}\n` +
+            (projectName ? `Project Name: ${projectName}\n` : '') +
+            (archiveDate ? `Archive Date: ${archiveDate}\n` : '') +
+            `\nThis action cannot be undone. Type "DELETE" to confirm:`
+
+        const userInput = prompt(confirmMessage)
+        if (userInput !== 'DELETE') {
+            alert('Deletion cancelled. You must type "DELETE" exactly to confirm.')
+            return
+        }
+
+        setIsDeleting(true)
+        try {
+            const result = await ProcoreService.deleteProjectFromAzure({
+                projectNumber: investigationProjectNumber.trim(),
+                projectName: projectName || undefined,
+                archiveDate: archiveDate || undefined,
+                confirmDelete: true,
+            })
+            console.log('Deletion result:', result)
+            alert(`✅ Successfully deleted ${result.deleted} record(s)`)
+            
+            // Refresh investigation results
+            await handleInvestigateProject()
+        } catch (error) {
+            console.error('Error deleting project:', error)
+            alert(`Error deleting project: ${error.message || 'Unknown error'}`)
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
+    const handlePromoteProject = async (projectName, sourceArchiveDate) => {
+        if (!investigationProjectNumber.trim()) {
+            alert('Project number is required')
+            return
+        }
+
+        if (!sourceArchiveDate) {
+            alert('Source archive date is required')
+            return
+        }
+
+        // Require explicit confirmation
+        const confirmMessage = `🔄 PROMOTE PROJECT TO MOST RECENT DATE\n\n` +
+            `This will copy the selected record to the most recent archive date.\n\n` +
+            `Project Number: ${investigationProjectNumber}\n` +
+            `Project Name: ${projectName}\n` +
+            `From Archive Date: ${sourceArchiveDate}\n` +
+            `\nType "PROMOTE" to confirm:`
+
+        const userInput = prompt(confirmMessage)
+        if (userInput !== 'PROMOTE') {
+            alert('Promotion cancelled. You must type "PROMOTE" exactly to confirm.')
+            return
+        }
+
+        setIsDeleting(true) // Reuse loading state
+        try {
+            const result = await ProcoreService.promoteProjectToRecentDate({
+                projectNumber: investigationProjectNumber.trim(),
+                sourceArchiveDate: sourceArchiveDate,
+                sourceProjectName: projectName || undefined,
+                confirmPromote: true,
+            })
+            console.log('Promotion result:', result)
+            alert(`✅ Successfully promoted record to most recent archive date (${result.promotedToDate})`)
+            
+            // Refresh investigation results
+            await handleInvestigateProject()
+        } catch (error) {
+            console.error('Error promoting project:', error)
+            alert(`Error promoting project: ${error.message || 'Unknown error'}`)
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
     return (
         <div className="space-y-4">
             {/* Dev Tools Buttons */}
@@ -136,6 +249,239 @@ const AdvancedFeatures = () => {
                     </div>
                 </Card>
             )}
+
+            {/* Azure SQL Project Investigation Tools */}
+            <Card className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Azure SQL Project Management</h3>
+                    <Button 
+                        onClick={() => setShowAzureSqlTools(!showAzureSqlTools)}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        {showAzureSqlTools ? 'Hide' : 'Show'} Tools
+                    </Button>
+                </div>
+                
+                {showAzureSqlTools && (
+                    <div className="space-y-4">
+                        <Alert type="warning">
+                            <div>
+                                <strong>⚠️ Warning:</strong> These tools allow you to investigate and delete projects from Azure SQL Database. 
+                                Use with extreme caution. Deletions are permanent and cannot be undone.
+                            </div>
+                        </Alert>
+
+                        {/* Investigation Section */}
+                        <div className="space-y-3">
+                            <h4 className="font-semibold">Investigate Project</h4>
+                            <p className="text-sm text-gray-600">
+                                Enter a project number to see all records (across all archive dates) in Azure SQL.
+                            </p>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="Enter project number (e.g., 135250002)"
+                                    value={investigationProjectNumber}
+                                    onChange={(e) => setInvestigationProjectNumber(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleInvestigateProject()
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    onClick={handleInvestigateProject}
+                                    disabled={isInvestigating || !investigationProjectNumber.trim()}
+                                    loading={isInvestigating}
+                                >
+                                    Investigate
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Investigation Results */}
+                        {investigationResults && (
+                            <div className="mt-4 space-y-3">
+                                <div>
+                                    <h4 className="font-semibold">
+                                        Most Recent Records ({investigationResults.totalRecords} record(s))
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        These are the records that appear on Project Profitability page
+                                        {investigationResults.mostRecentArchiveDate && 
+                                            ` (Archive Date: ${investigationResults.mostRecentArchiveDate})`
+                                        }
+                                    </p>
+                                </div>
+                                
+                                {investigationResults.records.length === 0 ? (
+                                    <Alert type="warning">
+                                        <p className="text-sm">
+                                            ⚠️ No records found on the most recent archive date. 
+                                            If you delete any records, this project will disappear from Project Profitability.
+                                        </p>
+                                    </Alert>
+                                ) : (
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {investigationResults.records.map((record, index) => (
+                                            <Card key={index} className="p-3 border border-blue-200">
+                                                <div className="space-y-2">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <p className="font-medium">
+                                                                {String(record.projectName || 'Unknown')}
+                                                                {record.hasDeleteInName && (
+                                                                    <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                        HAS "DELETE"
+                                                                    </Badge>
+                                                                )}
+                                                                <Badge className="ml-2 bg-blue-100 text-blue-800">
+                                                                    Most Recent
+                                                                </Badge>
+                                                            </p>
+                                                            <p className="text-sm text-gray-600">
+                                                                Project #: {String(record.projectNumber || 'N/A')}
+                                                            </p>
+                                                            {record.projectManager && (
+                                                                <p className="text-sm text-gray-600">
+                                                                    Project Manager: {String(record.projectManager)}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-xs text-gray-500">
+                                                                Archive Date: {(() => {
+                                                                    const date = record.archiveDateOnly;
+                                                                    if (!date) return 'N/A';
+                                                                    if (typeof date === 'string') return date;
+                                                                    if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                    return String(date);
+                                                                })()}
+                                                            </p>
+                                                            <div className="flex gap-2 mt-1">
+                                                                <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                    {record.isActive ? 'Active' : 'Inactive'}
+                                                                </Badge>
+                                                                {record.redTeamImport && (
+                                                                    <Badge className="bg-purple-100 text-purple-800">
+                                                                        Red Team
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="solid"
+                                                            color="red"
+                                                            onClick={() => handleDeleteProject(record.projectName, record.archiveDate)}
+                                                            disabled={isDeleting}
+                                                        >
+                                                            Delete This Record
+                                                        </Button>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 space-y-1">
+                                                        <div>
+                                                            Contract Amount: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                            Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                            Projected Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                        </div>
+                                                        <div>
+                                                            Status: {String(record.contractStatus || 'N/A')} | 
+                                                            Stage: {String(record.projectStage || 'N/A')}
+                                                            {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                            {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Other Records from Different Archive Dates */}
+                                {investigationResults.otherRecords && investigationResults.otherRecords.length > 0 && (
+                                    <div className="mt-4">
+                                        <div>
+                                            <h4 className="font-semibold">
+                                                Other Records on Different Dates ({investigationResults.otherRecords.length} record(s))
+                                            </h4>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                These records exist but are NOT on the most recent archive date, so they won't appear on Project Profitability.
+                                                If you delete the most recent record, these older records will NOT automatically appear.
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2 max-h-64 overflow-y-auto mt-2">
+                                            {investigationResults.otherRecords.map((record, index) => (
+                                                <Card key={`other-${index}`} className="p-3 border border-gray-200 opacity-75">
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <p className="font-medium text-sm">
+                                                                    {String(record.projectName || 'Unknown')}
+                                                                    {record.hasDeleteInName && (
+                                                                        <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                            HAS "DELETE"
+                                                                        </Badge>
+                                                                    )}
+                                                                    <Badge className="ml-2 bg-gray-100 text-gray-800">
+                                                                        Older Date
+                                                                    </Badge>
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Project #: {String(record.projectNumber || 'N/A')}
+                                                                </p>
+                                                                {record.projectManager && (
+                                                                    <p className="text-xs text-gray-600">
+                                                                        Project Manager: {String(record.projectManager)}
+                                                                    </p>
+                                                                )}
+                                                                <p className="text-xs text-gray-500">
+                                                                    Archive Date: {(() => {
+                                                                        const date = record.archiveDateOnly;
+                                                                        if (!date) return 'N/A';
+                                                                        if (typeof date === 'string') return date;
+                                                                        if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                        return String(date);
+                                                                    })()}
+                                                                </p>
+                                                                <div className="flex gap-2 mt-1">
+                                                                    <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                        {record.isActive ? 'Active' : 'Inactive'}
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                                                    <div>
+                                                                        Contract: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                                        Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                                        Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                                    </div>
+                                                                    <div>
+                                                                        {record.contractStatus && `Status: ${record.contractStatus} | `}
+                                                                        {record.projectStage && `Stage: ${record.projectStage}`}
+                                                                        {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                                        {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="solid"
+                                                                color="blue"
+                                                                onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly)}
+                                                                disabled={isDeleting}
+                                                            >
+                                                                Promote to Recent
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Card>
 
             {/* Status Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

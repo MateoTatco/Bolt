@@ -4349,3 +4349,554 @@ export const azureSqlGetAllProjectsProfitability = functions
         }
     });
 
+// Investigate projects in Azure SQL by project number
+// This helps identify duplicate projects before deletion
+export const azureSqlInvestigateProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540,
+        memory: '512MB',
+        secrets: ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USER', 'AZURE_SQL_PASSWORD'],
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const projectNumber = data?.projectNumber;
+        if (!projectNumber) {
+            throw new functions.https.HttpsError('invalid-argument', 'Project number is required');
+        }
+
+        try {
+            console.log(`Investigating project number: ${projectNumber}`);
+            const azureSqlConfig = getAzureSqlConfig();
+            const pool = await sql.connect(azureSqlConfig);
+            console.log('✅ Connected to Azure SQL Database');
+
+            try {
+                // Query only the most recent archive records for this project number
+                // This matches the logic used by Project Profitability page
+                // Shows only current records, not entire history
+                const query = `
+                    WITH MostRecentArchiveDate AS (
+                        -- Get the most recent ArchiveDate (by date) in the entire table
+                        SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly
+                        FROM dbo.ProjectProfitabilityArchive
+                    ),
+                    MostRecentArchive AS (
+                        -- Get the MAX ArchiveDate per project, but only for projects where MAX falls on the most recent date
+                        SELECT 
+                            ppa.ProjectNumber,
+                            MAX(ppa.ArchiveDate) as LatestArchiveDate
+                        FROM dbo.ProjectProfitabilityArchive ppa
+                        CROSS JOIN MostRecentArchiveDate mrad
+                        WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
+                        GROUP BY ppa.ProjectNumber
+                    )
+                    SELECT 
+                        ppa.ProjectName,
+                        ppa.ProjectNumber,
+                        ppa.ProjectManager,
+                        ppa.ArchiveDate,
+                        ppa.ProjectRevisedContractAmount,
+                        ppa.IsActive as Active,
+                        ppa.ContractStatus,
+                        ppa.ProjectStage,
+                        ppa.ProcoreId,
+                        ppa.RedTeamImport,
+                        ppa.EstCostAtCompletion,
+                        ppa.ProjectedProfit,
+                        ppa.ContractStartDate,
+                        ppa.ContractEndDate,
+                        CAST(ppa.ArchiveDate AS DATE) as ArchiveDateOnly
+                    FROM dbo.ProjectProfitabilityArchive ppa
+                    INNER JOIN MostRecentArchive mra 
+                        ON ppa.ProjectNumber = mra.ProjectNumber 
+                        AND ppa.ArchiveDate = mra.LatestArchiveDate
+                    CROSS JOIN MostRecentArchiveDate mrad
+                    WHERE ppa.ProjectNumber = @projectNumber
+                        AND CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
+                    ORDER BY ppa.ProjectName
+                `;
+
+                const request = pool.request();
+                request.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                
+                console.log(`Executing investigation query for project number: ${projectNumber}...`);
+                const result = await request.query(query);
+                const rows = result.recordset || [];
+                console.log(`✅ Found ${rows.length} record(s) for project number ${projectNumber} on most recent archive date`);
+
+                // Also check for other records on different archive dates
+                const allRecordsQuery = `
+                    SELECT 
+                        ppa.ProjectName,
+                        ppa.ProjectNumber,
+                        ppa.ProjectManager,
+                        ppa.ArchiveDate,
+                        ppa.ProjectRevisedContractAmount,
+                        ppa.IsActive as Active,
+                        ppa.ContractStatus,
+                        ppa.ProjectStage,
+                        ppa.ProcoreId,
+                        ppa.RedTeamImport,
+                        ppa.EstCostAtCompletion,
+                        ppa.ProjectedProfit,
+                        ppa.ContractStartDate,
+                        ppa.ContractEndDate,
+                        CAST(ppa.ArchiveDate AS DATE) as ArchiveDateOnly
+                    FROM dbo.ProjectProfitabilityArchive ppa
+                    WHERE ppa.ProjectNumber = @projectNumber
+                    ORDER BY ppa.ArchiveDate DESC, ppa.ProjectName
+                `;
+                
+                const allRecordsResult = await request.query(allRecordsQuery);
+                const allRows = allRecordsResult.recordset || [];
+                console.log(`✅ Found ${allRows.length} total record(s) across all archive dates for project number ${projectNumber}`);
+
+                // Get the most recent archive date to compare
+                const mostRecentDateQuery = `SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly FROM dbo.ProjectProfitabilityArchive`;
+                const mostRecentDateResult = await request.query(mostRecentDateQuery);
+                const mostRecentDate = mostRecentDateResult.recordset[0]?.LatestArchiveDateOnly;
+
+                // Format results for easier review
+                const formattedResults = rows.map((row: any, index: number) => {
+                    // Convert archiveDateOnly to string (it might be a Date object from SQL)
+                    let archiveDateOnlyStr = null;
+                    if (row.ArchiveDateOnly) {
+                        if (row.ArchiveDateOnly instanceof Date) {
+                            archiveDateOnlyStr = row.ArchiveDateOnly.toISOString().split('T')[0];
+                        } else if (typeof row.ArchiveDateOnly === 'string') {
+                            archiveDateOnlyStr = row.ArchiveDateOnly.split('T')[0];
+                        } else {
+                            archiveDateOnlyStr = String(row.ArchiveDateOnly);
+                        }
+                    }
+
+                    return {
+                        index: index + 1,
+                        projectName: String(row.ProjectName || ''),
+                        projectNumber: String(row.ProjectNumber || ''),
+                        projectManager: String(row.ProjectManager || ''),
+                        archiveDate: row.ArchiveDate ? new Date(row.ArchiveDate).toISOString() : null,
+                        archiveDateOnly: archiveDateOnlyStr,
+                        contractAmount: parseFloat(row.ProjectRevisedContractAmount) || 0,
+                        estCostAtCompletion: parseFloat(row.EstCostAtCompletion) || 0,
+                        projectedProfit: parseFloat(row.ProjectedProfit) || 0,
+                        contractStartDate: row.ContractStartDate ? new Date(row.ContractStartDate).toISOString().split('T')[0] : null,
+                        contractEndDate: row.ContractEndDate ? new Date(row.ContractEndDate).toISOString().split('T')[0] : null,
+                        isActive: row.Active === 1,
+                        contractStatus: String(row.ContractStatus || ''),
+                        projectStage: String(row.ProjectStage || ''),
+                        procoreId: row.ProcoreId ? String(row.ProcoreId) : null,
+                        redTeamImport: row.RedTeamImport === 1,
+                        hasDeleteInName: row.ProjectName?.toUpperCase().includes('DELETE') || false,
+                        isMostRecent: true, // These are from the most recent archive date
+                    };
+                });
+
+                // Format other records (from different archive dates)
+                const otherRecords = allRows
+                    .filter((row: any) => {
+                        // Exclude records that are already in formattedResults (most recent date)
+                        const rowDate = row.ArchiveDateOnly;
+                        const mostRecentDateStr = mostRecentDate ? 
+                            (mostRecentDate instanceof Date ? mostRecentDate.toISOString().split('T')[0] : String(mostRecentDate).split('T')[0]) : 
+                            null;
+                        return rowDate !== mostRecentDateStr;
+                    })
+                    .map((row: any, index: number) => {
+                        let archiveDateOnlyStr = null;
+                        if (row.ArchiveDateOnly) {
+                            if (row.ArchiveDateOnly instanceof Date) {
+                                archiveDateOnlyStr = row.ArchiveDateOnly.toISOString().split('T')[0];
+                            } else if (typeof row.ArchiveDateOnly === 'string') {
+                                archiveDateOnlyStr = row.ArchiveDateOnly.split('T')[0];
+                            } else {
+                                archiveDateOnlyStr = String(row.ArchiveDateOnly);
+                            }
+                        }
+
+                        return {
+                            index: index + 1,
+                            projectName: String(row.ProjectName || ''),
+                            projectNumber: String(row.ProjectNumber || ''),
+                            projectManager: String(row.ProjectManager || ''),
+                            archiveDate: row.ArchiveDate ? new Date(row.ArchiveDate).toISOString() : null,
+                            archiveDateOnly: archiveDateOnlyStr,
+                            contractAmount: parseFloat(row.ProjectRevisedContractAmount) || 0,
+                            estCostAtCompletion: parseFloat(row.EstCostAtCompletion) || 0,
+                            projectedProfit: parseFloat(row.ProjectedProfit) || 0,
+                            contractStartDate: row.ContractStartDate ? new Date(row.ContractStartDate).toISOString().split('T')[0] : null,
+                            contractEndDate: row.ContractEndDate ? new Date(row.ContractEndDate).toISOString().split('T')[0] : null,
+                            isActive: row.Active === 1,
+                            contractStatus: String(row.ContractStatus || ''),
+                            projectStage: String(row.ProjectStage || ''),
+                            procoreId: row.ProcoreId ? String(row.ProcoreId) : null,
+                            redTeamImport: row.RedTeamImport === 1,
+                            hasDeleteInName: row.ProjectName?.toUpperCase().includes('DELETE') || false,
+                            isMostRecent: false, // These are from older archive dates
+                        };
+                    });
+
+                await pool.close();
+                console.log('✅ Database connection closed');
+
+                return {
+                    success: true,
+                    projectNumber: projectNumber,
+                    totalRecords: rows.length,
+                    records: formattedResults,
+                    otherRecords: otherRecords, // Records from other archive dates
+                    mostRecentArchiveDate: mostRecentDate ? 
+                        (mostRecentDate instanceof Date ? mostRecentDate.toISOString().split('T')[0] : String(mostRecentDate).split('T')[0]) : 
+                        null,
+                };
+
+            } catch (queryError: any) {
+                await pool.close();
+                throw queryError;
+            }
+
+        } catch (error: any) {
+            console.error('Error investigating project in Azure SQL Database:', error);
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to investigate project: ${error.message || 'Unknown error'}`
+            );
+        }
+    });
+
+// Delete specific project records from Azure SQL
+// WARNING: This is a destructive operation - use with caution
+export const azureSqlDeleteProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540,
+        memory: '512MB',
+        secrets: ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USER', 'AZURE_SQL_PASSWORD'],
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const projectNumber = data?.projectNumber;
+        const projectName = data?.projectName; // Optional: if provided, only delete records matching this exact name
+        const archiveDate = data?.archiveDate; // Optional: if provided, only delete records with this archive date
+        const confirmDelete = data?.confirmDelete; // Safety flag - must be true
+
+        if (!projectNumber) {
+            throw new functions.https.HttpsError('invalid-argument', 'Project number is required');
+        }
+
+        if (confirmDelete !== true) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'confirmDelete must be set to true to proceed with deletion'
+            );
+        }
+
+        try {
+            console.log(`⚠️ DELETING project records - Number: ${projectNumber}, Name filter: ${projectName || 'ALL'}, ArchiveDate filter: ${archiveDate || 'ALL'}`);
+            const azureSqlConfig = getAzureSqlConfig();
+            const pool = await sql.connect(azureSqlConfig);
+            console.log('✅ Connected to Azure SQL Database');
+
+            try {
+                // Build DELETE query with optional filters
+                // When both projectName and archiveDate are provided, we should only delete ONE record
+                const request = pool.request();
+                request.input('projectNumber', sql.NVarChar, projectNumber.toString());
+
+                let deleteQuery = '';
+                
+                // If we have both projectName and archiveDate, use exact match to ensure only one record
+                if (projectName && archiveDate) {
+                    deleteQuery = `
+                        DELETE FROM dbo.ProjectProfitabilityArchive
+                        WHERE ProjectNumber = @projectNumber
+                            AND ProjectName = @projectName
+                            AND ArchiveDate = @archiveDate
+                    `;
+                    request.input('projectName', sql.NVarChar, projectName);
+                    request.input('archiveDate', sql.DateTime2, new Date(archiveDate));
+                    console.log(`  Deleting exact record: ProjectName="${projectName}", ArchiveDate="${archiveDate}"`);
+                } else {
+                    // Fallback: use TOP (1) to ensure only one record is deleted
+                    deleteQuery = `
+                        DELETE TOP (1) FROM dbo.ProjectProfitabilityArchive
+                        WHERE ProjectNumber = @projectNumber
+                    `;
+                    
+                    if (projectName) {
+                        deleteQuery += ` AND ProjectName = @projectName`;
+                        request.input('projectName', sql.NVarChar, projectName);
+                        console.log(`  Filtering by exact project name: ${projectName}`);
+                    }
+
+                    if (archiveDate) {
+                        // Use date-only match if exact datetime not available
+                        deleteQuery += ` AND CAST(ArchiveDate AS DATE) = CAST(@archiveDate AS DATE)`;
+                        request.input('archiveDate', sql.DateTime2, new Date(archiveDate));
+                        console.log(`  Filtering by archive date: ${archiveDate}`);
+                    }
+                }
+
+                // First, get count of records that will be deleted
+                const countQuery = deleteQuery.replace('DELETE FROM', 'SELECT COUNT(*) as RecordCount FROM');
+                const countResult = await request.query(countQuery);
+                const recordCount = countResult.recordset[0]?.RecordCount || 0;
+
+                if (recordCount === 0) {
+                    await pool.close();
+                    return {
+                        success: true,
+                        deleted: 0,
+                        message: 'No records found matching the criteria. Nothing was deleted.',
+                    };
+                }
+
+                console.log(`⚠️ About to delete ${recordCount} record(s)`);
+
+                // Execute the DELETE
+                const deleteResult = await request.query(deleteQuery);
+                const rowsAffected = deleteResult.rowsAffected?.[0] || 0;
+
+                await pool.close();
+                console.log(`✅ Deleted ${rowsAffected} record(s) from Azure SQL Database`);
+
+                return {
+                    success: true,
+                    deleted: rowsAffected,
+                    projectNumber: projectNumber,
+                    projectNameFilter: projectName || null,
+                    archiveDateFilter: archiveDate || null,
+                    message: `Successfully deleted ${rowsAffected} record(s)`,
+                };
+
+            } catch (queryError: any) {
+                await pool.close();
+                throw queryError;
+            }
+
+        } catch (error: any) {
+            console.error('Error deleting project from Azure SQL Database:', error);
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to delete project: ${error.message || 'Unknown error'}`
+            );
+        }
+    });
+
+// Promote an older project record to the most recent archive date
+// This copies a record from an older archive date to the most recent date
+// Useful for fixing duplicate projects where the correct version is on an older date
+export const azureSqlPromoteProject = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 540,
+        memory: '512MB',
+        secrets: ['AZURE_SQL_SERVER', 'AZURE_SQL_DATABASE', 'AZURE_SQL_USER', 'AZURE_SQL_PASSWORD'],
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const projectNumber = data?.projectNumber;
+        const sourceArchiveDate = data?.sourceArchiveDate; // The archive date of the record we want to copy
+        const sourceProjectName = data?.sourceProjectName; // Optional: specific project name to copy
+        const confirmPromote = data?.confirmPromote; // Safety flag - must be true
+
+        if (!projectNumber) {
+            throw new functions.https.HttpsError('invalid-argument', 'Project number is required');
+        }
+
+        if (!sourceArchiveDate) {
+            throw new functions.https.HttpsError('invalid-argument', 'Source archive date is required');
+        }
+
+        if (confirmPromote !== true) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'confirmPromote must be set to true to proceed'
+            );
+        }
+
+        try {
+            console.log(`🔄 PROMOTING project record - Number: ${projectNumber}, From Date: ${sourceArchiveDate}, Name: ${sourceProjectName || 'ALL'}`);
+            const azureSqlConfig = getAzureSqlConfig();
+            const pool = await sql.connect(azureSqlConfig);
+            console.log('✅ Connected to Azure SQL Database');
+
+            try {
+                // Get the most recent archive date
+                const mostRecentDateQuery = `SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly FROM dbo.ProjectProfitabilityArchive`;
+                const mostRecentDateRequest = pool.request();
+                const mostRecentDateResult = await mostRecentDateRequest.query(mostRecentDateQuery);
+                const mostRecentDate = mostRecentDateResult.recordset[0]?.LatestArchiveDateOnly;
+                
+                if (!mostRecentDate) {
+                    await pool.close();
+                    throw new functions.https.HttpsError('internal', 'Could not determine most recent archive date');
+                }
+
+                const mostRecentDateStr = mostRecentDate instanceof Date ? 
+                    mostRecentDate.toISOString().split('T')[0] : 
+                    String(mostRecentDate).split('T')[0];
+                
+                console.log(`Most recent archive date: ${mostRecentDateStr}`);
+
+                // Find the source record(s) to copy
+                let findSourceQuery = `
+                    SELECT TOP 1 *
+                    FROM dbo.ProjectProfitabilityArchive
+                    WHERE ProjectNumber = @projectNumber
+                        AND CAST(ArchiveDate AS DATE) = CAST(@sourceArchiveDate AS DATE)
+                `;
+
+                const request = pool.request();
+                request.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                request.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+
+                if (sourceProjectName) {
+                    findSourceQuery += ` AND ProjectName = @sourceProjectName`;
+                    request.input('sourceProjectName', sql.NVarChar, sourceProjectName);
+                }
+
+                findSourceQuery += ` ORDER BY ArchiveDate DESC`;
+
+                console.log(`Finding source record to copy...`);
+                const sourceResult = await request.query(findSourceQuery);
+                const sourceRows = sourceResult.recordset || [];
+
+                if (sourceRows.length === 0) {
+                    await pool.close();
+                    throw new functions.https.HttpsError(
+                        'not-found',
+                        `No record found for project ${projectNumber} on archive date ${sourceArchiveDate}${sourceProjectName ? ` with name "${sourceProjectName}"` : ''}`
+                    );
+                }
+
+                const sourceRow = sourceRows[0];
+                console.log(`Found source record: ${sourceRow.ProjectName} (Archive Date: ${sourceRow.ArchiveDate})`);
+
+                // Check if a record already exists for this project on the most recent date
+                const checkExistingQuery = `
+                    SELECT COUNT(*) as RecordCount
+                    FROM dbo.ProjectProfitabilityArchive
+                    WHERE ProjectNumber = @projectNumber
+                        AND CAST(ArchiveDate AS DATE) = CAST(@mostRecentDate AS DATE)
+                `;
+                const checkRequest = pool.request();
+                checkRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                checkRequest.input('mostRecentDate', sql.Date, mostRecentDate);
+                const existingResult = await checkRequest.query(checkExistingQuery);
+                const existingCount = existingResult.recordset[0]?.RecordCount || 0;
+
+                if (existingCount > 0) {
+                    console.log(`⚠️ Warning: ${existingCount} record(s) already exist for this project on the most recent date. They will remain, and a new record will be added.`);
+                }
+
+                // Build INSERT query - copy all columns from source but use most recent archive date
+                // We need to get all column names dynamically or list them explicitly
+                // Based on the investigation query, here are the main columns:
+                // Check how many records match the criteria before promoting
+                let checkSourceQuery = `
+                    SELECT COUNT(*) as RecordCount
+                    FROM dbo.ProjectProfitabilityArchive
+                    WHERE ProjectNumber = @projectNumber
+                        AND CAST(ArchiveDate AS DATE) = CAST(@sourceArchiveDate AS DATE)
+                `;
+                const checkSourceRequest = pool.request();
+                checkSourceRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                checkSourceRequest.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+                
+                if (sourceProjectName) {
+                    checkSourceQuery += ` AND ProjectName = @sourceProjectName`;
+                    checkSourceRequest.input('sourceProjectName', sql.NVarChar, sourceProjectName);
+                }
+                
+                const checkSourceResult = await checkSourceRequest.query(checkSourceQuery);
+                const sourceRecordCount = checkSourceResult.recordset[0]?.RecordCount || 0;
+                
+                if (sourceRecordCount > 1) {
+                    console.log(`⚠️ Warning: ${sourceRecordCount} record(s) match the criteria. Will promote only the most recent one.`);
+                }
+
+                // Build INSERT query - ensure we only insert ONE record
+                let insertQuery = `
+                    INSERT INTO dbo.ProjectProfitabilityArchive (
+                        ProjectName, ProjectNumber, ProjectManager, ArchiveDate, ProjectRevisedContractAmount,
+                        IsActive, ContractStatus, ProjectStage, ProcoreId, RedTeamImport,
+                        EstCostAtCompletion, JobCostToDate, PercentCompleteBasedOnCost,
+                        RemainingCost, ProjectedProfit, ProjectedProfitPercentage,
+                        ContractStartDate, ContractEndDate, TotalInvoiced,
+                        BalanceLeftOnContract, PercentCompleteBasedOnRevenue,
+                        CustomerRetainage, VendorRetainage, ProfitCenterYear,
+                        EstimatedProjectProfit
+                    )
+                    SELECT TOP 1
+                        ProjectName, ProjectNumber, ProjectManager,
+                        CAST(@mostRecentDate AS DATETIME) as ArchiveDate,
+                        ProjectRevisedContractAmount, IsActive, ContractStatus, ProjectStage,
+                        ProcoreId, RedTeamImport, EstCostAtCompletion, JobCostToDate,
+                        PercentCompleteBasedOnCost, RemainingCost, ProjectedProfit,
+                        ProjectedProfitPercentage, ContractStartDate, ContractEndDate,
+                        TotalInvoiced, BalanceLeftOnContract, PercentCompleteBasedOnRevenue,
+                        CustomerRetainage, VendorRetainage, ProfitCenterYear,
+                        EstimatedProjectProfit
+                    FROM dbo.ProjectProfitabilityArchive
+                    WHERE ProjectNumber = @projectNumber
+                        AND CAST(ArchiveDate AS DATE) = CAST(@sourceArchiveDate AS DATE)
+                `;
+
+                const insertRequest = pool.request();
+                insertRequest.input('projectNumber', sql.NVarChar, projectNumber.toString());
+                insertRequest.input('sourceArchiveDate', sql.Date, new Date(sourceArchiveDate));
+                insertRequest.input('mostRecentDate', sql.Date, mostRecentDate);
+
+                if (sourceProjectName) {
+                    insertQuery += ` AND ProjectName = @sourceProjectName`;
+                    insertRequest.input('sourceProjectName', sql.NVarChar, sourceProjectName);
+                }
+
+                // Always order by ArchiveDate DESC to get the most recent record if there are duplicates
+                insertQuery += ` ORDER BY ArchiveDate DESC`;
+
+                console.log(`Inserting promoted record with most recent archive date: ${mostRecentDateStr}...`);
+                const insertResult = await insertRequest.query(insertQuery);
+                const rowsAffected = insertResult.rowsAffected?.[0] || 0;
+
+                await pool.close();
+                console.log(`✅ Promoted ${rowsAffected} record(s) to most recent archive date`);
+
+                return {
+                    success: true,
+                    promoted: rowsAffected,
+                    projectNumber: projectNumber,
+                    sourceArchiveDate: sourceArchiveDate,
+                    sourceProjectName: sourceProjectName || null,
+                    promotedToDate: mostRecentDateStr,
+                    message: `Successfully promoted ${rowsAffected} record(s) to archive date ${mostRecentDateStr}`,
+                };
+
+            } catch (queryError: any) {
+                await pool.close();
+                throw queryError;
+            }
+
+        } catch (error: any) {
+            console.error('Error promoting project in Azure SQL Database:', error);
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to promote project: ${error.message || 'Unknown error'}`
+            );
+        }
+    });
+

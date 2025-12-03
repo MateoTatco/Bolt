@@ -152,6 +152,86 @@ export const ProcoreService = {
     },
 
     /**
+     * Investigate project records in Azure SQL by project number
+     * Returns all records (across all archive dates) for a given project number
+     * Useful for identifying duplicate projects before deletion
+     * @param {string} projectNumber - Project number to investigate
+     * @returns {Promise<Object>} Investigation results with all matching records
+     */
+    async investigateProjectInAzure(projectNumber) {
+        try {
+            console.log(`🔍 Investigating project number: ${projectNumber}`);
+            const investigateFunction = httpsCallable(functions, 'azureSqlInvestigateProject')
+            const result = await investigateFunction({ projectNumber })
+            return result.data
+        } catch (error) {
+            console.error('Error investigating project in Azure SQL:', error)
+            throw error
+        }
+    },
+
+    /**
+     * Delete project records from Azure SQL Database
+     * WARNING: This is a destructive operation - use with caution
+     * @param {Object} options - Deletion options
+     * @param {string} options.projectNumber - Project number to delete
+     * @param {string} [options.projectName] - Optional: Only delete records matching this exact project name
+     * @param {string} [options.archiveDate] - Optional: Only delete records with this archive date (ISO string)
+     * @param {boolean} options.confirmDelete - Must be true to proceed
+     * @returns {Promise<Object>} Deletion results
+     */
+    async deleteProjectFromAzure({ projectNumber, projectName, archiveDate, confirmDelete }) {
+        try {
+            if (confirmDelete !== true) {
+                throw new Error('confirmDelete must be true to proceed with deletion')
+            }
+            console.log(`⚠️ DELETING project from Azure SQL - Number: ${projectNumber}`);
+            const deleteFunction = httpsCallable(functions, 'azureSqlDeleteProject')
+            const result = await deleteFunction({
+                projectNumber,
+                projectName,
+                archiveDate,
+                confirmDelete: true,
+            })
+            return result.data
+        } catch (error) {
+            console.error('Error deleting project from Azure SQL:', error)
+            throw error
+        }
+    },
+
+    /**
+     * Promote an older project record to the most recent archive date
+     * This copies a record from an older archive date to the most recent date
+     * Useful for fixing duplicate projects where the correct version is on an older date
+     * @param {Object} options - Promotion options
+     * @param {string} options.projectNumber - Project number
+     * @param {string} options.sourceArchiveDate - Archive date of the record to copy (ISO string or YYYY-MM-DD)
+     * @param {string} [options.sourceProjectName] - Optional: Specific project name to copy
+     * @param {boolean} options.confirmPromote - Must be true to proceed
+     * @returns {Promise<Object>} Promotion results
+     */
+    async promoteProjectToRecentDate({ projectNumber, sourceArchiveDate, sourceProjectName, confirmPromote }) {
+        try {
+            if (confirmPromote !== true) {
+                throw new Error('confirmPromote must be true to proceed')
+            }
+            console.log(`🔄 PROMOTING project to most recent date - Number: ${projectNumber}, From: ${sourceArchiveDate}`);
+            const promoteFunction = httpsCallable(functions, 'azureSqlPromoteProject')
+            const result = await promoteFunction({
+                projectNumber,
+                sourceArchiveDate,
+                sourceProjectName,
+                confirmPromote: true,
+            })
+            return result.data
+        } catch (error) {
+            console.error('Error promoting project in Azure SQL:', error)
+            throw error
+        }
+    },
+
+    /**
      * TEST FUNCTION: Test Prime Contracts endpoint to see what financial data is available
      * This is a temporary function for research purposes
      * @param {string} projectId - Optional project ID (defaults to 306371)

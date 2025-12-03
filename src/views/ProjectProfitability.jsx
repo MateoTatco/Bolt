@@ -286,7 +286,7 @@ const ProjectProfitability = () => {
         projectStage: null,
         projectSystem: null,
         projectManager: null,
-        isActive: null,
+        isActive: { value: true, label: 'Active' }, // Default to Active only
     })
     const [sort, setSort] = useState({ key: '', order: '' })
     const [localSearchValue, setLocalSearchValue] = useState('')
@@ -1029,7 +1029,7 @@ const ProjectProfitability = () => {
             projectStage: null,
             projectSystem: null,
             projectManager: null,
-            isActive: null,
+            isActive: { value: true, label: 'Active' }, // Reset to default: Active only
         })
         setLocalSearchValue('')
     }
@@ -1306,34 +1306,17 @@ const ProjectProfitability = () => {
                                 {filterVisibility.isActive && (
                                     <div className="flex flex-col gap-1">
                                         <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                                            Project status
+                                            Active Projects Only
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() =>
                                                 setFilters(prev => {
-                                                    const mode = !prev.isActive
-                                                        ? 'all'
-                                                        : prev.isActive.value === true
-                                                        ? 'active'
-                                                        : 'inactive'
-                                                    const nextMode =
-                                                        mode === 'all'
-                                                            ? 'active'
-                                                            : mode === 'active'
-                                                            ? 'inactive'
-                                                            : 'all'
-
-                                                    let nextFilter = null
-                                                    if (nextMode === 'active') {
-                                                        nextFilter = { value: true, label: 'Active' }
-                                                    } else if (nextMode === 'inactive') {
-                                                        nextFilter = { value: false, label: 'Not Active' }
-                                                    }
-
+                                                    // Toggle between Active (true) and All (null)
+                                                    const isCurrentlyActive = prev.isActive && prev.isActive.value === true
                                                     return {
                                                         ...prev,
-                                                        isActive: nextFilter,
+                                                        isActive: isCurrentlyActive ? null : { value: true, label: 'Active' },
                                                     }
                                                 })
                                             }
@@ -1342,30 +1325,22 @@ const ProjectProfitability = () => {
                                             <span
                                                 className={`
                                                     relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
-                                                    ${!filters.isActive
-                                                        ? 'bg-gray-300 dark:bg-gray-600'
-                                                        : filters.isActive.value === true
+                                                    ${filters.isActive && filters.isActive.value === true
                                                         ? 'bg-emerald-500'
-                                                        : 'bg-slate-400 dark:bg-slate-500'}
+                                                        : 'bg-gray-300 dark:bg-gray-600'}
                                                 `}
                                             >
                                                 <span
                                                     className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
                                                     style={{
-                                                        transform: !filters.isActive
-                                                            ? 'translateX(0px)'       // All (left)
-                                                            : filters.isActive.value === true
-                                                            ? 'translateX(15px)'      // Active (center)
-                                                            : 'translateX(30px)',     // Not Active (right)
+                                                        transform: filters.isActive && filters.isActive.value === true
+                                                            ? 'translateX(24px)'      // Active (right)
+                                                            : 'translateX(2px)',     // All (left)
                                                     }}
                                                 />
                                             </span>
                                             <span className="text-xs text-gray-700 dark:text-gray-200">
-                                                {!filters.isActive
-                                                    ? 'All'
-                                                    : filters.isActive.value === true
-                                                    ? 'Active'
-                                                    : 'Not Active'}
+                                                {filters.isActive && filters.isActive.value === true ? 'Yes' : 'No'}
                                             </span>
                                         </button>
                                     </div>
@@ -1489,34 +1464,17 @@ const ProjectProfitability = () => {
                                 {filterVisibility.isActive && (
                                     <div className="flex flex-col gap-1">
                                         <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                                            Project status
+                                            Active Projects Only
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() =>
                                                 setFilters(prev => {
-                                                    const mode = !prev.isActive
-                                                        ? 'all'
-                                                        : prev.isActive.value === true
-                                                        ? 'active'
-                                                        : 'inactive'
-                                                    const nextMode =
-                                                        mode === 'all'
-                                                            ? 'active'
-                                                            : mode === 'active'
-                                                            ? 'inactive'
-                                                            : 'all'
-
-                                                    let nextFilter = null
-                                                    if (nextMode === 'active') {
-                                                        nextFilter = { value: true, label: 'Active' }
-                                                    } else if (nextMode === 'inactive') {
-                                                        nextFilter = { value: false, label: 'Not Active' }
-                                                    }
-
+                                                    // Toggle between Active (true) and All (null)
+                                                    const isCurrentlyActive = prev.isActive && prev.isActive.value === true
                                                     return {
                                                         ...prev,
-                                                        isActive: nextFilter,
+                                                        isActive: isCurrentlyActive ? null : { value: true, label: 'Active' },
                                                     }
                                                 })
                                             }
@@ -1525,30 +1483,22 @@ const ProjectProfitability = () => {
                                             <span
                                                 className={`
                                                     relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
-                                                    ${!filters.isActive
-                                                        ? 'bg-gray-300 dark:bg-gray-600'
-                                                        : filters.isActive.value === true
+                                                    ${filters.isActive && filters.isActive.value === true
                                                         ? 'bg-emerald-500'
-                                                        : 'bg-slate-400 dark:bg-slate-500'}
+                                                        : 'bg-gray-300 dark:bg-gray-600'}
                                                 `}
                                             >
                                                 <span
                                                     className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
                                                     style={{
-                                                        transform: !filters.isActive
-                                                            ? 'translateX(0px)'       // All (left)
-                                                            : filters.isActive.value === true
-                                                            ? 'translateX(12px)'      // Active (center)
-                                                            : 'translateX(24px)',     // Not Active (right)
+                                                        transform: filters.isActive && filters.isActive.value === true
+                                                            ? 'translateX(24px)'      // Active (right)
+                                                            : 'translateX(2px)',     // All (left)
                                                     }}
                                                 />
                                             </span>
                                             <span className="text-xs text-gray-700 dark:text-gray-200">
-                                                {!filters.isActive
-                                                    ? 'All'
-                                                    : filters.isActive.value === true
-                                                    ? 'Active'
-                                                    : 'Not Active'}
+                                                {filters.isActive && filters.isActive.value === true ? 'Yes' : 'No'}
                                             </span>
                                         </button>
                                     </div>
