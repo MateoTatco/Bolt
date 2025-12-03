@@ -509,10 +509,6 @@ const ProjectProfitability = () => {
         () => applyProjectFilters(projects, { ...filters, projectManager: null }),
         [projects, filters]
     )
-    const projectsForIsActiveOptions = useMemo(
-        () => applyProjectFilters(projects, { ...filters, isActive: null }),
-        [projects, filters]
-    )
 
     // Dynamic filter options built from the current dataset
     const projectOptions = useMemo(() => {
@@ -562,26 +558,6 @@ const ProjectProfitability = () => {
             .sort((a, b) => a.localeCompare(b))
             .map(manager => ({ value: manager, label: manager }))
     }, [projectsForProjectManagerOptions])
-
-    const isActiveOptions = useMemo(() => {
-        let hasActive = false
-        let hasInactive = false
-        projectsForIsActiveOptions.forEach(p => {
-            if (isProjectActive(p)) {
-                hasActive = true
-            } else {
-                hasInactive = true
-            }
-        })
-        const opts = []
-        if (hasActive) {
-            opts.push({ value: true, label: 'Yes' })
-        }
-        if (hasInactive) {
-            opts.push({ value: false, label: 'No' })
-        }
-        return opts
-    }, [projectsForIsActiveOptions])
 
     // Calculate summary values
     // Now based on the currently filtered projects (so KPIs react to filters)
@@ -1328,28 +1304,71 @@ const ProjectProfitability = () => {
                                     />
                                 )}
                                 {filterVisibility.isActive && (
-                                    <Select
-                                        placeholder="Is Active"
-                                        isClearable
-                                        isMulti
-                                        options={isActiveOptions}
-                                        menuPortalTarget={document.body}
-                                        menuPosition="fixed"
-                                        styles={selectMenuStyles}
-                                        value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
-                                        onChange={(opt) => {
-                                            setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))
-                                        }}
-                                        components={{
-                                            ValueContainer: CustomValueContainer,
-                                            MultiValue: CustomMultiValue,
-                                            MenuList: CustomMenuList,
-                                            Option: CustomOption,
-                                            Placeholder: CustomPlaceholder,
-                                        }}
-                                        controlShouldRenderValue={false}
-                                        hideSelectedOptions={false}
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                            Project status
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setFilters(prev => {
+                                                    const mode = !prev.isActive
+                                                        ? 'all'
+                                                        : prev.isActive.value === true
+                                                        ? 'active'
+                                                        : 'inactive'
+                                                    const nextMode =
+                                                        mode === 'all'
+                                                            ? 'active'
+                                                            : mode === 'active'
+                                                            ? 'inactive'
+                                                            : 'all'
+
+                                                    let nextFilter = null
+                                                    if (nextMode === 'active') {
+                                                        nextFilter = { value: true, label: 'Active' }
+                                                    } else if (nextMode === 'inactive') {
+                                                        nextFilter = { value: false, label: 'Not Active' }
+                                                    }
+
+                                                    return {
+                                                        ...prev,
+                                                        isActive: nextFilter,
+                                                    }
+                                                })
+                                            }
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className={`
+                                                    relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
+                                                    ${!filters.isActive
+                                                        ? 'bg-gray-300 dark:bg-gray-600'
+                                                        : filters.isActive.value === true
+                                                        ? 'bg-emerald-500'
+                                                        : 'bg-slate-400 dark:bg-slate-500'}
+                                                `}
+                                            >
+                                                <span
+                                                    className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                                    style={{
+                                                        transform: !filters.isActive
+                                                            ? 'translateX(0px)'       // All (left)
+                                                            : filters.isActive.value === true
+                                                            ? 'translateX(15px)'      // Active (center)
+                                                            : 'translateX(30px)',     // Not Active (right)
+                                                    }}
+                                                />
+                                            </span>
+                                            <span className="text-xs text-gray-700 dark:text-gray-200">
+                                                {!filters.isActive
+                                                    ? 'All'
+                                                    : filters.isActive.value === true
+                                                    ? 'Active'
+                                                    : 'Not Active'}
+                                            </span>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -1468,28 +1487,71 @@ const ProjectProfitability = () => {
                                     />
                                 )}
                                 {filterVisibility.isActive && (
-                                    <Select
-                                        placeholder="Is Active"
-                                        isClearable
-                                        isMulti
-                                        options={isActiveOptions}
-                                        menuPortalTarget={document.body}
-                                        menuPosition="fixed"
-                                        styles={selectMenuStyles}
-                                        value={Array.isArray(filters.isActive) ? filters.isActive : (filters.isActive ? [filters.isActive] : null)}
-                                        onChange={(opt) => {
-                                            setFilters(prev => ({ ...prev, isActive: opt && opt.length > 0 ? opt : null }))
-                                        }}
-                                        components={{
-                                            ValueContainer: CustomValueContainer,
-                                            MultiValue: CustomMultiValue,
-                                            MenuList: CustomMenuList,
-                                            Option: CustomOption,
-                                            Placeholder: CustomPlaceholder,
-                                        }}
-                                        controlShouldRenderValue={false}
-                                        hideSelectedOptions={false}
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                            Project status
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setFilters(prev => {
+                                                    const mode = !prev.isActive
+                                                        ? 'all'
+                                                        : prev.isActive.value === true
+                                                        ? 'active'
+                                                        : 'inactive'
+                                                    const nextMode =
+                                                        mode === 'all'
+                                                            ? 'active'
+                                                            : mode === 'active'
+                                                            ? 'inactive'
+                                                            : 'all'
+
+                                                    let nextFilter = null
+                                                    if (nextMode === 'active') {
+                                                        nextFilter = { value: true, label: 'Active' }
+                                                    } else if (nextMode === 'inactive') {
+                                                        nextFilter = { value: false, label: 'Not Active' }
+                                                    }
+
+                                                    return {
+                                                        ...prev,
+                                                        isActive: nextFilter,
+                                                    }
+                                                })
+                                            }
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className={`
+                                                    relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
+                                                    ${!filters.isActive
+                                                        ? 'bg-gray-300 dark:bg-gray-600'
+                                                        : filters.isActive.value === true
+                                                        ? 'bg-emerald-500'
+                                                        : 'bg-slate-400 dark:bg-slate-500'}
+                                                `}
+                                            >
+                                                <span
+                                                    className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                                    style={{
+                                                        transform: !filters.isActive
+                                                            ? 'translateX(0px)'       // All (left)
+                                                            : filters.isActive.value === true
+                                                            ? 'translateX(12px)'      // Active (center)
+                                                            : 'translateX(24px)',     // Not Active (right)
+                                                    }}
+                                                />
+                                            </span>
+                                            <span className="text-xs text-gray-700 dark:text-gray-200">
+                                                {!filters.isActive
+                                                    ? 'All'
+                                                    : filters.isActive.value === true
+                                                    ? 'Active'
+                                                    : 'Not Active'}
+                                            </span>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                             {/* More Filters Toggle Button - desktop only */}

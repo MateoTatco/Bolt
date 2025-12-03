@@ -4047,6 +4047,9 @@ const getAzureSqlConfig = () => {
         database: database,
         user: user,
         password: password,
+        // Increase default request timeout (mssql default is 15000ms, which is too low for heavy views)
+        // This prevents "Timeout: Request failed to complete in 15000ms" when the Azure view is busy
+        requestTimeout: 60000, // 60 seconds
         options: {
             encrypt: true, // Required for Azure SQL
             trustServerCertificate: true, // Azure SQL uses proper certificates but hostname matching can be strict
