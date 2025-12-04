@@ -4,7 +4,7 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import { notifyEntityDeleted, notifyEntityUpdated, notifyStatusChanged, notifyEntityCreated, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
-import { getAllUserIds } from '@/utils/userHelper'
+import { getAllUserIds, getUserIdsByEmails } from '@/utils/userHelper'
 
 export const useProjectsStore = create((set, get) => ({
     projects: [],
@@ -93,18 +93,27 @@ export const useProjectsStore = create((set, get) => ({
         let procoreError = null
         
         try {
-            // Get all user IDs to set as default members
-            const allUserIds = await getAllUserIds()
+            // Get current user ID (project creator)
+            const currentUserId = getCurrentUserId()
+            
+            // Always include admin-01@tatco.construction and brett@tatco.construction
+            const requiredEmails = ['admin-01@tatco.construction', 'brett@tatco.construction']
+            const requiredUserIds = await getUserIdsByEmails(requiredEmails)
+            
+            // Combine current user with required admins (avoid duplicates)
+            const members = [currentUserId, ...requiredUserIds].filter(
+                (id, index, self) => id && self.indexOf(id) === index // Remove null/undefined and duplicates
+            )
+            
             const projectDataWithMembers = {
                 ...projectData,
-                members: allUserIds // Set all users as default members
+                members: members // Set creator + required admins as members
             }
             
             // Save to Firebase first
             const response = await FirebaseDbService.projects.create(projectDataWithMembers)
             if (response.success) {
                 const newProject = response.data
-                const currentUserId = getCurrentUserId()
                 
                 // Try to sync with Procore (only for new projects with ProjectNumber)
                 if (!skipProcoreSync && projectData.ProjectNumber) {
@@ -178,6 +187,7 @@ export const useProjectsStore = create((set, get) => ({
                 }))
                 
                 // Notify all users about new project creation
+                const allUserIds = await getAllUserIds()
                 if (currentUserId && allUserIds.length > 0) {
                     await notifyEntityCreated({
                         userIds: allUserIds,
