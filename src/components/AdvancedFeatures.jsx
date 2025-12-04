@@ -57,6 +57,9 @@ const AdvancedFeatures = () => {
     const [isInvestigating, setIsInvestigating] = useState(false)
     const [deleteConfirmText, setDeleteConfirmText] = useState('')
     const [isDeleting, setIsDeleting] = useState(false)
+    const [showProcoreTemplates, setShowProcoreTemplates] = useState(false)
+    const [procoreTemplates, setProcoreTemplates] = useState(null)
+    const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
 
     // Online/Offline detection
     useEffect(() => {
@@ -134,6 +137,22 @@ const AdvancedFeatures = () => {
             }
         } catch (error) {
             console.error('Error updating Tatco Contact column:', error)
+        }
+    }
+
+    const handleGetProcoreTemplates = async () => {
+        setIsLoadingTemplates(true)
+        setProcoreTemplates(null)
+        try {
+            console.log('🔍 Fetching Procore project templates...')
+            const result = await ProcoreService.getProjectTemplates({ page: 1, per_page: 100 })
+            console.log('✅ Templates result:', result)
+            setProcoreTemplates(result)
+        } catch (error) {
+            console.error('❌ Error fetching templates:', error)
+            alert(`Error fetching templates: ${error?.message || error?.details || 'Unknown error'}`)
+        } finally {
+            setIsLoadingTemplates(false)
         }
     }
 
@@ -300,6 +319,82 @@ const AdvancedFeatures = () => {
                     </div>
                 </Card>
             )}
+
+            {/* Procore Templates Test */}
+            <Card className="p-4 mb-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Procore Templates Test</h3>
+                    <Button 
+                        onClick={() => setShowProcoreTemplates(!showProcoreTemplates)}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        {showProcoreTemplates ? 'Hide' : 'Show'} Templates Test
+                    </Button>
+                </div>
+                {showProcoreTemplates && (
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600">
+                            Test the Procore API to see what project templates are available in your Procore account.
+                        </p>
+                        <Button 
+                            onClick={handleGetProcoreTemplates}
+                            loading={isLoadingTemplates}
+                            variant="solid"
+                        >
+                            {isLoadingTemplates ? 'Loading...' : 'Fetch Project Templates'}
+                        </Button>
+                        {procoreTemplates && (
+                            <div className="mt-4">
+                                <h4 className="font-semibold mb-2">Available Templates:</h4>
+                                {procoreTemplates.success && procoreTemplates.data && Array.isArray(procoreTemplates.data) ? (
+                                    <div className="space-y-2">
+                                        {procoreTemplates.data.length > 0 ? (
+                                            <>
+                                                <div className="text-sm text-gray-600 mb-2">
+                                                    Found {procoreTemplates.data.length} template(s)
+                                                    {procoreTemplates.pagination?.total && ` (Total: ${procoreTemplates.pagination.total})`}
+                                                </div>
+                                                <div className="border rounded-lg overflow-hidden">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-50 dark:bg-gray-800">
+                                                            <tr>
+                                                                <th className="px-4 py-2 text-left font-semibold">ID</th>
+                                                                <th className="px-4 py-2 text-left font-semibold">Name</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {procoreTemplates.data.map((template, idx) => (
+                                                                <tr key={template.id || idx} className="border-t">
+                                                                    <td className="px-4 py-2">{template.id}</td>
+                                                                    <td className="px-4 py-2 font-medium">{template.name}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                                                        <strong>Note:</strong> Check the browser console for detailed API response data.
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No templates found.</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                            Unexpected response format. Check console for details.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Card>
 
             {/* Azure SQL Project Investigation Tools */}
             <Card className="p-4">

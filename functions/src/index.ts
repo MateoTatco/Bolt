@@ -674,109 +674,65 @@ export const procoreTestConnection = functions
             };
         }
         
+        // TEMPORARY: Test project templates endpoint first
+        // TODO: Remove this once procoreGetProjectTemplates is deployed
+        const templatesUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_templates`;
+        console.log('🔍 [v2] Testing project templates endpoint:', templatesUrl);
+        console.log('🔍 [v2] Using access token (first 20 chars):', accessToken ? accessToken.substring(0, 20) : 'null');
+        console.log('🔍 [v2] Company ID:', PROCORE_CONFIG.companyId);
+        
         try {
-            // Helper function to add delay
-            const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+            const templatesResponse = await axios.get(templatesUrl, {
+                params: {
+                    company_id: PROCORE_CONFIG.companyId,
+                    page: 1,
+                    per_page: 100,
+                },
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                },
+            });
+            console.log('✅ [v2] Project Templates Test - Status:', templatesResponse.status);
+            console.log('✅ [v2] Project Templates Test - Full response:', JSON.stringify(templatesResponse.data, null, 2));
             
-            // Helper function to retry on rate limit errors
-            const retryOnRateLimit = async (fn: () => Promise<any>, maxRetries = 3, baseDelay = 2000) => {
-                for (let i = 0; i < maxRetries; i++) {
-                    try {
-                        return await fn();
-                    } catch (error: any) {
-                        if (error.response?.status === 429 && i < maxRetries - 1) {
-                            const retryAfter = error.response.headers['retry-after'] 
-                                ? parseInt(error.response.headers['retry-after']) * 1000 
-                                : baseDelay * Math.pow(2, i);
-                            console.warn(`Rate limit hit in connection test, waiting ${retryAfter}ms before retry ${i + 1}/${maxRetries}`);
-                            await delay(retryAfter);
-                            continue;
-                        }
-                        throw error;
-                    }
-                }
-            };
+            // Procore API typically returns {data: [...]} or just [...]
+            const templatesData = templatesResponse.data?.data || templatesResponse.data || [];
+            const templatesArray = Array.isArray(templatesData) ? templatesData : [];
             
-            // Make a simple API call to verify the token works
-            // Using a minimal endpoint - just get company info
-            const testUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}`;
-            console.log('Testing connection with URL:', testUrl);
-            console.log('Using access token (first 20 chars):', accessToken.substring(0, 20) + '...');
+            console.log('✅ [v2] Project Templates Test - Extracted templates array length:', templatesArray.length);
             
-            let response = await retryOnRateLimit(() => axios.get(
-                testUrl,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                    },
-                }
-            ));
-            
-            // If we get 401, try refreshing the token and retry
-            if (response.status === 401) {
-                console.log('Got 401, token may be expired. Attempting refresh...');
-                const refreshedToken = await getProcoreAccessToken(userId);
-                if (refreshedToken && refreshedToken !== accessToken) {
-                    console.log('Token refreshed, retrying connection test...');
-                    response = await axios.get(
-                        testUrl,
-                        {
-                            headers: {
-                                'Authorization': `Bearer ${refreshedToken}`,
-                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                            },
-                        }
-                    );
-                }
-            }
-            
-            console.log('Connection test successful! Status:', response.status);
             return {
                 connected: true,
-                message: 'Successfully connected to Procore',
-                status: response.status,
+                message: 'Successfully connected to Procore and fetched templates [v2]',
+                templates: templatesArray, // TEMPORARY: Include templates in response
+                templatesCount: templatesArray.length,
+                success: true,
+                data: templatesArray,
             };
-        } catch (error: any) {
-            console.error('Connection test failed:', {
-                message: error.message,
-                status: error.response?.status,
-                statusText: error.response?.statusText,
-                data: error.response?.data,
+        } catch (templatesError: any) {
+            console.error('❌ [v2] Templates test failed:', {
+                message: templatesError.message,
+                status: templatesError.response?.status,
+                statusText: templatesError.response?.statusText,
+                data: templatesError.response?.data,
+                url: templatesUrl,
             });
-            
-            // If 401, try to refresh and retry once
-            if (error.response?.status === 401) {
-                console.log('Got 401 error, attempting token refresh...');
-                try {
-                    const refreshedToken = await getProcoreAccessToken(userId);
-                    if (refreshedToken && refreshedToken !== accessToken) {
-                        console.log('Token refreshed, retrying connection test...');
-                        const retryResponse = await axios.get(
-                            `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}`,
-                            {
-                                headers: {
-                                    'Authorization': `Bearer ${refreshedToken}`,
-                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                },
-                            }
-                        );
-                        console.log('Retry successful! Status:', retryResponse.status);
-                        return {
-                            connected: true,
-                            message: 'Successfully connected to Procore (after token refresh)',
-                            status: retryResponse.status,
-                        };
-                    }
-                } catch (retryError: any) {
-                    console.error('Retry after refresh also failed:', retryError.response?.data || retryError.message);
-                }
-            }
-            
+            // Return error info so we can debug - don't fall through
             return {
-                connected: false,
-                message: error.response?.data?.error_description || error.response?.data?.message || error.message || 'Failed to connect to Procore',
-                status: error.response?.status,
+                connected: true,
+                message: 'Connected to Procore but templates API failed [v2]',
+                templatesError: templatesError.response?.data || templatesError.message,
+                templatesStatus: templatesError.response?.status,
+                success: false,
+                data: [],
+                errorDetails: {
+                    message: templatesError.message,
+                    status: templatesError.response?.status,
+                    statusText: templatesError.response?.statusText,
+                    data: templatesError.response?.data,
+                    url: templatesUrl,
+                },
             };
         }
     });
@@ -979,6 +935,157 @@ export const procoreGetProjects = functions
         }
     });
 
+// Get project templates from Procore (for testing/listing available templates)
+export const procoreGetProjectTemplates = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId);
+        
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+        
+        const { page = 1, per_page = 100 } = data || {};
+        
+        try {
+            // Procore API endpoint: GET /rest/v1.0/project_templates
+            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/project_templates`;
+            console.log('Fetching project templates from:', apiUrl);
+            console.log('Using Company ID:', PROCORE_CONFIG.companyId);
+            
+            let response = await axios.get(
+                apiUrl,
+                {
+                    params: {
+                        company_id: PROCORE_CONFIG.companyId,
+                        page: page,
+                        per_page: per_page,
+                    },
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                    },
+                }
+            );
+            
+            // If we get 401, try to refresh the token and retry once
+            if (response.status === 401) {
+                console.log('Got 401, attempting to refresh token...');
+                const refreshedToken = await getProcoreAccessToken(userId);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    console.log('Token refreshed, retrying request...');
+                    response = await axios.get(
+                        apiUrl,
+                        {
+                            params: {
+                                company_id: PROCORE_CONFIG.companyId,
+                                page: page,
+                                per_page: per_page,
+                            },
+                            headers: {
+                                'Authorization': `Bearer ${refreshedToken}`,
+                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                            },
+                        }
+                    );
+                }
+            }
+            
+            console.log('Project templates API response status:', response.status);
+            console.log('Templates data received:', Array.isArray(response.data) ? `${response.data.length} templates` : 'Not an array');
+            console.log('Templates:', JSON.stringify(response.data, null, 2));
+            
+            // Extract pagination info from headers if available
+            const perPage = response.headers['per-page'] ? parseInt(response.headers['per-page']) : null;
+            const total = response.headers['total'] ? parseInt(response.headers['total']) : null;
+            const link = response.headers['link'] || null;
+            
+            return { 
+                success: true, 
+                data: response.data,
+                pagination: {
+                    perPage,
+                    total,
+                    link,
+                }
+            };
+        } catch (error: any) {
+            const attemptedUrl = error.config?.url || 'unknown';
+            const errorStatus = error.response?.status;
+            
+            console.error('Error fetching Procore project templates:', {
+                message: error.message,
+                status: errorStatus,
+                statusText: error.response?.statusText,
+                url: attemptedUrl,
+                responseData: error.response?.data,
+            });
+            
+            // If 401, try to refresh token and retry
+            if (errorStatus === 401) {
+                console.log('401 error detected, attempting to refresh token and retry...');
+                try {
+                    const refreshedToken = await getProcoreAccessToken(userId);
+                    console.log('Refreshed token obtained:', refreshedToken ? 'Yes' : 'No');
+                    
+                    if (refreshedToken && refreshedToken !== accessToken) {
+                        console.log('Token refreshed successfully, retrying request with new token...');
+                        const retryResponse = await axios.get(
+                            attemptedUrl,
+                            {
+                                params: {
+                                    company_id: PROCORE_CONFIG.companyId,
+                                    page: page,
+                                    per_page: per_page,
+                                },
+                                headers: {
+                                    'Authorization': `Bearer ${refreshedToken}`,
+                                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                },
+                            }
+                        );
+                        console.log('Retry successful! Status:', retryResponse.status);
+                        return { 
+                            success: true, 
+                            data: retryResponse.data,
+                            pagination: {
+                                perPage: retryResponse.headers['per-page'] ? parseInt(retryResponse.headers['per-page']) : null,
+                                total: retryResponse.headers['total'] ? parseInt(retryResponse.headers['total']) : null,
+                                link: retryResponse.headers['link'] || null,
+                            }
+                        };
+                    } else {
+                        console.error('Token refresh did not return a new token. Refresh token may be expired. User needs to re-authorize.');
+                    }
+                } catch (retryError: any) {
+                    console.error('Retry after token refresh failed:', {
+                        message: retryError.message,
+                        status: retryError.response?.status,
+                        data: retryError.response?.data,
+                    });
+                }
+            }
+            
+            throw new functions.https.HttpsError(
+                'internal',
+                error.response?.data?.errors || error.response?.data?.error_description || error.response?.data?.message || error.message || 'Failed to fetch project templates'
+            );
+        }
+    });
+
 // Create project in Procore
 export const procoreCreateProject = functions
     .region('us-central1')
@@ -1058,6 +1165,8 @@ export const procoreCreateProject = functions
             console.log('Project created successfully in Procore. Status:', response.status);
             console.log('Procore project data:', JSON.stringify(response.data, null, 2));
             
+            // The project template (Standard Project Template) will handle default permissions
+            // Anyone assigned to the project in Procore will get the template's default admin permissions
             return { 
                 success: true, 
                 data: response.data,
@@ -5120,6 +5229,120 @@ export const azureSqlPromoteProject = functions
                 errorCode === 'invalid-argument' ? 'invalid-argument' : 
                 errorCode === 'not-found' ? 'not-found' : 'internal',
                 `Failed to promote project: ${errorMessage}`
+            );
+        }
+    });
+
+// Get the current project number counter for a year (read-only, doesn't increment)
+// This ensures sequential numbers never repeat even if projects are deleted
+export const getProjectNumberCounter = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 30,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        try {
+            const year = data?.year;
+            if (!year) {
+                throw new functions.https.HttpsError('invalid-argument', 'Year is required');
+            }
+
+            const yearKey = `year${year}`; // e.g., "year25"
+            const counterRef = admin.firestore().collection('system').doc('projectNumberCounter');
+            const counterDoc = await counterRef.get();
+            
+            let currentValue = 0;
+            if (counterDoc.exists) {
+                const counterData = counterDoc.data();
+                currentValue = counterData?.[yearKey] || 0;
+            }
+            
+            return {
+                success: true,
+                counter: currentValue,
+                year: year,
+            };
+        } catch (error: any) {
+            console.error('Error getting project number counter:', error);
+            
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to get project number counter: ${error.message || 'Unknown error'}`
+            );
+        }
+    });
+
+// Increment the project number counter when a project is created
+// This ensures sequential numbers never repeat even if projects are deleted
+export const incrementProjectNumberCounter = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 30,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        try {
+            const year = data?.year;
+            const sequential = data?.sequential;
+            
+            if (!year || sequential === undefined) {
+                throw new functions.https.HttpsError('invalid-argument', 'Year and sequential are required');
+            }
+
+            const yearKey = `year${year}`; // e.g., "year25"
+            const counterRef = admin.firestore().collection('system').doc('projectNumberCounter');
+            
+            // Use Firestore transaction to atomically update the counter
+            await admin.firestore().runTransaction(async (transaction) => {
+                const counterDoc = await transaction.get(counterRef);
+                
+                const updateData: any = {
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                };
+                updateData[yearKey] = sequential; // Store the sequential number used
+                
+                if (counterDoc.exists) {
+                    transaction.update(counterRef, updateData);
+                } else {
+                    transaction.set(counterRef, {
+                        ...updateData,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                }
+            });
+            
+            console.log(`Updated project number counter for year ${year} to ${sequential}`);
+            
+            return {
+                success: true,
+                year: year,
+                counter: sequential,
+            };
+        } catch (error: any) {
+            console.error('Error incrementing project number counter:', error);
+            
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            
+            throw new functions.https.HttpsError(
+                'internal',
+                `Failed to increment project number counter: ${error.message || 'Unknown error'}`
             );
         }
     });

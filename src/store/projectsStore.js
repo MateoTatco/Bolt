@@ -115,6 +115,30 @@ export const useProjectsStore = create((set, get) => ({
             if (response.success) {
                 const newProject = response.data
                 
+                // Update the global counter to ensure sequential numbers never repeat
+                // This is optional - if it fails, project creation still succeeds
+                if (projectData.ProjectNumber) {
+                    try {
+                        const projectNumStr = String(projectData.ProjectNumber)
+                        if (projectNumStr.length === 6) {
+                            const yearSuffix = parseInt(projectNumStr.slice(0, 2), 10)
+                            const sequential = parseInt(projectNumStr.slice(2), 10)
+                            
+                            if (!isNaN(yearSuffix) && !isNaN(sequential)) {
+                                const { getFunctions, httpsCallable } = await import('firebase/functions')
+                                const functions = getFunctions()
+                                const incrementCounterFunction = httpsCallable(functions, 'incrementProjectNumberCounter')
+                                await incrementCounterFunction({ year: yearSuffix, sequential: sequential })
+                                console.log(`Updated project number counter: year${yearSuffix} = ${sequential}`)
+                            }
+                        }
+                    } catch (counterError) {
+                        // Silently fail - this is optional functionality
+                        console.debug('Could not update project number counter (function may not be deployed yet):', counterError.message)
+                        // Non-fatal - continue with project creation
+                    }
+                }
+                
                 // Try to sync with Procore (only for new projects with ProjectNumber)
                 if (!skipProcoreSync && projectData.ProjectNumber) {
                     try {
@@ -131,6 +155,8 @@ export const useProjectsStore = create((set, get) => ({
                         }
                         
                         // Create project in Procore
+                        // The Standard Project Template will handle default admin permissions
+                        // Anyone assigned to the project in Procore will automatically get admin access
                         const procoreResult = await ProcoreService.createProject(procoreProjectData)
                         
                         // Update Firebase project with Procore ID

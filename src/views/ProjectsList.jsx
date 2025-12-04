@@ -702,34 +702,62 @@ const ProjectsList = () => {
         }
     }
     
-    const resetWizard = () => {
+    const resetWizard = async () => {
         setWizardStep(1)
         // Generate unique project number when resetting wizard
-        const newProjectNumber = generateUniqueProjectNumber(projects)
-        setWizardData({
-            ProjectName: '',
-            ProjectNumber: String(newProjectNumber),
-            address: '',
-            city: '',
-            State: '',
-            zip: '',
-            Market: '',
-            ProjectStyle: '',
-            ProjectManager: '',
-            ProjectStatus: '',
-            ProjectProbability: '',
-            Superintendent: '',
-            SquareFeet: '',
-            EstDuration: '',
-            StartDate: null,
-            CompletionDate: null,
-            ProjectedFinishDate: null,
-            CommunicatedStartDate: null,
-            CommunicatedFinishDate: null,
-            BidDueDate: null,
-            ProjectRevisedContractAmount: '',
-            BidType: '',
-        })
+        try {
+            const newProjectNumber = await generateUniqueProjectNumber(projects)
+            setWizardData({
+                ProjectName: '',
+                ProjectNumber: String(newProjectNumber),
+                address: '',
+                city: '',
+                State: '',
+                zip: '',
+                Market: '',
+                ProjectStyle: '',
+                ProjectManager: '',
+                ProjectStatus: '',
+                ProjectProbability: '',
+                Superintendent: '',
+                SquareFeet: '',
+                EstDuration: '',
+                StartDate: null,
+                CompletionDate: null,
+                ProjectedFinishDate: null,
+                CommunicatedStartDate: null,
+                CommunicatedFinishDate: null,
+                BidDueDate: null,
+                ProjectRevisedContractAmount: '',
+                BidType: '',
+            })
+        } catch (error) {
+            console.error('Error generating project number:', error)
+            setWizardData({
+                ProjectName: '',
+                ProjectNumber: '',
+                address: '',
+                city: '',
+                State: '',
+                zip: '',
+                Market: '',
+                ProjectStyle: '',
+                ProjectManager: '',
+                ProjectStatus: '',
+                ProjectProbability: '',
+                Superintendent: '',
+                SquareFeet: '',
+                EstDuration: '',
+                StartDate: null,
+                CompletionDate: null,
+                ProjectedFinishDate: null,
+                CommunicatedStartDate: null,
+                CommunicatedFinishDate: null,
+                BidDueDate: null,
+                ProjectRevisedContractAmount: '',
+                BidType: '',
+            })
+        }
     }
 
     const handleCreateProject = async () => {

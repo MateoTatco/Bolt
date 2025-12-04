@@ -548,6 +548,55 @@ export const ProcoreService = {
     },
 
     /**
+     * Get list of available project templates from Procore
+     * TEMPORARY: Uses procoreTestConnection until procoreGetProjectTemplates is deployed
+     * @param {Object} options - Optional pagination parameters (not used in temp version)
+     * @returns {Promise<Object>} Result object with templates array
+     */
+    async getProjectTemplates(options = {}) {
+        try {
+            // Use the dedicated procoreGetProjectTemplates function
+            const templatesFunction = httpsCallable(functions, 'procoreGetProjectTemplates')
+            const result = await templatesFunction(options)
+            console.log('Project templates result:', result.data)
+            
+            if (result.data.success && result.data.data) {
+                return {
+                    success: true,
+                    data: Array.isArray(result.data.data) ? result.data.data : (result.data.data?.data || []),
+                    templatesCount: result.data.data?.length || (Array.isArray(result.data.data) ? result.data.data.length : 0),
+                    pagination: result.data.pagination,
+                }
+            } else {
+                throw new Error(result.data.message || 'Failed to fetch project templates')
+            }
+        } catch (error) {
+            console.error('Error fetching project templates from Procore:', error)
+            // If the dedicated function doesn't exist, fall back to testConnection
+            if (error.code === 'functions/not-found' || error.message?.includes('not found')) {
+                console.log('procoreGetProjectTemplates not found, falling back to procoreTestConnection...')
+                try {
+                    const testFunction = httpsCallable(functions, 'procoreTestConnection')
+                    const result = await testFunction()
+                    console.log('Fallback result:', result.data)
+                    
+                    if (result.data.templates || result.data.data) {
+                        const templates = result.data.templates || result.data.data || []
+                        return {
+                            success: true,
+                            data: Array.isArray(templates) ? templates : [],
+                            templatesCount: result.data.templatesCount || (Array.isArray(templates) ? templates.length : 0),
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback also failed:', fallbackError)
+                }
+            }
+            throw error
+        }
+    },
+
+    /**
      * Create a project in Procore
      * @param {Object} projectData - Project data formatted for Procore API
      * @returns {Promise<Object>} Created project data from Procore

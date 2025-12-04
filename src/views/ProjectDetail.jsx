@@ -99,6 +99,7 @@ const ProjectDetail = () => {
     const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'saved' })
     const [showCancelDialog, setShowCancelDialog] = useState(false)
     const [isSyncingFromProcore, setIsSyncingFromProcore] = useState(false)
+    const [isPushingToProcore, setIsPushingToProcore] = useState(false)
 
     // Overview (uses Notes)
     const [overviewHtml, setOverviewHtml] = useState('')
@@ -301,6 +302,75 @@ const ProjectDetail = () => {
             alert(error?.message || 'Failed to sync project from Procore.')
         } finally {
             setIsSyncingFromProcore(false)
+        }
+    }
+
+    const handlePushToProcore = async () => {
+        if (!project) {
+            alert('Project not found.')
+            return
+        }
+
+        setIsPushingToProcore(true)
+        try {
+            const { ProcoreService } = await import('@/services/ProcoreService')
+            const { mapBoltToProcore, validateProcoreProject } = await import('@/configs/procoreFieldMapping')
+
+            // Map Bolt project to Procore format
+            const procoreProjectData = mapBoltToProcore(project)
+
+            // Validate required fields
+            const validation = validateProcoreProject(procoreProjectData)
+            if (!validation.isValid) {
+                alert(`Missing required fields for Procore: ${validation.missingFields.join(', ')}\n\nPlease ensure the project has at least a Project Name and Project Number.`)
+                return
+            }
+
+            let result
+            if (project.procoreProjectId) {
+                // Update existing Procore project
+                console.log('Updating project in Procore:', project.procoreProjectId)
+                result = await ProcoreService.updateProject(project.procoreProjectId, procoreProjectData)
+                
+                if (result.success) {
+                    // Update local project with sync status
+                    await updateProject(project.id, {
+                        procoreSyncStatus: 'synced',
+                        procoreSyncedAt: new Date().toISOString()
+                    }, { skipProcoreSync: true })
+                    
+                    setAlertBanner({ visible: true, kind: 'saved' })
+                    setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 5000)
+                    alert('Project successfully updated in Procore!')
+                } else {
+                    throw new Error(result.message || 'Failed to update project in Procore')
+                }
+            } else {
+                // Create new Procore project
+                console.log('Creating new project in Procore')
+                result = await ProcoreService.createProject(procoreProjectData)
+                
+                if (result.success && result.procoreProjectId) {
+                    // Update local project with Procore ID
+                    await updateProject(project.id, {
+                        procoreProjectId: result.procoreProjectId,
+                        procoreSyncStatus: 'synced',
+                        procoreSyncedAt: new Date().toISOString()
+                    }, { skipProcoreSync: true })
+                    
+                    setAlertBanner({ visible: true, kind: 'saved' })
+                    setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 5000)
+                    alert(`Project successfully created in Procore! Procore Project ID: ${result.procoreProjectId}`)
+                } else {
+                    throw new Error(result.message || 'Failed to create project in Procore')
+                }
+            }
+        } catch (error) {
+            console.error('Error pushing project to Procore:', error)
+            const errorMessage = error?.message || error?.details || 'Failed to push project to Procore. Please check your Procore connection and try again.'
+            alert(errorMessage)
+        } finally {
+            setIsPushingToProcore(false)
         }
     }
 
@@ -530,6 +600,16 @@ const ProjectDetail = () => {
                                         <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Project Information</h2>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <Button 
+                                            size="sm" 
+                                            variant="solid" 
+                                            icon={<HiOutlineRefresh />}
+                                            onClick={handlePushToProcore}
+                                            loading={isPushingToProcore}
+                                            disabled={isPushingToProcore || isSyncingFromProcore}
+                                        >
+                                            {project?.procoreProjectId ? 'Update in Procore' : 'Push to Procore'}
+                                        </Button>
                                         {project?.procoreProjectId && (
                                             <Button 
                                                 size="sm" 
@@ -537,6 +617,7 @@ const ProjectDetail = () => {
                                                 icon={<HiOutlineRefresh />}
                                                 onClick={handleSyncFromProcore}
                                                 loading={isSyncingFromProcore}
+                                                disabled={isPushingToProcore || isSyncingFromProcore}
                                             >
                                                 Sync from Procore
                                             </Button>

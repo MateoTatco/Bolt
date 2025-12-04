@@ -71,6 +71,10 @@ export const mapBoltToProcore = (boltProject = {}) => {
         name: boltProject.ProjectName || '',
     }
 
+    // Project template ID - use Standard Project Template
+    // This will be applied when creating the project in Procore
+    procoreProject.project_template_id = 598134325661413
+
     // Project number/code
     if (boltProject.ProjectNumber) {
         procoreProject.project_number = String(boltProject.ProjectNumber)

@@ -3,11 +3,13 @@
  * Format: YY#### (e.g., 250001 for 2025, 260001 for 2026)
  * First 2 digits: Last 2 digits of current year
  * Last 4 digits: Sequential count starting from 0001
+ * Uses existing projects to find the max, but ensures sequential numbers never repeat
+ * even if projects are deleted by using a global counter
  * @param {Array} existingProjects - Array of existing project objects
- * @returns {number} Unique project number
+ * @returns {Promise<number>} Unique project number
  * @throws {Error} If unable to generate unique number
  */
-export const generateUniqueProjectNumber = (existingProjects = []) => {
+export const generateUniqueProjectNumber = async (existingProjects = []) => {
     const currentYear = new Date().getFullYear()
     const yearSuffix = currentYear % 100 // Get last 2 digits (e.g., 2025 -> 25)
     
@@ -28,8 +30,29 @@ export const generateUniqueProjectNumber = (existingProjects = []) => {
         })
         .filter(num => num > 0)
     
-    // Find the highest sequential number and increment
-    const maxSequential = sequentialNumbers.length > 0 ? Math.max(...sequentialNumbers) : 0
+    // Find the highest sequential number from existing projects
+    const maxFromProjects = sequentialNumbers.length > 0 ? Math.max(...sequentialNumbers) : 0
+    
+    // Get the global counter for this year (ensures we never reuse numbers)
+    // This is optional - if it fails, we'll just use the project-based max
+    let maxFromCounter = 0
+    try {
+        const { getFunctions, httpsCallable } = await import('firebase/functions')
+        const functions = getFunctions()
+        const getCounterFunction = httpsCallable(functions, 'getProjectNumberCounter')
+        const counterResult = await getCounterFunction({ year: yearSuffix })
+        
+        if (counterResult.data && counterResult.data.success && counterResult.data.counter !== undefined) {
+            maxFromCounter = counterResult.data.counter
+        }
+    } catch (error) {
+        // Silently fail - this is optional functionality
+        // If counter is not available, we'll use project-based max which is fine
+        console.debug('Global counter not available, using project-based max (this is normal if function not deployed yet)')
+    }
+    
+    // Use the higher of the two (counter or projects) to ensure no reuse
+    const maxSequential = Math.max(maxFromProjects, maxFromCounter)
     const nextSequential = maxSequential + 1
     
     // Ensure sequential number doesn't exceed 9999
