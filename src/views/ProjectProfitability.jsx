@@ -288,6 +288,7 @@ const ProjectProfitability = () => {
         projectManager: null,
         isActive: { value: true, label: 'Active' }, // Default to Active only
     })
+    const [isLoadingFilterValues, setIsLoadingFilterValues] = useState(true)
     const [sort, setSort] = useState({ key: '', order: '' })
     const [localSearchValue, setLocalSearchValue] = useState('')
     const [showFiltersMobile, setShowFiltersMobile] = useState(false)
@@ -476,6 +477,73 @@ const ProjectProfitability = () => {
     }
 
     // All test functions and Procore connection handlers removed - no longer needed with Azure SQL
+
+    // Load last used filter values (per-user, stored in Firestore)
+    useEffect(() => {
+        const loadFilterValues = async () => {
+            try {
+                const auth = getAuth()
+                const currentUser = auth.currentUser
+                if (!currentUser) {
+                    setIsLoadingFilterValues(false)
+                    return
+                }
+
+                const result = await FirebaseDbService.users.getById(currentUser.uid)
+                const savedFilters = result.success
+                    ? result.data?.savedFilters?.projectProfitability
+                    : null
+
+                if (savedFilters && typeof savedFilters === 'object') {
+                    setFilters(prev => ({
+                        ...prev,
+                        ...savedFilters,
+                    }))
+                    if (typeof savedFilters.search === 'string') {
+                        setLocalSearchValue(savedFilters.search)
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading project profitability filter values:', error)
+            } finally {
+                setIsLoadingFilterValues(false)
+            }
+        }
+
+        loadFilterValues()
+    }, [])
+
+    // Save filter values preferences to Firestore (per-user, debounced)
+    const saveFilterValues = async (newFilters) => {
+        try {
+            const auth = getAuth()
+            const currentUser = auth.currentUser
+            if (!currentUser) return
+
+            const result = await FirebaseDbService.users.getById(currentUser.uid)
+            const existingSaved = result.success && result.data?.savedFilters ? result.data.savedFilters : {}
+
+            await FirebaseDbService.users.update(currentUser.uid, {
+                savedFilters: {
+                    ...existingSaved,
+                    projectProfitability: newFilters,
+                },
+            })
+        } catch (error) {
+            console.error('Error saving project profitability filter values:', error)
+        }
+    }
+
+    useEffect(() => {
+        if (isLoadingFilterValues) return
+
+        const handler = setTimeout(() => {
+            // Persist current filters for this user and page
+            saveFilterValues(filters)
+        }, 500)
+
+        return () => clearTimeout(handler)
+    }, [filters, isLoadingFilterValues])
 
     // Filter projects (then apply sort)
     const filteredProjects = useMemo(() => {
