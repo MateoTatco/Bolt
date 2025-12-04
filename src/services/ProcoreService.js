@@ -40,6 +40,23 @@ export const ProcoreService = {
     },
 
     /**
+     * Set system token (copy current user's token to system token for shared access)
+     * This allows all users to use Procore API even if they haven't authorized individually
+     * @returns {Promise<Object>} Result object
+     */
+    async setSystemToken() {
+        try {
+            const setSystemTokenFunction = httpsCallable(functions, 'procoreSetSystemToken')
+            const result = await setSystemTokenFunction()
+            console.log('System token set:', result.data)
+            return result.data
+        } catch (error) {
+            console.error('Error setting system token:', error)
+            throw error
+        }
+    },
+
+    /**
      * Exchange authorization code for access token
      * @param {string} code - Authorization code from OAuth callback
      * @returns {Promise<Object>} Result object
