@@ -357,6 +357,7 @@ const ProjectsList = () => {
     }
     const [filterVisibility, setFilterVisibility] = useState(defaultFilterVisibility)
     const [isLoadingFilterPrefs, setIsLoadingFilterPrefs] = useState(true)
+    const [isCreatingProject, setIsCreatingProject] = useState(false)
 
     // Load filter visibility preferences from Firestore
     useEffect(() => {
@@ -766,6 +767,13 @@ const ProjectsList = () => {
             return
         }
         
+        // Prevent duplicate submissions
+        if (isCreatingProject) {
+            return
+        }
+        
+        setIsCreatingProject(true)
+        
         try {
             const payload = {
                 ProjectName: wizardData.ProjectName,
@@ -809,6 +817,8 @@ const ProjectsList = () => {
             setIsCreateOpen(false)
         } catch (error) {
             console.error('Error creating project:', error)
+        } finally {
+            setIsCreatingProject(false)
         }
     }
 
@@ -1842,8 +1852,9 @@ const ProjectsList = () => {
                             ) : (
                                 <Button 
                                     variant="solid" 
-                                    onClick={handleCreateProject} 
-                                    disabled={!wizardData.ProjectName.trim()}
+                                    onClick={handleCreateProject}
+                                    disabled={!wizardData.ProjectName.trim() || isCreatingProject}
+                                    loading={isCreatingProject}
                                 >
                                     Create Project
                                 </Button>

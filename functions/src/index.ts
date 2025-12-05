@@ -1100,7 +1100,8 @@ export const procoreCreateProject = functions
         }
         
         const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
+        // Use system token fallback so all users can create projects
+        const accessToken = await getProcoreAccessToken(userId, true);
         
         if (!accessToken) {
             throw new functions.https.HttpsError(
