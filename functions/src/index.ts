@@ -259,7 +259,7 @@ interface ProcoreTokenData {
 }
 
 // Helper function to get or refresh Procore access token
-// First tries user-specific token, then falls back to system token
+// First tries user-specific token, then falls back to system token, then tries to find any valid token
 async function getProcoreAccessToken(userId: string, allowSystemFallback: boolean = true): Promise<string | null> {
     try {
         // First, try to get user-specific token
@@ -275,6 +275,100 @@ async function getProcoreAccessToken(userId: string, allowSystemFallback: boolea
             if (systemToken) {
                 console.log('Using system token for Procore API calls');
                 return systemToken;
+            }
+            
+            // If system token doesn't exist or is expired, try to find any valid token from any user
+            // This is a last resort fallback to ensure Procore API calls work
+            console.log('System token not available, searching for any valid user token...');
+            try {
+                const allTokensSnapshot = await admin.firestore()
+                    .collection('procoreTokens')
+                    .get();
+                
+                console.log(`Found ${allTokensSnapshot.docs.length} token documents in Firestore`);
+                
+                for (const tokenDoc of allTokensSnapshot.docs) {
+                    // Skip the system token (we already tried it) and the current user's token (we already tried it)
+                    if (tokenDoc.id === 'system' || tokenDoc.id === userId) {
+                        continue;
+                    }
+                    
+                    const tokenData = tokenDoc.data() as ProcoreTokenData | undefined;
+                    if (!tokenData || !tokenData.accessToken) {
+                        console.log(`Skipping ${tokenDoc.id}: no token data or access token`);
+                        continue;
+                    }
+                    
+                    // Check if token is still valid
+                    const expiresAt = tokenData.expiresAt?.toDate();
+                    const now = new Date();
+                    const isExpired = !expiresAt || expiresAt <= new Date(now.getTime() + 5 * 60 * 1000);
+                    
+                    if (!isExpired) {
+                        console.log(`Found valid token from user ${tokenDoc.id}, using it for Procore API calls`);
+                        // Also update system token with this valid token for future use
+                        await admin.firestore()
+                            .collection('procoreTokens')
+                            .doc('system')
+                            .set({
+                                accessToken: tokenData.accessToken,
+                                refreshToken: tokenData.refreshToken,
+                                expiresAt: tokenData.expiresAt,
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                setBy: tokenDoc.id,
+                                autoSet: true,
+                            }, { merge: true });
+                        return tokenData.accessToken;
+                    } else {
+                        // Token is expired, try to refresh it
+                        console.log(`Token from user ${tokenDoc.id} is expired, attempting to refresh...`);
+                        if (tokenData.refreshToken) {
+                            try {
+                                const refreshed = await refreshProcoreToken(tokenData.refreshToken);
+                                if (refreshed && refreshed.access_token) {
+                                    console.log(`Successfully refreshed token for user ${tokenDoc.id}`);
+                                    // Update the user's token
+                                    const newExpiresAt = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000);
+                                    await admin.firestore()
+                                        .collection('procoreTokens')
+                                        .doc(tokenDoc.id)
+                                        .set({
+                                            accessToken: refreshed.access_token,
+                                            refreshToken: refreshed.refresh_token || tokenData.refreshToken,
+                                            expiresAt: admin.firestore.Timestamp.fromDate(newExpiresAt),
+                                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                        }, { merge: true });
+                                    
+                                    // Also update system token with the refreshed token
+                                    await admin.firestore()
+                                        .collection('procoreTokens')
+                                        .doc('system')
+                                        .set({
+                                            accessToken: refreshed.access_token,
+                                            refreshToken: refreshed.refresh_token || tokenData.refreshToken,
+                                            expiresAt: admin.firestore.Timestamp.fromDate(newExpiresAt),
+                                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                            setBy: tokenDoc.id,
+                                            autoSet: true,
+                                        }, { merge: true });
+                                    
+                                    console.log(`Using refreshed token from user ${tokenDoc.id} for Procore API calls`);
+                                    return refreshed.access_token;
+                                }
+                            } catch (refreshError: any) {
+                                console.error(`Failed to refresh token for user ${tokenDoc.id}:`, {
+                                    message: refreshError.message,
+                                    status: refreshError.response?.status,
+                                });
+                                // Continue to next token
+                            }
+                        }
+                    }
+                }
+                console.log('No valid tokens found from any user, and refresh attempts failed');
+            } catch (fallbackError) {
+                console.error('Error searching for fallback token:', fallbackError);
+                // Continue to return null if fallback search fails
             }
         }
         
@@ -518,28 +612,22 @@ export const procoreExchangeToken = functions
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
             
-            // Also set as system token if it doesn't exist yet (for shared access)
-            const systemTokenDoc = await admin.firestore()
+            // Always update system token for shared access (so all users can use Procore API)
+            // This ensures that even if the system token expired, it gets refreshed when any user authorizes
+            console.log('Updating system token for shared access...');
+            await admin.firestore()
                 .collection('procoreTokens')
                 .doc('system')
-                .get();
-            
-            if (!systemTokenDoc.exists) {
-                console.log('System token does not exist, setting it up automatically...');
-                await admin.firestore()
-                    .collection('procoreTokens')
-                    .doc('system')
-                    .set({
-                        accessToken: tokenData.access_token,
-                        refreshToken: tokenData.refresh_token,
-                        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                        setBy: userId,
-                        setAt: admin.firestore.FieldValue.serverTimestamp(),
-                        autoSet: true,
-                    });
-                console.log('System token set automatically for shared access');
-            }
+                .set({
+                    accessToken: tokenData.access_token,
+                    refreshToken: tokenData.refresh_token,
+                    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    setBy: userId,
+                    setAt: admin.firestore.FieldValue.serverTimestamp(),
+                    autoSet: true,
+                }, { merge: true });
+            console.log('System token updated for shared access - all users can now use Procore API');
             
             console.log('Token stored successfully in Firestore');
             return { success: true, message: 'Token stored successfully' };
@@ -1104,9 +1192,25 @@ export const procoreCreateProject = functions
         const accessToken = await getProcoreAccessToken(userId, true);
         
         if (!accessToken) {
+            // Check if system token exists
+            const systemTokenDoc = await admin.firestore()
+                .collection('procoreTokens')
+                .doc('system')
+                .get();
+            
+            let errorMessage = 'No valid Procore access token. Please authorize the application.';
+            if (!systemTokenDoc.exists) {
+                errorMessage += ' The system token has not been set. Please have an administrator authorize Procore first.';
+            } else {
+                errorMessage += ' All tokens appear to be expired. Please have an administrator re-authorize Procore.';
+            }
+            
+            console.error('No access token available for user:', userId);
+            console.error('System token exists:', systemTokenDoc.exists);
+            
             throw new functions.https.HttpsError(
                 'unauthenticated',
-                'No valid Procore access token. Please authorize the application.'
+                errorMessage
             );
         }
         
@@ -1276,12 +1380,29 @@ export const procoreUpdateProject = functions
         }
 
         const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
+        // Use system token fallback so all users can update projects
+        const accessToken = await getProcoreAccessToken(userId, true);
 
         if (!accessToken) {
+            // Check if system token exists
+            const systemTokenDoc = await admin.firestore()
+                .collection('procoreTokens')
+                .doc('system')
+                .get();
+            
+            let errorMessage = 'No valid Procore access token. Please authorize the application.';
+            if (!systemTokenDoc.exists) {
+                errorMessage += ' The system token has not been set. Please have an administrator authorize Procore first.';
+            } else {
+                errorMessage += ' All tokens appear to be expired. Please have an administrator re-authorize Procore.';
+            }
+            
+            console.error('No access token available for user:', userId);
+            console.error('System token exists:', systemTokenDoc.exists);
+            
             throw new functions.https.HttpsError(
                 'unauthenticated',
-                'No valid Procore access token. Please authorize the application.'
+                errorMessage
             );
         }
 
@@ -1417,12 +1538,29 @@ export const procoreSyncProjects = functions
         }
 
         const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
+        // Use system token fallback so all users can sync projects
+        const accessToken = await getProcoreAccessToken(userId, true);
 
         if (!accessToken) {
+            // Check if system token exists
+            const systemTokenDoc = await admin.firestore()
+                .collection('procoreTokens')
+                .doc('system')
+                .get();
+            
+            let errorMessage = 'No valid Procore access token. Please authorize the application.';
+            if (!systemTokenDoc.exists) {
+                errorMessage += ' The system token has not been set. Please have an administrator authorize Procore first.';
+            } else {
+                errorMessage += ' All tokens appear to be expired. Please have an administrator re-authorize Procore.';
+            }
+            
+            console.error('No access token available for user:', userId);
+            console.error('System token exists:', systemTokenDoc.exists);
+            
             throw new functions.https.HttpsError(
                 'unauthenticated',
-                'No valid Procore access token. Please authorize the application.'
+                errorMessage
             );
         }
 
@@ -1553,7 +1691,8 @@ export const procoreGetProject = functions
         }
 
         const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
+        // Use system token fallback so all users can get project data
+        const accessToken = await getProcoreAccessToken(userId, true);
 
         if (!accessToken) {
             throw new functions.https.HttpsError(
@@ -1645,7 +1784,8 @@ export const procoreSyncAllProjectsToBolt = functions
         }
 
         const userId = context.auth.uid;
-        const accessToken = await getProcoreAccessToken(userId);
+        // Use system token fallback so all users can sync projects
+        const accessToken = await getProcoreAccessToken(userId, true);
 
         if (!accessToken) {
             throw new functions.https.HttpsError(
