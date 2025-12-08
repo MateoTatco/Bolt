@@ -772,11 +772,15 @@ const ProjectProfitability = () => {
             size: 200,
             meta: { key: 'currentProjectedProfit' },
             cell: (props) => {
-                const value = props.row.original.currentProjectedProfit
-                const isPositive = value >= 0
+                // If Estimated Cost to Complete is 0 or NULL, display 0 for Current Projected Profit
+                // Note: KPI calculation remains unchanged (uses actual calculated value)
+                const estCostAtCompletion = props.row.original.estCostAtCompletion
+                const shouldShowZero = estCostAtCompletion === 0 || estCostAtCompletion === null || estCostAtCompletion === undefined
+                const displayValue = shouldShowZero ? 0 : props.row.original.currentProjectedProfit
+                const isPositive = displayValue >= 0
                 return (
                     <span className={`text-xs ${isPositive ? 'text-emerald-600 font-semibold' : 'text-red-600 font-semibold'}`}>
-                        {formatCurrency(value)}
+                        {formatCurrency(displayValue)}
                     </span>
                 )
             },
