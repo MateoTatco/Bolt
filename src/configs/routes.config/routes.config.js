@@ -48,6 +48,12 @@ export const protectedRoutes = [
         authority: [],
     },
     {
+        key: 'incentivesManagement',
+        path: '/incentives-management',
+        component: lazy(() => import('@/views/IncentivesManagement')),
+        authority: [],
+    },
+    {
         key: 'advancedFeatures',
         path: '/advanced-features',
         component: lazy(() => import('@/views/AdvancedFeatures')),
