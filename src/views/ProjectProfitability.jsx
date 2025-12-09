@@ -633,7 +633,11 @@ const ProjectProfitability = () => {
         return filteredProjects.reduce(
             (acc, proj) => {
                 acc.totalContractValue += proj.totalContractValue || 0
-                acc.totalProjectedProfit += proj.currentProjectedProfit || 0
+                // If Estimated Cost to Complete is 0 or NULL, use 0 for Current Projected Profit in KPI sum
+                const estCostAtCompletion = proj.estCostAtCompletion
+                const shouldUseZero = estCostAtCompletion === 0 || estCostAtCompletion === null || estCostAtCompletion === undefined
+                const projectedProfitValue = shouldUseZero ? 0 : (proj.currentProjectedProfit || 0)
+                acc.totalProjectedProfit += projectedProfitValue
                 acc.jobToDateCost += proj.jobToDateCost || 0
                 return acc
             },
@@ -773,7 +777,7 @@ const ProjectProfitability = () => {
             meta: { key: 'currentProjectedProfit' },
             cell: (props) => {
                 // If Estimated Cost to Complete is 0 or NULL, display 0 for Current Projected Profit
-                // Note: KPI calculation remains unchanged (uses actual calculated value)
+                // KPI calculation uses the same logic (matches table display)
                 const estCostAtCompletion = props.row.original.estCostAtCompletion
                 const shouldShowZero = estCostAtCompletion === 0 || estCostAtCompletion === null || estCostAtCompletion === undefined
                 const displayValue = shouldShowZero ? 0 : props.row.original.currentProjectedProfit
