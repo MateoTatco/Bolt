@@ -15,7 +15,7 @@ const navigationIcon = {
     home: <PiHouseLineDuotone />,
     masterTracker: <PiClipboardTextDuotone />,
     projectProfitability: <PiCurrencyDollarDuotone />,
-    incentivesManagement: <PiGiftDuotone />,
+    profitSharing: <PiGiftDuotone />,
     singleMenu: <PiAcornDuotone />,
     collapseMenu: <PiArrowsInDuotone />,
     groupSingleMenu: <PiBookOpenUserDuotone />,

@@ -48,9 +48,9 @@ export const protectedRoutes = [
         authority: [],
     },
     {
-        key: 'incentivesManagement',
-        path: '/incentives-management',
-        component: lazy(() => import('@/views/IncentivesManagement')),
+        key: 'profitSharing',
+        path: '/profit-sharing',
+        component: lazy(() => import('@/views/ProfitSharing')),
         authority: [],
     },
     {

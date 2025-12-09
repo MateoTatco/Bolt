@@ -42,11 +42,11 @@ const baseNavigationConfig = [
         subMenu: [],
     },
     {
-        key: 'incentivesManagement',
-        path: '/incentives-management',
-        title: 'Incentives Management',
-        translateKey: 'nav.incentivesManagement',
-        icon: 'incentivesManagement',
+        key: 'profitSharing',
+        path: '/profit-sharing',
+        title: 'Profit Sharing',
+        translateKey: 'nav.profitSharing',
+        icon: 'profitSharing',
         type: NAV_ITEM_TYPE_ITEM,
         authority: [],
         subMenu: [],
@@ -68,9 +68,9 @@ export const getNavigationConfig = (userEmail) => {
     const userEmailLower = userEmail?.toLowerCase() || ''
     const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmailLower)
     
-    // Filter out advancedFeatures and incentivesManagement if user is not authorized
+    // Filter out advancedFeatures and profitSharing if user is not authorized
     return baseNavigationConfig.filter(nav => {
-        if ((nav.key === 'advancedFeatures' || nav.key === 'incentivesManagement') && !isAuthorized) {
+        if ((nav.key === 'advancedFeatures' || nav.key === 'profitSharing') && !isAuthorized) {
             return false
         }
         return true
