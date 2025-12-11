@@ -1,5 +1,5 @@
-import { Card, Button, Avatar } from '@/components/ui'
-import { HiOutlineDocumentText, HiOutlineUsers, HiOutlineLockClosed } from 'react-icons/hi'
+import { Card, Button } from '@/components/ui'
+import { HiOutlineLockClosed } from 'react-icons/hi'
 
 // Mock data
 const mockData = {
@@ -9,49 +9,7 @@ const mockData = {
     usedStockUnits: 2050,
     estimatedValuation: 1941000,
     totalStakeholders: 5,
-    activeStakeholders: 0,
-    activities: [
-        {
-            id: 1,
-            type: 'signature',
-            name: 'Simon Cox',
-            message: 'has an award in draft mode. Please review and send for signature in order to finalize the award.',
-            timestamp: 'November 20, 2025 @ 10:44pm',
-            status: 'pending'
-        },
-        {
-            id: 2,
-            type: 'signature',
-            name: 'Simon Cox',
-            message: 'has an award in draft mode. Please review and send for signature in order to finalize the award.',
-            timestamp: 'November 17, 2025 @ 4:18pm',
-            status: 'pending'
-        },
-        {
-            id: 3,
-            type: 'signature',
-            name: 'Simon Cox',
-            message: 'has an award in draft mode. Please review and send for signature in order to finalize the award.',
-            timestamp: 'November 17, 2025 @ 4:17pm',
-            status: 'pending'
-        },
-        {
-            id: 4,
-            type: 'signature',
-            name: 'Robb Billy',
-            message: 'has an award in draft mode. Please review and send for signature in order to finalize the award.',
-            timestamp: 'February 17, 2025 @ 4:13pm',
-            status: 'pending'
-        },
-        {
-            id: 5,
-            type: 'signature',
-            name: 'Robb Billy',
-            message: 'has an award in draft mode. Please review and send for signature in order to finalize the award.',
-            timestamp: 'February 17, 2025 @ 4:12pm',
-            status: 'pending'
-        },
-    ]
+    activeStakeholders: 0
 }
 
 const formatCurrency = (value) => {
@@ -68,7 +26,7 @@ const formatNumber = (value) => {
 }
 
 const OverviewTab = () => {
-    const { companyValuation, outstandingAwards, stockPool, usedStockUnits, estimatedValuation, totalStakeholders, activeStakeholders, activities } = mockData
+    const { companyValuation, outstandingAwards, stockPool, usedStockUnits, estimatedValuation, totalStakeholders, activeStakeholders } = mockData
     const remainingStockUnits = stockPool - usedStockUnits
     const usedPercentage = (usedStockUnits / stockPool) * 100
     const remainingPercentage = (remainingStockUnits / stockPool) * 100
@@ -208,72 +166,6 @@ const OverviewTab = () => {
                         >
                             View stakeholders
                         </Button>
-                    </div>
-                </Card>
-            </div>
-
-            {/* Activity Section */}
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Activity</h3>
-                    <Button 
-                        variant="plain" 
-                        size="sm"
-                        className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                    >
-                        View all
-                    </Button>
-                </div>
-                
-                <Card className="p-6">
-                    <div className="space-y-4">
-                        {activities.map((activity) => (
-                            <div 
-                                key={activity.id} 
-                                className="flex items-start gap-4 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0 last:pb-0"
-                            >
-                                <Avatar 
-                                    size={40} 
-                                    className="flex-shrink-0"
-                                    icon={<span className="text-sm font-semibold">{activity.name.charAt(0)}</span>}
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                    Send for signature
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                                <span className="font-medium">{activity.name}</span> {activity.message}
-                                            </p>
-                                            <div className="text-xs text-gray-500 dark:text-gray-500">
-                                                {activity.timestamp}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-3">
-                                        <Button 
-                                            variant="plain" 
-                                            size="sm"
-                                            className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                                        >
-                                            Dismiss
-                                        </Button>
-                                        <Button 
-                                            variant="solid" 
-                                            size="sm"
-                                        >
-                                            View award
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </Card>
             </div>

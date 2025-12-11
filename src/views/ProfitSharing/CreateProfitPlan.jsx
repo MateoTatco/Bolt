@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import { Button, Card, Input, Select, DatePicker, Tag, Dialog, Switcher, Radio, Notification, toast } from '@/components/ui'
-import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlinePencil, HiOutlineSearch, HiOutlinePlus, HiOutlineTrash, HiOutlineCurrencyDollar, HiOutlineCheckCircle } from 'react-icons/hi'
+import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, addDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
-import PlanTriggerPanel from './components/PlanTriggerPanel'
-import CreateMilestonePanel from './components/CreateMilestonePanel'
 
 // Authorized emails that can access Profit Sharing
 const AUTHORIZED_EMAILS = [
@@ -19,20 +17,11 @@ const DEFAULT_FORM_DATA = {
     description: '',
     schedule: null,
     startDate: null,
-    baseBonusFormula: 'profit-based',
-    planTrigger: null,
     // Pool Size & Distribution
-    profitMeasuredSameAsTrigger: true,
-    profitTrigger: null,
     profitDescription: '',
     poolShareType: 'above-trigger', // 'above-trigger' or 'total'
-    poolPercentage: '',
-    estimatedOnTargetProfit: 0,
-    estimatedProfitPool: 0,
-    distributionMethod: null,
-    prorationBasedOn: null,
     // Milestones & Payments
-    milestones: [],
+    milestoneAmount: 0,
     paymentTerms: null,
     initialPayment: '',
     installmentSchedule: null,
@@ -68,13 +57,7 @@ const CreateProfitPlan = () => {
     const user = useSessionUser((state) => state.user)
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
-    const [showPlanTriggerPanel, setShowPlanTriggerPanel] = useState(false)
-    const [showProfitTriggerPanel, setShowProfitTriggerPanel] = useState(false)
-    const [showAddMilestoneModal, setShowAddMilestoneModal] = useState(false)
-    const [showCreateMilestonePanel, setShowCreateMilestonePanel] = useState(false)
-    const [milestoneSearchQuery, setMilestoneSearchQuery] = useState('')
-    const [editingMilestone, setEditingMilestone] = useState(null)
-    const [cancelContext, setCancelContext] = useState(null) // 'page' or 'milestone-panel' or 'milestone-modal'
+    const [cancelContext, setCancelContext] = useState(null) // 'page'
     const [planId, setPlanId] = useState(null)
     const [loadingPlan, setLoadingPlan] = useState(false)
     const [existingCreatedAt, setExistingCreatedAt] = useState(null)
@@ -122,19 +105,6 @@ const CreateProfitPlan = () => {
         { value: 'annually', label: 'Annually' }
     ]
 
-    const baseBonusFormulaOptions = [
-        { value: 'profit-based', label: 'Profit Based' }
-    ]
-
-    const distributionMethodOptions = [
-        { value: 'pro-rata', label: 'Pro Rata' },
-        { value: 'equal', label: 'Equal Distribution' },
-        { value: 'custom', label: 'Assign custom percentages' }
-    ]
-
-    const prorationBasedOnOptions = [
-        { value: 'relative-salaries', label: 'Relative Salaries' }
-    ]
 
     const paymentTermsOptions = [
         { value: 'within-30-days', label: 'Within 30 days' },
@@ -181,8 +151,8 @@ const CreateProfitPlan = () => {
             formData.name &&
             formData.schedule &&
             formData.startDate &&
-            formData.baseBonusFormula &&
-            formData.planTrigger &&
+            formData.profitDescription &&
+            formData.milestoneAmount > 0 &&
             formData.paymentTerms
         )
     }
@@ -244,8 +214,8 @@ const CreateProfitPlan = () => {
                        formData.description || 
                        formData.schedule || 
                        formData.startDate || 
-                       formData.planTrigger || 
-                       formData.milestones.length > 0 ||
+                       formData.profitDescription ||
+                       formData.milestoneAmount > 0 ||
                        formData.paymentTerms ||
                        formData.initialPayment ||
                        formData.installmentSchedule
@@ -264,48 +234,10 @@ const CreateProfitPlan = () => {
         if (cancelContext === 'page') {
             setHasUnsavedChanges(false)
             navigate('/profit-sharing?tab=plans')
-        } else if (cancelContext === 'milestone-panel') {
-            setMilestoneSearchQuery('')
-            setEditingMilestone(null)
-            setShowCreateMilestonePanel(false)
-        } else if (cancelContext === 'milestone-modal') {
-            setMilestoneSearchQuery('')
-            setShowAddMilestoneModal(false)
         }
         setCancelContext(null)
     }
 
-    const handleSetPlanTrigger = (triggerData) => {
-        setFormData(prev => ({ ...prev, planTrigger: triggerData }))
-        setShowPlanTriggerPanel(false)
-        setHasUnsavedChanges(true)
-    }
-
-    const handleEditPlanTrigger = () => {
-        setShowPlanTriggerPanel(true)
-    }
-
-    const handleSetProfitTrigger = (triggerData) => {
-        setFormData(prev => ({ ...prev, profitTrigger: triggerData }))
-        setShowProfitTriggerPanel(false)
-        setHasUnsavedChanges(true)
-    }
-
-    const handleEditProfitTrigger = () => {
-        setShowProfitTriggerPanel(true)
-    }
-
-    const formatPercentage = (value) => {
-        if (!value && value !== 0) return ''
-        const numValue = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.]/g, '')) : value
-        if (isNaN(numValue)) return ''
-        return `${numValue}%`
-    }
-
-    const handlePercentageChange = (e) => {
-        const value = e.target.value.replace(/[^0-9.]/g, '')
-        handleInputChange('poolPercentage', value)
-    }
 
     const savePlan = async (status) => {
         try {
@@ -352,56 +284,6 @@ const CreateProfitPlan = () => {
         }
     }
 
-    const handleAddMilestone = (milestoneData) => {
-        if (editingMilestone !== null) {
-            // Edit existing milestone
-            const updatedMilestones = [...formData.milestones]
-            updatedMilestones[editingMilestone] = {
-                ...milestoneData,
-                id: formData.milestones[editingMilestone].id || Date.now()
-            }
-            setFormData(prev => ({ ...prev, milestones: updatedMilestones }))
-            setEditingMilestone(null)
-        } else {
-            // Add new milestone
-            setFormData(prev => ({
-                ...prev,
-                milestones: [...prev.milestones, { ...milestoneData, id: Date.now() }]
-            }))
-        }
-        setShowCreateMilestonePanel(false)
-        setShowAddMilestoneModal(false)
-        setHasUnsavedChanges(true)
-    }
-
-    const handleDeleteMilestone = (index) => {
-        const updatedMilestones = formData.milestones.filter((_, i) => i !== index)
-        setFormData(prev => ({ ...prev, milestones: updatedMilestones }))
-        setHasUnsavedChanges(true)
-    }
-
-    const handleEditMilestone = (index) => {
-        setEditingMilestone(index)
-        setShowCreateMilestonePanel(true)
-    }
-
-    const getMilestoneIcon = (milestone) => {
-        if (milestone.type === 'financial') {
-            return <HiOutlineCurrencyDollar className="w-5 h-5" />
-        } else {
-            // Custom milestone - check track as type
-            if (milestone.customMilestoneType === 'value' && milestone.customTrackAs) {
-                if (milestone.customTrackAs === 'Percent') {
-                    return <HiOutlineCheckCircle className="w-5 h-5" />
-                } else if (milestone.customTrackAs === 'Dollars') {
-                    return <HiOutlineCurrencyDollar className="w-5 h-5" />
-                } else {
-                    return <HiOutlineCheckCircle className="w-5 h-5" />
-                }
-            }
-            return <HiOutlineCheckCircle className="w-5 h-5" />
-        }
-    }
 
     return (
         <div className="flex min-h-screen bg-white dark:bg-gray-900">
@@ -514,9 +396,6 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">General</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        What's this plan's name and description?
-                                    </p>
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
@@ -550,9 +429,6 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Payment schedule</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Choose the schedule to track and distribute profits.
-                                    </p>
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
@@ -575,91 +451,12 @@ const CreateProfitPlan = () => {
                                             value={formData.startDate ? (formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate)) : null}
                                             onChange={(date) => handleInputChange('startDate', date)}
                                             placeholder="Select a date..."
+                                            inputFormat="MM/DD/YYYY"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Formula Section */}
-                            <div className="space-y-4">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">
-                                        What should the formula for the plan be based on?
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Choose from available options.
-                                    </p>
-                                </div>
-                                
-                                <div className="max-w-2xl space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Base bonus formula
-                                    </label>
-                                    <Select
-                                        options={baseBonusFormulaOptions}
-                                        value={baseBonusFormulaOptions.find(opt => opt.value === formData.baseBonusFormula) || null}
-                                        onChange={(opt) => handleInputChange('baseBonusFormula', opt?.value || null)}
-                                        placeholder="Select..."
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Plan Trigger Section */}
-                            <div className="space-y-4">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Plan trigger</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                                        The number one financial goal for the period.
-                                    </p>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Your profit share isn't triggered until this has been met.
-                                    </p>
-                                </div>
-                                
-                                <div className="max-w-2xl">
-                                    {formData.planTrigger ? (
-                                        <Card 
-                                            className="p-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all"
-                                            onClick={handleEditPlanTrigger}
-                                        >
-                                            <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50">
-                                                    <div className="text-base font-bold text-gray-900 dark:text-white text-center">
-                                                        {formData.planTrigger.type}
-                                                    </div>
-                                                </div>
-                                                <div className="px-6 py-4 flex items-center justify-between group">
-                                                    <div className="space-y-1">
-                                                        <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Targets</div>
-                                                        <div className="text-xl font-bold text-gray-900 dark:text-white">
-                                                            {formatCurrency(formData.planTrigger.amount)}
-                                                        </div>
-                                                    </div>
-                                                    <Button
-                                                        variant="plain"
-                                                        size="sm"
-                                                        icon={<HiOutlinePencil />}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            handleEditPlanTrigger()
-                                                        }}
-                                                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-primary transition-opacity"
-                                                    >
-                                                        Edit
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    ) : (
-                                        <Button
-                                            variant="twoTone"
-                                            onClick={() => setShowPlanTriggerPanel(true)}
-                                        >
-                                            Add Plan Trigger
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
                         </div>
 
                         {/* Separator */}
@@ -673,76 +470,17 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Profit definition</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Describe how you want to define profit for stakeholder awards.
-                                    </p>
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
-                                    <div className="flex items-center gap-3">
-                                        <Switcher
-                                            checked={formData.profitMeasuredSameAsTrigger}
-                                            onChange={(checked) => handleInputChange('profitMeasuredSameAsTrigger', checked)}
-                                        />
-                                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                                            Profit is measured the same as the plan trigger.
-                                        </span>
-                                    </div>
-
-                                    {!formData.profitMeasuredSameAsTrigger && (
-                                        <div className="space-y-4">
-                                            {formData.profitTrigger ? (
-                                                <Card 
-                                                    className="p-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all"
-                                                    onClick={handleEditProfitTrigger}
-                                                >
-                                                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50">
-                                                            <div className="text-base font-bold text-gray-900 dark:text-white text-center">
-                                                                {formData.profitTrigger.type}
-                                                            </div>
-                                                        </div>
-                                                        <div className="px-6 py-4 flex items-center justify-between group">
-                                                            <div className="space-y-1">
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Targets</div>
-                                                                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                                                                    {formatCurrency(formData.profitTrigger.amount)}
-                                                                </div>
-                                                            </div>
-                                                            <Button
-                                                                variant="plain"
-                                                                size="sm"
-                                                                icon={<HiOutlinePencil />}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    handleEditProfitTrigger()
-                                                                }}
-                                                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-primary transition-opacity"
-                                                            >
-                                                                Edit
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </Card>
-                                            ) : (
-                                                <Button
-                                                    variant="twoTone"
-                                                    onClick={() => setShowProfitTriggerPanel(true)}
-                                                >
-                                                    Add profit trigger
-                                                </Button>
-                                            )}
-                                        </div>
-                                    )}
-
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                            Describe how you measure profit
+                                            Profit is measured as
                                         </label>
                                         <textarea
                                             value={formData.profitDescription}
                                             onChange={(e) => handleInputChange('profitDescription', e.target.value)}
-                                            placeholder="eg. Gross Revenue - COGS"
+                                            placeholder="eg. Earnings for tax depreciation and amortization for Tatco Construction OKC LLC"
                                             rows={3}
                                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-y"
                                         />
@@ -754,12 +492,6 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Pool percentage</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                                        Set how much of the profits are allocated to Reins stakeholders.
-                                    </p>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Input an on-target profit estimate to preview size of the pool.
-                                    </p>
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
@@ -780,56 +512,6 @@ const CreateProfitPlan = () => {
                                             </div>
                                         </Radio.Group>
                                     </div>
-
-                                    <div className="space-y-2">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                            {formData.poolShareType === 'above-trigger' 
-                                                ? 'How much of profits over the trigger should go to the stakeholders?'
-                                                : 'How much of total profits should go to the stakeholders?'}
-                                        </label>
-                                        <div className="relative">
-                                            <Input
-                                                type="text"
-                                                value={formData.poolPercentage}
-                                                onChange={handlePercentageChange}
-                                                placeholder="0"
-                                                className="pr-8"
-                                            />
-                                            <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none">
-                                                %
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4 pt-2">
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                Est. on-target profit
-                                            </label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                                    $
-                                                </span>
-                                                <Input
-                                                    type="text"
-                                                    value={formData.estimatedOnTargetProfit ? formatCurrencyInput(String(formData.estimatedOnTargetProfit)) : ''}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value.replace(/[^0-9.]/g, '')
-                                                        const numValue = value ? parseFloat(value.replace(/,/g, '')) : 0
-                                                        handleInputChange('estimatedOnTargetProfit', numValue)
-                                                    }}
-                                                    placeholder="0"
-                                                    className="pl-8"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <div className="text-sm text-gray-600 dark:text-gray-400">Est. Profit Pool</div>
-                                            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                                                {formatCurrency(formData.estimatedProfitPool)}
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
 
@@ -837,37 +519,12 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Define distribution for awards</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Choose how profits should be shared.
-                                    </p>
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                            Distribution method
-                                        </label>
-                                        <Select
-                                            options={distributionMethodOptions}
-                                            value={distributionMethodOptions.find(opt => opt.value === formData.distributionMethod) || null}
-                                            onChange={(opt) => handleInputChange('distributionMethod', opt?.value || null)}
-                                            placeholder="Select..."
-                                        />
+                                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                                        Awarded profit shares
                                     </div>
-
-                                    {formData.distributionMethod === 'pro-rata' && (
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                What do you want your proration based on?
-                                            </label>
-                                            <Select
-                                                options={prorationBasedOnOptions}
-                                                value={prorationBasedOnOptions.find(opt => opt.value === formData.prorationBasedOn) || null}
-                                                onChange={(opt) => handleInputChange('prorationBasedOn', opt?.value || null)}
-                                                placeholder="Select..."
-                                            />
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
@@ -882,61 +539,31 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Select your milestones</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Choose the milestones that will determine whether a stakeholder is granted a share of profits in their award.
-                                    </p>
                                 </div>
 
-                                {/* Milestones Table */}
-                                {formData.milestones.length > 0 && (
-                                    <div className="max-w-2xl space-y-3">
-                                        {formData.milestones.map((milestone, index) => (
-                                            <Card 
-                                                key={milestone.id || index}
-                                                className="p-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all"
-                                                onClick={() => handleEditMilestone(index)}
-                                            >
-                                                <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                    <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50">
-                                                        <div className="text-base font-bold text-gray-900 dark:text-white text-center">
-                                                            {milestone.name}
-                                                        </div>
-                                                    </div>
-                                                    <div className="px-6 py-4 flex items-center justify-between group">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-400">
-                                                                {getMilestoneIcon(milestone)}
-                                                            </div>
-                                                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                                                                {milestone.type === 'financial' ? milestone.trackAs : (milestone.customTrackAs || 'Custom')}
-                                                            </span>
-                                                        </div>
-                                                        <Button
-                                                            variant="plain"
-                                                            size="sm"
-                                                            icon={<HiOutlinePencil />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                handleEditMilestone(index)
-                                                            }}
-                                                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-primary transition-opacity"
-                                                        >
-                                                            Edit
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </Card>
-                                        ))}
+                                {/* Milestone Amount Input */}
+                                <div className="max-w-2xl space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Milestone amount (Profit as defined by the plan)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                                $
+                                            </span>
+                                            <Input
+                                                type="text"
+                                                value={formData.milestoneAmount ? formatCurrencyInput(String(formData.milestoneAmount)) : ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value.replace(/[^0-9.]/g, '')
+                                                    const numValue = value ? parseFloat(value.replace(/,/g, '')) : 0
+                                                    handleInputChange('milestoneAmount', numValue)
+                                                }}
+                                                placeholder="0"
+                                                className="pl-8"
+                                            />
+                                        </div>
                                     </div>
-                                )}
-
-                                <div className="max-w-2xl">
-                                    <Button
-                                        variant="twoTone"
-                                        onClick={() => setShowAddMilestoneModal(true)}
-                                    >
-                                        Add milestone
-                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -951,9 +578,6 @@ const CreateProfitPlan = () => {
                             <div className="space-y-4">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Time and form of payment</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        The conditions for paying out an award after a payment trigger.
-                                    </p>
                                 </div>
 
                                 <div className="max-w-2xl space-y-4">
@@ -1082,88 +706,6 @@ const CreateProfitPlan = () => {
                 </div>
             </div>
 
-            {/* Plan Trigger Side Panel */}
-            <PlanTriggerPanel
-                isOpen={showPlanTriggerPanel}
-                onClose={() => setShowPlanTriggerPanel(false)}
-                onSetTrigger={handleSetPlanTrigger}
-                initialData={formData.planTrigger}
-                title="Plan Trigger"
-                buttonText="Set Plan Trigger"
-            />
-
-            {/* Profit Trigger Side Panel */}
-            <PlanTriggerPanel
-                isOpen={showProfitTriggerPanel}
-                onClose={() => setShowProfitTriggerPanel(false)}
-                onSetTrigger={handleSetProfitTrigger}
-                initialData={formData.profitTrigger}
-                title="Profit Trigger"
-                buttonText="Set Profit Trigger"
-            />
-
-            {/* Add Milestone Modal */}
-            <Dialog
-                isOpen={showAddMilestoneModal}
-                onClose={() => {
-                    if (milestoneSearchQuery) {
-                        setCancelContext('milestone-modal')
-                        setShowCancelDialog(true)
-                    } else {
-                        setShowAddMilestoneModal(false)
-                    }
-                }}
-                width={500}
-            >
-                <div className="p-6 space-y-4">
-                    <div className="space-y-2">
-                        <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                <HiOutlineSearch className="w-5 h-5" />
-                            </span>
-                            <Input
-                                value={milestoneSearchQuery}
-                                onChange={(e) => setMilestoneSearchQuery(e.target.value)}
-                                placeholder="Search..."
-                                className="pl-10"
-                            />
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Type to search for milestones.
-                        </p>
-                    </div>
-
-                    <Button
-                        variant="twoTone"
-                        icon={<HiOutlinePlus />}
-                        onClick={() => {
-                            setShowAddMilestoneModal(false)
-                            setShowCreateMilestonePanel(true)
-                        }}
-                        className="w-full"
-                    >
-                        Create new milestone
-                    </Button>
-                </div>
-            </Dialog>
-
-            {/* Create Milestone Side Panel */}
-            <CreateMilestonePanel
-                isOpen={showCreateMilestonePanel}
-                onClose={() => {
-                    // Check if there are unsaved changes in the panel
-                    const hasChanges = editingMilestone !== null || milestoneSearchQuery
-                    if (hasChanges) {
-                        setCancelContext('milestone-panel')
-                        setShowCancelDialog(true)
-                    } else {
-                        setShowCreateMilestonePanel(false)
-                        setEditingMilestone(null)
-                    }
-                }}
-                onAddMilestone={handleAddMilestone}
-                initialData={editingMilestone !== null ? formData.milestones[editingMilestone] : null}
-            />
 
             {/* Cancel Confirmation Dialog */}
             <Dialog
