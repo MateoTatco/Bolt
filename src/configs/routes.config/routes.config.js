@@ -60,6 +60,12 @@ export const protectedRoutes = [
         authority: [],
     },
     {
+        key: 'stakeholderDetail',
+        path: '/profit-sharing/stakeholders/:stakeholderId',
+        component: lazy(() => import('@/views/ProfitSharing/StakeholderDetail')),
+        authority: [],
+    },
+    {
         key: 'advancedFeatures',
         path: '/advanced-features',
         component: lazy(() => import('@/views/AdvancedFeatures')),
