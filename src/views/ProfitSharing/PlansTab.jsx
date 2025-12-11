@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, Card, Dialog, Tag, Avatar } from '@/components/ui'
-import { HiOutlineBadgeCheck, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineUsers } from 'react-icons/hi'
+import { Button, Card, Dialog, Tag, Notification, toast } from '@/components/ui'
+import { HiOutlineBadgeCheck, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineUsers, HiOutlineTrash } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore'
 import AgreementSettingsPanel from './components/AgreementSettingsPanel'
 import PdfViewerModal from './components/PdfViewerModal'
 
@@ -24,6 +24,7 @@ const PlansTab = () => {
     const [selectedPlanType, setSelectedPlanType] = useState('profit')
     const [plans, setPlans] = useState([])
     const [loading, setLoading] = useState(true)
+    const [deletingId, setDeletingId] = useState(null)
 
     const isAdmin = ADMIN_EMAILS.some(email => email.toLowerCase() === user?.email?.toLowerCase())
 
@@ -68,6 +69,33 @@ const PlansTab = () => {
             console.error('Error loading plans:', error)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleDeletePlan = async (planId) => {
+        const confirmed = window.confirm('Delete this plan? This cannot be undone.')
+        if (!confirmed) return
+
+        try {
+            setDeletingId(planId)
+            const planRef = doc(db, 'profitSharingPlans', planId)
+            await deleteDoc(planRef)
+            toast.push(
+                <Notification type="success" duration={2000}>
+                    Plan deleted
+                </Notification>
+            )
+            window.dispatchEvent(new Event('plansUpdated'))
+            await loadPlans()
+        } catch (error) {
+            console.error('Error deleting plan:', error)
+            toast.push(
+                <Notification type="danger" duration={2000}>
+                    Failed to delete plan
+                </Notification>
+            )
+        } finally {
+            setDeletingId(null)
         }
     }
 
@@ -130,15 +158,32 @@ const PlansTab = () => {
                             {plans.map((plan) => (
                                 <Card 
                                     key={plan.id}
-                                    className="p-5 border border-gray-200 dark:border-gray-700 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer bg-white dark:bg-gray-800"
+                                    className="p-5 border border-gray-200 dark:border-gray-700 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer bg-white dark:bg-gray-800 relative"
                                     onClick={() => navigate(`/profit-sharing/create-plan?id=${plan.id}`)}
                                 >
+                                    <button
+                                        className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleDeletePlan(plan.id)
+                                        }}
+                                        disabled={deletingId === plan.id}
+                                        title="Delete plan"
+                                    >
+                                        <HiOutlineTrash className="w-4 h-4" />
+                                    </button>
+
                                     <div className="space-y-3">
                                         {/* Tags */}
                                         <div className="flex items-center gap-2 flex-wrap">
                                             {plan.status === 'draft' && (
                                                 <Tag className="px-2.5 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
                                                     Draft
+                                                </Tag>
+                                            )}
+                                            {plan.status === 'finalized' && (
+                                                <Tag className="px-2.5 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                                    Finalized
                                                 </Tag>
                                             )}
                                             <Tag className="px-2.5 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 flex items-center gap-1.5">

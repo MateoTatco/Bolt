@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { Button, Card, Input, Select, DatePicker, Tag, Dialog, Switcher, Radio, Notification, toast } from '@/components/ui'
 import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlinePencil, HiOutlineSearch, HiOutlinePlus, HiOutlineTrash, HiOutlineCurrencyDollar, HiOutlineCheckCircle } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import PlanTriggerPanel from './components/PlanTriggerPanel'
 import CreateMilestonePanel from './components/CreateMilestonePanel'
 
@@ -13,6 +13,33 @@ const AUTHORIZED_EMAILS = [
     'admin-01@tatco.construction',
     'brett@tatco.construction'
 ]
+
+const DEFAULT_FORM_DATA = {
+    name: 'Profit Plan',
+    description: '',
+    schedule: null,
+    startDate: null,
+    baseBonusFormula: 'profit-based',
+    planTrigger: null,
+    // Pool Size & Distribution
+    profitMeasuredSameAsTrigger: true,
+    profitTrigger: null,
+    profitDescription: '',
+    poolShareType: 'above-trigger', // 'above-trigger' or 'total'
+    poolPercentage: '',
+    estimatedOnTargetProfit: 0,
+    estimatedProfitPool: 0,
+    distributionMethod: null,
+    prorationBasedOn: null,
+    // Milestones & Payments
+    milestones: [],
+    paymentTerms: null,
+    initialPayment: '',
+    installmentSchedule: null,
+    installmentTimeframe: null,
+    installmentsRequireEmployment: false,
+    status: 'draft',
+}
 
 const formatCurrency = (value) => {
     if (!value && value !== 0) return ''
@@ -37,6 +64,7 @@ const formatCurrencyInput = (value) => {
 
 const CreateProfitPlan = () => {
     const navigate = useNavigate()
+    const location = useLocation()
     const user = useSessionUser((state) => state.user)
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -47,6 +75,9 @@ const CreateProfitPlan = () => {
     const [milestoneSearchQuery, setMilestoneSearchQuery] = useState('')
     const [editingMilestone, setEditingMilestone] = useState(null)
     const [cancelContext, setCancelContext] = useState(null) // 'page' or 'milestone-panel' or 'milestone-modal'
+    const [planId, setPlanId] = useState(null)
+    const [loadingPlan, setLoadingPlan] = useState(false)
+    const [existingCreatedAt, setExistingCreatedAt] = useState(null)
 
     // Check authorization on mount
     useEffect(() => {
@@ -58,6 +89,22 @@ const CreateProfitPlan = () => {
         }
     }, [user, navigate])
 
+    // Load plan when id changes
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const id = params.get('id')
+        if (id) {
+            setPlanId(id)
+            loadPlan(id)
+        } else {
+            setPlanId(null)
+            setExistingCreatedAt(null)
+            setFormData({ ...DEFAULT_FORM_DATA })
+            setHasUnsavedChanges(false)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.search])
+
     // Don't render if unauthorized
     const userEmail = user?.email?.toLowerCase() || ''
     const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
@@ -67,31 +114,7 @@ const CreateProfitPlan = () => {
     }
     
     // Form state
-    const [formData, setFormData] = useState({
-        name: 'Profit Plan',
-        description: '',
-        schedule: null,
-        startDate: null,
-        baseBonusFormula: 'profit-based',
-        planTrigger: null,
-        // Pool Size & Distribution
-        profitMeasuredSameAsTrigger: true,
-        profitTrigger: null,
-        profitDescription: '',
-        poolShareType: 'above-trigger', // 'above-trigger' or 'total'
-        poolPercentage: '',
-        estimatedOnTargetProfit: 0,
-        estimatedProfitPool: 0,
-        distributionMethod: null,
-        prorationBasedOn: null,
-        // Milestones & Payments
-        milestones: [],
-        paymentTerms: null,
-        initialPayment: '',
-        installmentSchedule: null,
-        installmentTimeframe: null,
-        installmentsRequireEmployment: false
-    })
+    const [formData, setFormData] = useState(() => ({ ...DEFAULT_FORM_DATA }))
 
     const scheduleOptions = [
         { value: 'quarterly', label: 'Quarterly' },
@@ -164,6 +187,43 @@ const CreateProfitPlan = () => {
         )
     }
 
+    const loadPlan = async (id) => {
+        setLoadingPlan(true)
+        try {
+            const planRef = doc(db, 'profitSharingPlans', id)
+            const snap = await getDoc(planRef)
+            if (!snap.exists()) {
+                toast.push(
+                    <Notification type="warning" duration={2500}>
+                        Plan not found
+                    </Notification>
+                )
+                navigate('/profit-sharing?tab=plans', { replace: true })
+                return
+            }
+            const data = snap.data()
+            setExistingCreatedAt(data.createdAt || null)
+            setFormData({
+                ...DEFAULT_FORM_DATA,
+                ...data,
+                startDate: data.startDate
+                    ? (data.startDate.toDate ? data.startDate.toDate() : new Date(data.startDate))
+                    : null,
+            })
+            setHasUnsavedChanges(false)
+        } catch (error) {
+            console.error('Error loading plan:', error)
+            toast.push(
+                <Notification type="danger" duration={2500}>
+                    Failed to load plan
+                </Notification>
+            )
+            navigate('/profit-sharing?tab=plans', { replace: true })
+        } finally {
+            setLoadingPlan(false)
+        }
+    }
+
     const sidebarItems = [
         { key: 'overview', label: 'Overview', icon: <HiOutlineHome /> },
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText /> },
@@ -190,7 +250,7 @@ const CreateProfitPlan = () => {
                        formData.initialPayment ||
                        formData.installmentSchedule
         
-        if (hasData || hasUnsavedChanges) {
+        if (hasUnsavedChanges || (!planId && hasData)) {
             setCancelContext('page')
             setShowCancelDialog(true)
         } else {
@@ -245,6 +305,51 @@ const CreateProfitPlan = () => {
     const handlePercentageChange = (e) => {
         const value = e.target.value.replace(/[^0-9.]/g, '')
         handleInputChange('poolPercentage', value)
+    }
+
+    const savePlan = async (status) => {
+        try {
+            const plansRef = collection(db, 'profitSharingPlans')
+            const payload = {
+                ...formData,
+                status,
+                startDate: formData.startDate
+                    ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate)
+                    : null,
+                updatedAt: serverTimestamp(),
+            }
+
+            if (planId) {
+                const planRef = doc(db, 'profitSharingPlans', planId)
+                await updateDoc(planRef, {
+                    ...payload,
+                    createdAt: existingCreatedAt || serverTimestamp(),
+                })
+            } else {
+                const docRef = await addDoc(plansRef, {
+                    ...payload,
+                    createdAt: serverTimestamp(),
+                })
+                setPlanId(docRef.id)
+            }
+
+            setFormData(prev => ({ ...prev, status }))
+            setHasUnsavedChanges(false)
+            toast.push(
+                <Notification type="success" duration={2000}>
+                    {status === 'finalized' ? 'Plan finalized successfully' : 'Plan saved as draft'}
+                </Notification>
+            )
+            window.dispatchEvent(new Event('plansUpdated'))
+            navigate('/profit-sharing?tab=plans')
+        } catch (error) {
+            console.error('Error saving plan:', error)
+            toast.push(
+                <Notification type="danger" duration={2000}>
+                    Failed to save plan
+                </Notification>
+            )
+        }
     }
 
     const handleAddMilestone = (milestoneData) => {
@@ -377,18 +482,25 @@ const CreateProfitPlan = () => {
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
                                 <Tag className="px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                                    Draft
+                                    {formData.status === 'finalized' ? 'Finalized' : 'Draft'}
                                 </Tag>
                                 <Tag className="px-3 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                                     Profit
                                 </Tag>
                             </div>
                             <div className="flex items-center justify-between">
-                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Profit Plan</h1>
+                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                                    {formData.name || 'Profit Plan'}
+                                </h1>
                                 <button className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                     <HiOutlineDotsVertical className="w-5 h-5" />
                                 </button>
                             </div>
+                            {loadingPlan && (
+                                <div className="text-sm text-gray-500 dark:text-gray-400">
+                                    Loading plan...
+                                </div>
+                            )}
                         </div>
 
                         {/* Separator */}
@@ -952,38 +1064,7 @@ const CreateProfitPlan = () => {
                             <div className="flex items-center gap-3">
                                 <Button
                                     variant="twoTone"
-                                    onClick={async () => {
-                                        // Save as draft
-                                        try {
-                                            const plansRef = collection(db, 'profitSharingPlans')
-                                            // Prepare data for Firestore (convert dates to ISO strings)
-                                            const planData = {
-                                                ...formData,
-                                                startDate: formData.startDate ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate) : null,
-                                                status: 'draft',
-                                                createdAt: serverTimestamp(),
-                                                updatedAt: serverTimestamp()
-                                            }
-                                            await addDoc(plansRef, planData)
-                                            
-                                            setHasUnsavedChanges(false)
-                                            toast.push(
-                                                <Notification type="success" duration={2000}>
-                                                    Plan saved as draft
-                                                </Notification>
-                                            )
-                                            // Reload plans list
-                                            window.dispatchEvent(new Event('plansUpdated'))
-                                            navigate('/profit-sharing?tab=plans')
-                                        } catch (error) {
-                                            console.error('Error saving plan:', error)
-                                            toast.push(
-                                                <Notification type="danger" duration={2000}>
-                                                    Failed to save plan
-                                                </Notification>
-                                            )
-                                        }
-                                    }}
+                                    onClick={() => savePlan('draft')}
                                 >
                                     Save
                                 </Button>
@@ -991,38 +1072,7 @@ const CreateProfitPlan = () => {
                                     variant="solid"
                                     size="lg"
                                     disabled={!isFormComplete()}
-                                    onClick={async () => {
-                                        // Finalize and save
-                                        try {
-                                            const plansRef = collection(db, 'profitSharingPlans')
-                                            // Prepare data for Firestore (convert dates to ISO strings)
-                                            const planData = {
-                                                ...formData,
-                                                startDate: formData.startDate ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate) : null,
-                                                status: 'finalized',
-                                                createdAt: serverTimestamp(),
-                                                updatedAt: serverTimestamp()
-                                            }
-                                            await addDoc(plansRef, planData)
-                                            
-                                            setHasUnsavedChanges(false)
-                                            toast.push(
-                                                <Notification type="success" duration={2000}>
-                                                    Plan finalized successfully
-                                                </Notification>
-                                            )
-                                            // Reload plans list
-                                            window.dispatchEvent(new Event('plansUpdated'))
-                                            navigate('/profit-sharing?tab=plans')
-                                        } catch (error) {
-                                            console.error('Error finalizing plan:', error)
-                                            toast.push(
-                                                <Notification type="danger" duration={2000}>
-                                                    Failed to finalize plan
-                                                </Notification>
-                                            )
-                                        }
-                                    }}
+                                    onClick={() => savePlan('finalized')}
                                 >
                                     Finalize
                                 </Button>
