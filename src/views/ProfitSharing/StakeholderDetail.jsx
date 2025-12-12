@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { Card, Button, Table, Tag } from '@/components/ui'
 import { HiOutlineArrowLeft, HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineInformationCircle } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 // Mock data - in real app, this would come from API/Firebase
 const mockStakeholderData = {
@@ -112,24 +113,73 @@ const StakeholderDetail = () => {
     const user = useSessionUser((state) => state.user)
     const [activeTab, setActiveTab] = useState('stock')
     const [stakeholder, setStakeholder] = useState(null)
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        // In real app, fetch from Firebase/API
-        const data = mockStakeholderData[stakeholderId]
-        if (data) {
-            setStakeholder(data)
-        } else {
-            // Redirect if not found
-            navigate('/profit-sharing?tab=stakeholders')
+        const loadStakeholder = async () => {
+            if (!stakeholderId) {
+                navigate('/profit-sharing?tab=stakeholders')
+                return
+            }
+
+            setLoading(true)
+            try {
+                // Try to load from Firebase first
+                const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
+                if (response.success) {
+                    const data = response.data
+                    // Format the stakeholder data to match expected structure
+                    setStakeholder({
+                        id: data.id,
+                        name: data.name || '',
+                        title: data.title || '',
+                        email: data.email || '',
+                        phone: data.phone || '',
+                        employmentStatus: data.employmentStatus || '',
+                        payType: data.payType || '',
+                        payAmount: data.payAmount || 0,
+                        stockAwards: data.stockAwards || [],
+                        profitAwards: data.profitAwards || [],
+                        totalStockUnits: data.mareStock || 0,
+                        estimatedFMV: 0, // Calculate this if needed
+                        totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0)
+                    })
+                } else {
+                    // Fallback to mock data if Firebase fails
+                    const mockData = mockStakeholderData[stakeholderId]
+                    if (mockData) {
+                        setStakeholder(mockData)
+                    } else {
+                        navigate('/profit-sharing?tab=stakeholders')
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading stakeholder:', error)
+                // Fallback to mock data
+                const mockData = mockStakeholderData[stakeholderId]
+                if (mockData) {
+                    setStakeholder(mockData)
+                } else {
+                    navigate('/profit-sharing?tab=stakeholders')
+                }
+            } finally {
+                setLoading(false)
+            }
         }
+
+        loadStakeholder()
     }, [stakeholderId, navigate])
 
-    if (!stakeholder) {
+    if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-gray-500">Loading...</div>
             </div>
         )
+    }
+
+    if (!stakeholder) {
+        return null
     }
 
     const tabs = [

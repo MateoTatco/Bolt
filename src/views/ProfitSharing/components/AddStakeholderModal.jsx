@@ -13,6 +13,8 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         payAmount: '',
     })
     const [showInfoBanner, setShowInfoBanner] = useState(true)
+    const [showCancelDialog, setShowCancelDialog] = useState(false)
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
     const employmentStatusOptions = [
         { value: 'full-time', label: 'Full time' },
@@ -39,8 +41,17 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                 payType: null,
                 payAmount: '',
             })
+            setHasUnsavedChanges(false)
+            setShowCancelDialog(false)
         }
     }, [isOpen])
+
+    // Track unsaved changes
+    useEffect(() => {
+        const hasChanges = formData.fullName || formData.title || formData.email || 
+                          formData.phone || formData.employmentStatus || formData.payType || formData.payAmount
+        setHasUnsavedChanges(hasChanges)
+    }, [formData])
 
     const formatCurrencyInput = (value) => {
         // Remove all non-numeric characters except decimal point
@@ -54,27 +65,66 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const handleInputChange = (field, value) => {
         if (field === 'payAmount') {
             setFormData(prev => ({ ...prev, [field]: formatCurrencyInput(value) }))
+        } else if (field === 'phone') {
+            // Only allow numbers (no + needed since we have +1 prefix)
+            const sanitized = value.replace(/[^0-9]/g, '')
+            setFormData(prev => ({ ...prev, [field]: sanitized }))
         } else {
             setFormData(prev => ({ ...prev, [field]: value }))
         }
     }
 
-    const handleSave = () => {
+    const resetForm = () => {
+        setFormData({
+            fullName: '',
+            title: '',
+            email: '',
+            phone: '',
+            employmentStatus: null,
+            payType: null,
+            payAmount: '',
+        })
+        setHasUnsavedChanges(false)
+    }
+
+    const handleSave = async () => {
         if (formData.fullName && formData.title && formData.email) {
-            onSave({
+            const success = await onSave({
                 ...formData,
                 payAmount: formData.payAmount ? parseFloat(formData.payAmount.replace(/,/g, '')) : 0,
             })
+            // Only reset form if save was successful
+            if (success) {
+                resetForm()
+            }
         }
     }
 
-    const handleSaveAndAddAnother = () => {
+    const handleSaveAndAddAnother = async () => {
         if (formData.fullName && formData.title && formData.email) {
-            onSaveAndAddAnother({
+            const success = await onSaveAndAddAnother({
                 ...formData,
                 payAmount: formData.payAmount ? parseFloat(formData.payAmount.replace(/,/g, '')) : 0,
             })
+            // Reset form but keep modal open (only if save was successful)
+            if (success) {
+                resetForm()
+            }
         }
+    }
+
+    const handleCancel = () => {
+        if (hasUnsavedChanges) {
+            setShowCancelDialog(true)
+        } else {
+            onClose()
+        }
+    }
+
+    const handleConfirmCancel = () => {
+        resetForm()
+        setShowCancelDialog(false)
+        onClose()
     }
 
     const isFormValid = formData.fullName && formData.title && formData.email
@@ -87,19 +137,11 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         >
             <div className="p-6">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <HiOutlineUserAdd className="w-5 h-5 text-primary" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add Stakeholder</h3>
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <HiOutlineUserAdd className="w-5 h-5 text-primary" />
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                    >
-                        <HiOutlineX className="w-5 h-5" />
-                    </button>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add Stakeholder</h3>
                 </div>
 
                 {/* Info Banner */}
@@ -160,12 +202,18 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Phone
                         </label>
-                        <Input
-                            type="tel"
-                            value={formData.phone}
-                            onChange={(e) => handleInputChange('phone', e.target.value)}
-                            placeholder="Phone number"
-                        />
+                        <div className="flex items-center">
+                            <div className="flex items-center gap-1 px-3 h-10 bg-gray-100 dark:bg-gray-700 rounded-l-md border border-r-0 border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                <span>+1</span>
+                            </div>
+                            <Input
+                                type="tel"
+                                value={formData.phone}
+                                onChange={(e) => handleInputChange('phone', e.target.value)}
+                                placeholder="Phone number"
+                                className="rounded-l-none flex-1"
+                            />
+                        </div>
                     </div>
 
                     <div className="space-y-2">
@@ -215,7 +263,7 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                 <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
                     <Button
                         variant="plain"
-                        onClick={onClose}
+                        onClick={handleCancel}
                         className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                     >
                         Cancel
@@ -238,6 +286,37 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                     </div>
                 </div>
             </div>
+
+            {/* Cancel Confirmation Dialog */}
+            <Dialog
+                isOpen={showCancelDialog}
+                onClose={() => setShowCancelDialog(false)}
+                width={400}
+            >
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        Discard changes?
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                        You have unsaved changes. Are you sure you want to cancel?
+                    </p>
+                    <div className="flex items-center justify-end gap-3">
+                        <Button
+                            variant="plain"
+                            onClick={() => setShowCancelDialog(false)}
+                        >
+                            Keep editing
+                        </Button>
+                        <Button
+                            variant="solid"
+                            color="red-600"
+                            onClick={handleConfirmCancel}
+                        >
+                            Discard
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
         </Dialog>
     )
 }

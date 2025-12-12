@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
-import { Card, Button, Table, Input, Tag, Avatar, Checkbox } from '@/components/ui'
+import React from 'react'
+import { Card, Button, Table, Input, Tag, Avatar, Checkbox, Notification, toast } from '@/components/ui'
 import { HiOutlinePlus, HiOutlineSearch, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
 import AddStakeholderModal from './components/AddStakeholderModal'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 // Mock data
 const mockData = {
@@ -107,13 +109,60 @@ const StakeholdersTab = () => {
     const [showAddModal, setShowAddModal] = useState(false)
     const [activeFilter, setActiveFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
-    const [stakeholders, setStakeholders] = useState(mockStakeholders)
+    const [stakeholders, setStakeholders] = useState([])
     const [selectedStakeholders, setSelectedStakeholders] = useState([])
+    const [loading, setLoading] = useState(true)
 
     const { companyValuation, outstandingAwards, stockPool, usedStockUnits } = mockData
     const remainingStockUnits = stockPool - usedStockUnits
     const usedPercentage = (usedStockUnits / stockPool) * 100
     const remainingPercentage = (remainingStockUnits / stockPool) * 100
+
+    // Load stakeholders from Firebase
+    useEffect(() => {
+        loadStakeholders()
+    }, [])
+
+    const loadStakeholders = async () => {
+        setLoading(true)
+        try {
+            const response = await FirebaseDbService.stakeholders.getAll()
+            if (response.success) {
+                // Convert Firestore timestamps and format data
+                const formattedStakeholders = response.data.map(stakeholder => ({
+                    ...stakeholder,
+                    // Handle Firestore Timestamp objects
+                    createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
+                    updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
+                }))
+                setStakeholders(formattedStakeholders)
+            } else {
+                console.error('Error loading stakeholders:', response.error)
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        `Failed to load stakeholders: ${response.error}`
+                    )
+                )
+                // Fallback to mock data if Firebase fails
+                setStakeholders(mockStakeholders)
+            }
+        } catch (error) {
+            console.error('Error loading stakeholders:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to load stakeholders"
+                )
+            )
+            // Fallback to mock data
+            setStakeholders(mockStakeholders)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const filterTabs = [
         { key: 'all', label: 'All', count: stakeholders.length },
@@ -132,31 +181,144 @@ const StakeholdersTab = () => {
         return matchesFilter && matchesSearch
     })
 
-    const handleAddStakeholder = (stakeholderData) => {
-        const newStakeholder = {
-            id: Date.now(),
-            name: stakeholderData.fullName,
-            title: stakeholderData.title,
-            email: stakeholderData.email,
-            phone: stakeholderData.phone,
-            employmentStatus: stakeholderData.employmentStatus,
-            payType: stakeholderData.payType,
-            payAmount: stakeholderData.payAmount,
-            mareStock: null,
-            marePlans: [],
-            status: null,
+    const handleAddStakeholder = async (stakeholderData) => {
+        try {
+            const stakeholderPayload = {
+                name: stakeholderData.fullName,
+                title: stakeholderData.title,
+                email: stakeholderData.email,
+                phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
+                employmentStatus: stakeholderData.employmentStatus,
+                payType: stakeholderData.payType,
+                payAmount: stakeholderData.payAmount || 0,
+                mareStock: null,
+                marePlans: [],
+                status: null,
+            }
+
+            const response = await FirebaseDbService.stakeholders.create(stakeholderPayload)
+            if (response.success) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "success", duration: 2000, title: "Success" },
+                        "Stakeholder added successfully"
+                    )
+                )
+                // Reload stakeholders from Firebase
+                await loadStakeholders()
+                setShowAddModal(false)
+                return true
+            } else {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        `Failed to add stakeholder: ${response.error}`
+                    )
+                )
+                return false
+            }
+        } catch (error) {
+            console.error('Error adding stakeholder:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to add stakeholder"
+                )
+            )
+            return false
         }
-        setStakeholders([...stakeholders, newStakeholder])
-        setShowAddModal(false)
     }
 
-    const handleSaveAndAddAnother = (stakeholderData) => {
-        handleAddStakeholder(stakeholderData)
-        setShowAddModal(true) // Keep modal open
+    const handleSaveAndAddAnother = async (stakeholderData) => {
+        try {
+            const stakeholderPayload = {
+                name: stakeholderData.fullName,
+                title: stakeholderData.title,
+                email: stakeholderData.email,
+                phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
+                employmentStatus: stakeholderData.employmentStatus,
+                payType: stakeholderData.payType,
+                payAmount: stakeholderData.payAmount || 0,
+                mareStock: null,
+                marePlans: [],
+                status: null,
+            }
+
+            const response = await FirebaseDbService.stakeholders.create(stakeholderPayload)
+            if (response.success) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "success", duration: 2000, title: "Success" },
+                        "Stakeholder added successfully"
+                    )
+                )
+                // Reload stakeholders from Firebase
+                await loadStakeholders()
+                // Keep modal open (it will reset form automatically)
+                return true
+            } else {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        `Failed to add stakeholder: ${response.error}`
+                    )
+                )
+                return false
+            }
+        } catch (error) {
+            console.error('Error adding stakeholder:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to add stakeholder"
+                )
+            )
+            return false
+        }
     }
 
-    const handleDeleteStakeholder = (id) => {
-        setStakeholders(stakeholders.filter(s => s.id !== id))
+    const handleDeleteStakeholder = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this stakeholder?')) {
+            return
+        }
+
+        try {
+            const response = await FirebaseDbService.stakeholders.delete(id)
+            if (response.success) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "success", duration: 2000, title: "Success" },
+                        "Stakeholder deleted successfully"
+                    )
+                )
+                // Reload stakeholders from Firebase
+                await loadStakeholders()
+            } else {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        `Failed to delete stakeholder: ${response.error}`
+                    )
+                )
+            }
+        } catch (error) {
+            console.error('Error deleting stakeholder:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to delete stakeholder"
+                )
+            )
+        }
     }
 
     const handleSelectAll = (checked) => {
@@ -314,7 +476,13 @@ const StakeholdersTab = () => {
                             </Table.Tr>
                         </Table.THead>
                         <Table.TBody>
-                            {filteredStakeholders.length === 0 ? (
+                            {loading ? (
+                                <Table.Tr>
+                                    <Table.Td colSpan={6} className="text-center py-12">
+                                        <div className="text-gray-400 dark:text-gray-500">Loading stakeholders...</div>
+                                    </Table.Td>
+                                </Table.Tr>
+                            ) : filteredStakeholders.length === 0 ? (
                                 <Table.Tr>
                                     <Table.Td colSpan={6} className="text-center py-12">
                                         <div className="text-gray-400 dark:text-gray-500">No stakeholders found</div>

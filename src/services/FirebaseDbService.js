@@ -1452,6 +1452,87 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // STAKEHOLDERS COLLECTION
+    stakeholders: {
+        // Get all stakeholders
+        getAll: async () => {
+            try {
+                const stakeholdersRef = collection(db, 'stakeholders')
+                const snapshot = await getDocs(stakeholdersRef)
+                const stakeholders = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: stakeholders }
+            } catch (error) {
+                console.error('Firebase get all stakeholders error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single stakeholder
+        getById: async (id) => {
+            try {
+                const stringId = String(id)
+                const stakeholderRef = doc(db, 'stakeholders', stringId)
+                const stakeholderSnap = await getDoc(stakeholderRef)
+                if (stakeholderSnap.exists()) {
+                    return { success: true, data: { id: stakeholderSnap.id, ...stakeholderSnap.data() } }
+                } else {
+                    return { success: false, error: 'Stakeholder not found' }
+                }
+            } catch (error) {
+                console.error('Firebase get stakeholder by id error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new stakeholder
+        create: async (stakeholderData) => {
+            try {
+                const stakeholdersRef = collection(db, 'stakeholders')
+                const docRef = await addDoc(stakeholdersRef, {
+                    ...stakeholderData,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...stakeholderData } }
+            } catch (error) {
+                console.error('Firebase create stakeholder error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update stakeholder
+        update: async (id, stakeholderData) => {
+            try {
+                const stringId = String(id)
+                const stakeholderRef = doc(db, 'stakeholders', stringId)
+                await updateDoc(stakeholderRef, {
+                    ...stakeholderData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: stringId, ...stakeholderData } }
+            } catch (error) {
+                console.error('Firebase update stakeholder error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete stakeholder
+        delete: async (id) => {
+            try {
+                const stringId = String(id)
+                const stakeholderRef = doc(db, 'stakeholders', stringId)
+                await deleteDoc(stakeholderRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete stakeholder error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing
