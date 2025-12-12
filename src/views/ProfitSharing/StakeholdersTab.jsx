@@ -469,7 +469,6 @@ const StakeholdersTab = () => {
                                     />
                                 </Table.Th>
                                 <Table.Th>Stakeholders</Table.Th>
-                                <Table.Th>Stock</Table.Th>
                                 <Table.Th>Plans</Table.Th>
                                 <Table.Th>Status</Table.Th>
                                 <Table.Th>Actions</Table.Th>
@@ -509,15 +508,6 @@ const StakeholdersTab = () => {
                                                     <div className="text-sm text-gray-500 dark:text-gray-400">{stakeholder.title}</div>
                                                 </div>
                                             </div>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            {stakeholder.mareStock ? (
-                                                <span className="text-sm text-gray-900 dark:text-white">
-                                                    {formatNumber(stakeholder.mareStock)} Stock Units
-                                                </span>
-                                            ) : (
-                                                <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
-                                            )}
                                         </Table.Td>
                                         <Table.Td>
                                             {stakeholder.marePlans.length > 0 ? (
