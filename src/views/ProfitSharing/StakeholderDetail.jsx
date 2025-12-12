@@ -513,6 +513,9 @@ const StakeholderDetail = () => {
                     reinsRole: data.reinsRole || 'User',
                 })
             }
+
+            // Notify stakeholders list to refresh
+            window.dispatchEvent(new Event('stakeholdersUpdated'))
         } catch (error) {
             console.error('Error deleting award:', error)
             toast.push(
@@ -638,6 +641,9 @@ const StakeholderDetail = () => {
                     reinsRole: data.reinsRole || 'User',
                 })
             }
+
+            // Notify stakeholders list to refresh
+            window.dispatchEvent(new Event('stakeholdersUpdated'))
 
             setShowNewAwardDrawer(false)
             setEditingAwardId(null)
@@ -798,44 +804,28 @@ const StakeholderDetail = () => {
                                     if (!stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
                                         return (
                                             <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">Pending</div>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                    No awards available
+                                                </div>
                                             </>
                                         )
                                     }
                                     
                                     const nextAward = stakeholder.profitAwards[0]
                                     const endDate = nextAward.awardEndDate ? new Date(nextAward.awardEndDate) : null
-                                    const today = new Date()
-                                    today.setHours(0, 0, 0, 0)
                                     
-                                    let status = 'Pending'
-                                    let dateText = ''
-                                    
-                                    // Check if award is finalized (regardless of date)
-                                    if (nextAward.status === 'Finalized') {
-                                        status = 'Finalized'
-                                    } else if (endDate) {
-                                        const endDateOnly = new Date(endDate)
-                                        endDateOnly.setHours(0, 0, 0, 0)
-                                        
-                                        // If today is before end date, show Pending with date
-                                        if (today < endDateOnly) {
-                                            status = 'Pending'
-                                            dateText = `After ${endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
-                                        } else {
-                                            // If today is on or after end date, show "To be paid"
-                                            status = 'To be paid'
-                                        }
-                                    } else {
-                                        status = 'Pending'
-                                    }
+                                    // Mock award amount - replace with actual calculation when available
+                                    const mockAwardAmount = 12500.00
                                     
                                     return (
                                         <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{status}</div>
-                                            {dateText && (
+                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(mockAwardAmount)}
+                                            </div>
+                                            {endDate && (
                                                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                    {dateText}
+                                                    after {endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                                                 </div>
                                             )}
                                         </>

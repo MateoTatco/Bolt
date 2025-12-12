@@ -121,6 +121,16 @@ const StakeholdersTab = () => {
     // Load stakeholders from Firebase
     useEffect(() => {
         loadStakeholders()
+        
+        // Listen for stakeholder updates (when awards are added/updated in detail page)
+        const handleStakeholdersUpdate = () => {
+            loadStakeholders()
+        }
+        window.addEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
+        
+        return () => {
+            window.removeEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
+        }
     }, [])
 
     const loadStakeholders = async () => {
@@ -164,20 +174,88 @@ const StakeholdersTab = () => {
         }
     }
 
+    // Helper function to calculate stakeholder status based on awards
+    const calculateStakeholderStatus = (stakeholder) => {
+        // Check if terminated (could be based on employment status or a separate field)
+        if (stakeholder.employmentStatus === 'Terminated' || stakeholder.status === 'Terminated') {
+            return 'Terminated'
+        }
+
+        const profitAwards = stakeholder.profitAwards || []
+        
+        // If no awards at all, consider them as Pending (waiting for awards)
+        if (profitAwards.length === 0) {
+            return 'Pending'
+        }
+
+        // Normalize status for comparison (case-insensitive)
+        const normalizeStatus = (status) => {
+            if (!status) return ''
+            return String(status).toLowerCase().trim()
+        }
+
+        // Check if has any Finalized awards (case-insensitive)
+        const hasFinalized = profitAwards.some(award => {
+            const status = normalizeStatus(award.status)
+            return status === 'finalized'
+        })
+        
+        if (hasFinalized) {
+            return 'Active'
+        }
+
+        // Check if has Draft awards (case-insensitive)
+        const hasDraft = profitAwards.some(award => {
+            const status = normalizeStatus(award.status)
+            return status === 'draft' || status === 'pending'
+        })
+        
+        if (hasDraft) {
+            // If all awards are Draft, return Draft
+            const allDraft = profitAwards.every(award => {
+                const status = normalizeStatus(award.status)
+                return status === 'draft' || status === 'pending'
+            })
+            return allDraft ? 'Draft' : 'Pending'
+        }
+
+        return 'Pending'
+    }
+
+    // Helper function to get unique plan names from awards
+    const getStakeholderPlans = (stakeholder) => {
+        const profitAwards = stakeholder.profitAwards || []
+        const planNames = profitAwards
+            .map(award => award.planName)
+            .filter((name, index, self) => name && self.indexOf(name) === index) // Get unique names
+        
+        return planNames
+    }
+
+    // Calculate status for all stakeholders
+    const stakeholdersWithStatus = stakeholders.map(stakeholder => ({
+        ...stakeholder,
+        calculatedStatus: calculateStakeholderStatus(stakeholder),
+        planNames: getStakeholderPlans(stakeholder)
+    }))
+
     const filterTabs = [
-        { key: 'all', label: 'All', count: stakeholders.length },
-        { key: 'active', label: 'Active', count: stakeholders.filter(s => s.status === 'Active').length },
-        { key: 'pending', label: 'Pending', count: stakeholders.filter(s => s.status === 'Pending').length },
-        { key: 'draft', label: 'Draft', count: stakeholders.filter(s => s.status === 'Draft').length },
-        { key: 'terminated', label: 'Terminated', count: stakeholders.filter(s => s.status === 'Terminated').length },
+        { key: 'all', label: 'All', count: stakeholdersWithStatus.length },
+        { key: 'active', label: 'Active', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Active').length },
+        { key: 'pending', label: 'Pending', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Pending').length },
+        { key: 'draft', label: 'Draft', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Draft').length },
+        { key: 'terminated', label: 'Terminated', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Terminated').length },
     ]
 
-    const filteredStakeholders = stakeholders.filter(stakeholder => {
-        const matchesFilter = activeFilter === 'all' || stakeholder.status === activeFilter
+    const filteredStakeholders = stakeholdersWithStatus.filter(stakeholder => {
+        // Case-insensitive comparison for filter
+        const matchesFilter = activeFilter === 'all' || 
+            stakeholder.calculatedStatus?.toLowerCase() === activeFilter.toLowerCase()
         const matchesSearch = !searchQuery || 
             stakeholder.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             stakeholder.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             stakeholder.email.toLowerCase().includes(searchQuery.toLowerCase())
+        
         return matchesFilter && matchesSearch
     })
 
@@ -207,6 +285,7 @@ const StakeholdersTab = () => {
                 )
                 // Reload stakeholders from Firebase
                 await loadStakeholders()
+                window.dispatchEvent(new Event('stakeholdersUpdated'))
                 setShowAddModal(false)
                 return true
             } else {
@@ -258,6 +337,7 @@ const StakeholdersTab = () => {
                 )
                 // Reload stakeholders from Firebase
                 await loadStakeholders()
+                window.dispatchEvent(new Event('stakeholdersUpdated'))
                 // Keep modal open (it will reset form automatically)
                 return true
             } else {
@@ -300,6 +380,7 @@ const StakeholdersTab = () => {
                 )
                 // Reload stakeholders from Firebase
                 await loadStakeholders()
+                window.dispatchEvent(new Event('stakeholdersUpdated'))
             } else {
                 toast.push(
                     React.createElement(
@@ -510,14 +591,14 @@ const StakeholdersTab = () => {
                                             </div>
                                         </Table.Td>
                                         <Table.Td>
-                                            {stakeholder.marePlans.length > 0 ? (
-                                                <div className="flex items-center gap-2">
-                                                    {stakeholder.marePlans.filter(plan => plan === 'Profit').map((plan, idx) => (
+                                            {stakeholder.planNames && stakeholder.planNames.length > 0 ? (
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {stakeholder.planNames.map((planName, idx) => (
                                                         <Tag
                                                             key={idx}
                                                             className="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                                                         >
-                                                            {plan}
+                                                            {planName}
                                                         </Tag>
                                                     ))}
                                                 </div>
@@ -526,10 +607,16 @@ const StakeholdersTab = () => {
                                             )}
                                         </Table.Td>
                                         <Table.Td>
-                                            {stakeholder.status ? (
+                                            {stakeholder.calculatedStatus ? (
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                                    <span className="text-sm text-gray-900 dark:text-white">{stakeholder.status}</span>
+                                                    <div className={`w-2 h-2 rounded-full ${
+                                                        stakeholder.calculatedStatus === 'Active' ? 'bg-green-500' :
+                                                        stakeholder.calculatedStatus === 'Pending' ? 'bg-yellow-500' :
+                                                        stakeholder.calculatedStatus === 'Draft' ? 'bg-gray-500' :
+                                                        stakeholder.calculatedStatus === 'Terminated' ? 'bg-red-500' :
+                                                        'bg-gray-400'
+                                                    }`}></div>
+                                                    <span className="text-sm text-gray-900 dark:text-white">{stakeholder.calculatedStatus}</span>
                                                 </div>
                                             ) : (
                                                 <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
