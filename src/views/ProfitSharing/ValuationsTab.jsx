@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Button, Table, Tag, Drawer, Input, Select, DatePicker, Notification, toast } from '@/components/ui'
 import { HiOutlinePlus, HiOutlineCheckCircle, HiOutlineEye, HiOutlinePencil, HiOutlineTrash, HiOutlineTrendingUp, HiOutlineTrendingDown, HiOutlineMinus } from 'react-icons/hi'
 import { db } from '@/configs/firebase.config'
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where } from 'firebase/firestore'
 import React from 'react'
 
 const formatCurrency = (value) => {
@@ -30,12 +30,16 @@ const formatNumber = (value) => {
 const ValuationsTab = () => {
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
+    const [plans, setPlans] = useState([])
+    const [loadingPlans, setLoadingPlans] = useState(true)
     const [showAddDrawer, setShowAddDrawer] = useState(false)
     const [editingValuation, setEditingValuation] = useState(null)
     const [formData, setFormData] = useState({
+        planId: '',
         valuationDate: null,
-        source: null,
-        fmv: '',
+        source: 'Manual',
+        profitAmount: '',
+        milestoneAmount: '',
         pricePerShare: '',
         totalShares: '',
         notes: '',
@@ -43,7 +47,45 @@ const ValuationsTab = () => {
 
     useEffect(() => {
         loadValuations()
+        loadPlans()
     }, [])
+
+    const loadPlans = async () => {
+        setLoadingPlans(true)
+        try {
+            const plansRef = collection(db, 'profitSharingPlans')
+            // Simple orderBy on name to avoid composite index requirement; filter by status client-side
+            const q = query(plansRef, orderBy('name'))
+            const snapshot = await getDocs(q)
+            const plansData = snapshot.docs
+                .map((docSnap) => {
+                    const data = docSnap.data()
+                    const paymentScheduleDates = Array.isArray(data.paymentScheduleDates)
+                        ? data.paymentScheduleDates
+                              .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
+                              .filter(Boolean)
+                        : []
+                    return {
+                        id: docSnap.id,
+                        ...data,
+                        paymentScheduleDates,
+                    }
+                })
+                .filter(plan => ['draft', 'finalized'].includes(plan.status || 'draft'))
+            setPlans(plansData)
+        } catch (error) {
+            console.error('Error loading plans for valuations:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'danger', duration: 2000, title: 'Error' },
+                    'Failed to load profit plans for valuations'
+                )
+            )
+        } finally {
+            setLoadingPlans(false)
+        }
+    }
 
     const loadValuations = async () => {
         setLoading(true)
@@ -91,21 +133,61 @@ const ValuationsTab = () => {
         const active = getActiveValuation()
         const previous = getPreviousValuation()
         if (!active || !previous) return null
+        const activeValue = typeof active.fmv === 'number' && active.fmv > 0 ? active.fmv : active.profitAmount || 0
+        const previousValue = typeof previous.fmv === 'number' && previous.fmv > 0 ? previous.fmv : previous.profitAmount || 0
+        if (!activeValue || !previousValue) return null
         return {
-            amount: active.fmv - previous.fmv,
-            percentage: ((active.fmv - previous.fmv) / previous.fmv) * 100
+            amount: activeValue - previousValue,
+            percentage: ((activeValue - previousValue) / previousValue) * 100
         }
     }
 
     const handleInputChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }))
+        setFormData(prev => {
+            const next = { ...prev, [field]: value }
+
+            // When plan changes, pull milestone and total shares from plan
+            if (field === 'planId') {
+                const selectedPlan = plans.find(p => p.id === value)
+                if (selectedPlan) {
+                    next.milestoneAmount = selectedPlan.milestoneAmount || selectedPlan.milestone || 0
+                    next.totalShares = selectedPlan.totalShares || 0
+                    // Reset date when plan changes to force re-selection from that plan's schedule
+                    next.valuationDate = null
+                } else {
+                    next.milestoneAmount = ''
+                    next.totalShares = ''
+                    next.valuationDate = null
+                }
+            }
+
+            // Recalculate price per share whenever profit or totalShares changes
+            if (['profitAmount', 'totalShares', 'planId'].includes(field)) {
+                const profitRaw = next.profitAmount
+                const totalSharesRaw = next.totalShares
+
+                const profit = profitRaw ? parseFloat(String(profitRaw).replace(/,/g, '')) : 0
+                const total = totalSharesRaw ? parseFloat(String(totalSharesRaw).replace(/,/g, '')) : 0
+
+                if (total > 0 && profit > 0) {
+                    const perShare = profit / total
+                    next.pricePerShare = perShare.toFixed(2)
+                } else {
+                    next.pricePerShare = ''
+                }
+            }
+
+            return next
+        })
     }
 
     const resetForm = () => {
         setFormData({
+            planId: '',
             valuationDate: null,
-            source: null,
-            fmv: '',
+            source: 'Manual',
+            profitAmount: '',
+            milestoneAmount: '',
             pricePerShare: '',
             totalShares: '',
             notes: '',
@@ -120,11 +202,22 @@ const ValuationsTab = () => {
 
     const handleOpenEdit = (valuation) => {
         setEditingValuation(valuation)
+
+        // Derive price per share if it's missing on older records
+        const derivedPricePerShare =
+            valuation.pricePerShare && valuation.pricePerShare > 0
+                ? valuation.pricePerShare
+                : (valuation.profitAmount && valuation.totalShares
+                    ? valuation.profitAmount / valuation.totalShares
+                    : null)
+
         setFormData({
+            planId: valuation.planId || '',
             valuationDate: valuation.valuationDate ? (valuation.valuationDate instanceof Date ? valuation.valuationDate : new Date(valuation.valuationDate)) : null,
-            source: valuation.source || null,
-            fmv: valuation.fmv ? String(valuation.fmv) : '',
-            pricePerShare: valuation.pricePerShare ? String(valuation.pricePerShare) : '',
+            source: valuation.source || 'Manual',
+            profitAmount: valuation.profitAmount ? String(valuation.profitAmount) : (valuation.fmv ? String(valuation.fmv) : ''),
+            milestoneAmount: valuation.milestoneAmount ? String(valuation.milestoneAmount) : '',
+            pricePerShare: derivedPricePerShare ? String(derivedPricePerShare.toFixed(2)) : '',
             totalShares: valuation.totalShares ? String(valuation.totalShares) : '',
             notes: valuation.notes || '',
         })
@@ -133,23 +226,43 @@ const ValuationsTab = () => {
 
     const handleSave = async () => {
         try {
-            if (!formData.valuationDate || !formData.source || !formData.fmv) {
+            if (!formData.planId || !formData.valuationDate || !formData.source || !formData.profitAmount) {
                 toast.push(
                     React.createElement(
                         Notification,
                         { type: "warning", duration: 2000, title: "Validation" },
-                        "Please fill in all required fields"
+                        "Please select a plan, profit date, source, and profit amount"
                     )
                 )
                 return
             }
 
+            const profitValue = formData.profitAmount
+                ? parseFloat(formData.profitAmount.replace(/,/g, ''))
+                : 0
+            const milestoneValue = formData.milestoneAmount
+                ? parseFloat(String(formData.milestoneAmount).replace(/,/g, ''))
+                : 0
+            const totalSharesValue = formData.totalShares
+                ? parseFloat(String(formData.totalShares).replace(/,/g, ''))
+                : null
+
+            // Always compute price per share from profit and total shares
+            const pricePerShareValue =
+                profitValue && totalSharesValue && totalSharesValue > 0
+                    ? profitValue / totalSharesValue
+                    : null
+
             const valuationData = {
+                planId: formData.planId,
                 valuationDate: formData.valuationDate instanceof Date ? formData.valuationDate : new Date(formData.valuationDate),
                 source: formData.source,
-                fmv: parseFloat(formData.fmv.replace(/,/g, '')) || 0,
-                pricePerShare: formData.pricePerShare ? parseFloat(formData.pricePerShare.replace(/,/g, '')) : null,
-                totalShares: formData.totalShares ? parseFloat(formData.totalShares.replace(/,/g, '')) : null,
+                // For backwards compatibility with existing UI, store profit as FMV too
+                fmv: profitValue || 0,
+                profitAmount: profitValue || 0,
+                milestoneAmount: milestoneValue || 0,
+                pricePerShare: pricePerShareValue,
+                totalShares: totalSharesValue,
                 notes: formData.notes || '',
                 updatedDate: serverTimestamp(),
             }
@@ -252,25 +365,42 @@ const ValuationsTab = () => {
     const activeValuation = getActiveValuation()
     const change = calculateChange()
 
+    const activePricePerShare = activeValuation
+        ? (activeValuation.pricePerShare && activeValuation.pricePerShare > 0
+            ? activeValuation.pricePerShare
+            : (activeValuation.profitAmount && activeValuation.totalShares
+                ? activeValuation.profitAmount / activeValuation.totalShares
+                : null))
+        : null
+
     const sourceOptions = [
         { value: 'Manual', label: 'Manual' },
         { value: 'Third-party', label: 'Third-party' },
         { value: 'Calculated', label: 'Calculated' },
     ]
 
+    const selectedPlan = plans.find(p => p.id === formData.planId)
+
+    const profitDateOptions = selectedPlan
+        ? selectedPlan.paymentScheduleDates.map((d) => ({
+              value: d.toISOString(),
+              label: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          }))
+        : []
+
     return (
         <>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Valuations</h2>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
                     <Button 
                         variant="solid" 
                         size="sm"
                         icon={<HiOutlinePlus />}
                         onClick={handleOpenAdd}
                     >
-                        Add valuation
+                        Add profit
                     </Button>
                 </div>
 
@@ -285,8 +415,22 @@ const ValuationsTab = () => {
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <div className="text-4xl font-bold text-gray-900 dark:text-white">
-                                    {formatCurrency(activeValuation.fmv)}
+                                <div className="space-y-1">
+                                    <div className="text-4xl font-bold text-gray-900 dark:text-white">
+                                        {formatCurrency(
+                                            typeof activeValuation.fmv === 'number' && activeValuation.fmv > 0
+                                                ? activeValuation.fmv
+                                                : activeValuation.profitAmount || 0
+                                        )}
+                                    </div>
+                                    {activePricePerShare && (
+                                        <div className="text-sm text-gray-600 dark:text-gray-300">
+                                            Price per share:{' '}
+                                            <span className="font-semibold">
+                                                {formatCurrencyWithDecimals(activePricePerShare)}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 {change && (
                                     <div className="flex items-center gap-2">
@@ -349,12 +493,14 @@ const ValuationsTab = () => {
                             <Table.THead>
                                 <Table.Tr>
                                     <Table.Th>Updated Date</Table.Th>
-                                    <Table.Th>Valuation Date</Table.Th>
+                                    <Table.Th>Profit Date</Table.Th>
                                     <Table.Th>Source</Table.Th>
                                     <Table.Th>Status</Table.Th>
-                                    <Table.Th>FMV</Table.Th>
+                                    <Table.Th>Profit</Table.Th>
+                                    <Table.Th>Milestone</Table.Th>
                                     <Table.Th>Price per Share</Table.Th>
                                     <Table.Th>Total Shares</Table.Th>
+                                    <Table.Th>Plan</Table.Th>
                                     <Table.Th>Actions</Table.Th>
                                 </Table.Tr>
                             </Table.THead>
@@ -392,17 +538,46 @@ const ValuationsTab = () => {
                                         </Table.Td>
                                         <Table.Td>
                                             <span className="text-sm text-gray-900 dark:text-white font-medium">
-                                                {formatCurrency(valuation.fmv)}
+                                                {formatCurrency(
+                                                    typeof valuation.fmv === 'number' && valuation.fmv > 0
+                                                        ? valuation.fmv
+                                                        : valuation.profitAmount || 0
+                                                )}
                                             </span>
                                         </Table.Td>
                                         <Table.Td>
                                             <span className="text-sm text-gray-900 dark:text-white">
-                                                {valuation.pricePerShare ? formatCurrencyWithDecimals(valuation.pricePerShare) : '—'}
+                                                {valuation.milestoneAmount
+                                                    ? formatCurrency(valuation.milestoneAmount)
+                                                    : '—'}
+                                            </span>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <span className="text-sm text-gray-900 dark:text-white">
+                                                {(() => {
+                                                    const effectivePricePerShare =
+                                                        valuation.pricePerShare && valuation.pricePerShare > 0
+                                                            ? valuation.pricePerShare
+                                                            : (valuation.profitAmount && valuation.totalShares
+                                                                ? valuation.profitAmount / valuation.totalShares
+                                                                : null)
+
+                                                    return effectivePricePerShare
+                                                        ? formatCurrencyWithDecimals(effectivePricePerShare)
+                                                        : '—'
+                                                })()}
                                             </span>
                                         </Table.Td>
                                         <Table.Td>
                                             <span className="text-sm text-gray-900 dark:text-white">
                                                 {valuation.totalShares ? formatNumber(valuation.totalShares) : '—'}
+                                            </span>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <span className="text-sm text-gray-900 dark:text-white">
+                                                {valuation.planId
+                                                    ? (plans.find(p => p.id === valuation.planId)?.name || '—')
+                                                    : '—'}
                                             </span>
                                         </Table.Td>
                                         <Table.Td>
@@ -438,20 +613,72 @@ const ValuationsTab = () => {
                     setShowAddDrawer(false)
                     resetForm()
                 }}
-                title={editingValuation ? "Edit Valuation" : "Add Valuation"}
+                title={editingValuation ? "Edit profit entry" : "Add profit"}
                 width={600}
             >
                 <div className="flex flex-col h-full">
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Valuation Date *
+                                Plan *
                             </label>
-                            <DatePicker
-                                value={formData.valuationDate ? (formData.valuationDate instanceof Date ? formData.valuationDate : new Date(formData.valuationDate)) : null}
-                                onChange={(date) => handleInputChange('valuationDate', date)}
-                                placeholder="Select a date..."
-                                inputFormat="MM/DD/YYYY"
+                            <Select
+                                isLoading={loadingPlans}
+                                options={plans.map(plan => ({
+                                    value: plan.id,
+                                    label: plan.name || 'Untitled plan',
+                                }))}
+                                value={
+                                    formData.planId
+                                        ? {
+                                              value: formData.planId,
+                                              label:
+                                                  plans.find(p => p.id === formData.planId)?.name ||
+                                                  'Selected plan',
+                                          }
+                                        : null
+                                }
+                                onChange={(opt) => handleInputChange('planId', opt?.value || '')}
+                                placeholder="Select a profit plan..."
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Profit date *
+                            </label>
+                            <Select
+                                isDisabled={!selectedPlan || profitDateOptions.length === 0}
+                                options={profitDateOptions}
+                                value={
+                                    formData.valuationDate
+                                        ? {
+                                              value:
+                                                  formData.valuationDate instanceof Date
+                                                      ? formData.valuationDate.toISOString()
+                                                      : new Date(formData.valuationDate).toISOString(),
+                                              label: (formData.valuationDate instanceof Date
+                                                  ? formData.valuationDate
+                                                  : new Date(formData.valuationDate)
+                                              ).toLocaleDateString('en-US', {
+                                                  month: 'long',
+                                                  day: 'numeric',
+                                                  year: 'numeric',
+                                              }),
+                                          }
+                                        : null
+                                }
+                                onChange={(opt) => {
+                                    const selected = opt?.value ? new Date(opt.value) : null
+                                    handleInputChange('valuationDate', selected)
+                                }}
+                                placeholder={
+                                    !selectedPlan
+                                        ? 'Select a plan first'
+                                        : profitDateOptions.length === 0
+                                        ? 'No payment dates configured for this plan'
+                                        : 'Select a profit date...'
+                                }
                             />
                         </div>
 
@@ -469,7 +696,7 @@ const ValuationsTab = () => {
 
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Fair Market Value (FMV) *
+                                Profit amount *
                             </label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
@@ -477,15 +704,38 @@ const ValuationsTab = () => {
                                 </span>
                                 <Input
                                     type="text"
-                                    value={formData.fmv ? formData.fmv.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+                                    value={formData.profitAmount ? formData.profitAmount.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
                                     onChange={(e) => {
                                         const value = e.target.value.replace(/[^0-9]/g, '')
-                                        handleInputChange('fmv', value)
+                                        handleInputChange('profitAmount', value)
                                     }}
                                     placeholder="0"
                                     className="pl-8"
                                 />
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Plan profit threshold (milestone)
+                            </label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                    $
+                                </span>
+                                <Input
+                                    type="text"
+                                    value={formData.milestoneAmount
+                                        ? String(formData.milestoneAmount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                        : ''}
+                                    disabled
+                                    placeholder="0"
+                                    className="pl-8 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Pulled from the selected profit plan.
+                            </p>
                         </div>
 
                         <div className="space-y-2">
@@ -498,29 +748,31 @@ const ValuationsTab = () => {
                                 </span>
                                 <Input
                                     type="text"
-                                    value={formData.pricePerShare ? formData.pricePerShare.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/[^0-9.]/g, '')
-                                        handleInputChange('pricePerShare', value)
-                                    }}
+                                    value={formData.pricePerShare
+                                        ? String(formData.pricePerShare).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                        : ''}
+                                    disabled
                                     placeholder="0.00"
-                                    className="pl-8"
+                                    className="pl-8 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
                                 />
                             </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Automatically calculated as profit ÷ total shares.
+                            </p>
                         </div>
 
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Total Shares
+                                Total shares in plan
                             </label>
                             <Input
                                 type="text"
-                                value={formData.totalShares ? formData.totalShares.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-                                onChange={(e) => {
-                                    const value = e.target.value.replace(/[^0-9]/g, '')
-                                    handleInputChange('totalShares', value)
-                                }}
+                                value={formData.totalShares
+                                    ? String(formData.totalShares).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                    : ''}
+                                disabled
                                 placeholder="0"
+                                className="bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
                             />
                         </div>
 
@@ -553,7 +805,7 @@ const ValuationsTab = () => {
                             variant="solid"
                             onClick={handleSave}
                         >
-                            {editingValuation ? 'Update' : 'Add'} Valuation
+                            {editingValuation ? 'Update profit' : 'Add profit'}
                         </Button>
                     </div>
                 </div>

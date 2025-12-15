@@ -127,6 +127,7 @@ const StakeholderDetail = () => {
         awardStartDate: null,
         awardEndDate: null,
         milestoneAmount: 0,
+        sharesIssued: '',
     })
     const [editingAwardId, setEditingAwardId] = useState(null)
     const [detailsFormData, setDetailsFormData] = useState({
@@ -280,6 +281,9 @@ const StakeholderDetail = () => {
             const sanitized = value.replace(/[^0-9.]/g, '')
             const numValue = sanitized ? parseFloat(sanitized.replace(/,/g, '')) : 0
             setAwardFormData(prev => ({ ...prev, [field]: numValue }))
+        } else if (field === 'sharesIssued') {
+            const sanitized = value.replace(/[^0-9]/g, '')
+            setAwardFormData(prev => ({ ...prev, [field]: sanitized }))
         } else {
             setAwardFormData(prev => ({ ...prev, [field]: value }))
         }
@@ -290,7 +294,8 @@ const StakeholderDetail = () => {
             awardFormData.planId &&
             awardFormData.awardStartDate &&
             awardFormData.awardEndDate &&
-            awardFormData.milestoneAmount > 0
+            awardFormData.milestoneAmount > 0 &&
+            awardFormData.sharesIssued && parseInt(awardFormData.sharesIssued, 10) > 0
         )
     }
 
@@ -536,6 +541,7 @@ const StakeholderDetail = () => {
             awardStartDate: award.awardStartDate ? new Date(award.awardStartDate) : null,
             awardEndDate: award.awardEndDate ? new Date(award.awardEndDate) : null,
             milestoneAmount: award.milestoneAmount || 0,
+            sharesIssued: award.sharesIssued ? String(award.sharesIssued) : '',
         })
         
         // Load the plan to check its status
@@ -572,6 +578,7 @@ const StakeholderDetail = () => {
                 id: Date.now().toString(),
                 planId: awardFormData.planId,
                 planName: selectedPlan?.label || 'Unknown Plan',
+                planMilestoneAmount: awardFormData.milestoneAmount || 0,
                 awardStartDate: awardFormData.awardStartDate instanceof Date 
                     ? awardFormData.awardStartDate.toISOString() 
                     : awardFormData.awardStartDate,
@@ -579,6 +586,7 @@ const StakeholderDetail = () => {
                     ? awardFormData.awardEndDate.toISOString() 
                     : awardFormData.awardEndDate,
                 milestoneAmount: awardFormData.milestoneAmount,
+                sharesIssued: awardFormData.sharesIssued ? parseInt(awardFormData.sharesIssued, 10) : 0,
                 paymentSchedule: selectedPlan?.schedule || 'Annually',
                 status: status === 'finalized' ? 'Finalized' : 'Draft',
                 awardDate: 'Pending',
@@ -1259,22 +1267,48 @@ const StakeholderDetail = () => {
                                         value={profitPlans.find(opt => opt.value === awardFormData.planId) || null}
                                         onChange={async (opt) => {
                                             handleAwardInputChange('planId', opt?.value || null)
-                                            // Load plan status when plan is selected
+                                            // Load plan details when plan is selected (including milestone)
                                             if (opt?.value) {
                                                 try {
                                                     const planRef = doc(db, 'profitSharingPlans', opt.value)
                                                     const planSnap = await getDoc(planRef)
                                                     if (planSnap.exists()) {
-                                                        setSelectedPlan(planSnap.data())
+                                                        const planData = planSnap.data()
+                                                        setSelectedPlan(planData || null)
+                                                        // Automatically pull milestone from plan
+                                                        const planMilestone = planData?.milestoneAmount || planData?.milestone || 0
+                                                        if (planMilestone) {
+                                                            setAwardFormData(prev => ({
+                                                                ...prev,
+                                                                milestoneAmount: planMilestone,
+                                                            }))
+                                                        } else {
+                                                            setAwardFormData(prev => ({
+                                                                ...prev,
+                                                                milestoneAmount: 0,
+                                                            }))
+                                                        }
                                                     } else {
                                                         setSelectedPlan(null)
+                                                        setAwardFormData(prev => ({
+                                                            ...prev,
+                                                            milestoneAmount: 0,
+                                                        }))
                                                     }
                                                 } catch (error) {
                                                     console.error('Error loading plan:', error)
                                                     setSelectedPlan(null)
+                                                    setAwardFormData(prev => ({
+                                                        ...prev,
+                                                        milestoneAmount: 0,
+                                                    }))
                                                 }
                                             } else {
                                                 setSelectedPlan(null)
+                                                setAwardFormData(prev => ({
+                                                    ...prev,
+                                                    milestoneAmount: 0,
+                                                }))
                                             }
                                         }}
                                         placeholder="Select..."
@@ -1319,23 +1353,36 @@ const StakeholderDetail = () => {
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Milestones</h3>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        Milestone amount (Profit as defined by the plan)
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                            $
-                                        </span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Plan profit threshold (milestone)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                                $
+                                            </span>
+                                            <Input
+                                                type="text"
+                                                value={awardFormData.milestoneAmount ? formatCurrencyInput(String(awardFormData.milestoneAmount)) : ''}
+                                                disabled
+                                                placeholder="0"
+                                                className="pl-8 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            Pulled from the selected profit plan.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Number of profit shares issued
+                                        </label>
                                         <Input
                                             type="text"
-                                            value={awardFormData.milestoneAmount ? formatCurrencyInput(String(awardFormData.milestoneAmount)) : ''}
-                                            onChange={(e) => {
-                                                const value = e.target.value.replace(/[^0-9.]/g, '')
-                                                handleAwardInputChange('milestoneAmount', value)
-                                            }}
-                                            placeholder="0"
-                                            className="pl-8"
+                                            value={awardFormData.sharesIssued}
+                                            onChange={(e) => handleAwardInputChange('sharesIssued', e.target.value)}
+                                            placeholder="e.g. 1,000"
                                         />
                                     </div>
                                 </div>

@@ -6,17 +6,6 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore'
 
-// Mock data
-const mockData = {
-    companyValuation: 1941000,
-    outstandingAwards: 397905,
-    stockPool: 10000,
-    usedStockUnits: 2050,
-    estimatedValuation: 1941000,
-    totalStakeholders: 5,
-    activeStakeholders: 0
-}
-
 const getInitials = (name) => {
     if (!name) return ''
     const parts = name.split(' ')
@@ -44,17 +33,49 @@ const OverviewTab = () => {
     const [stakeholders, setStakeholders] = useState([])
     const [loadingStakeholders, setLoadingStakeholders] = useState(true)
     const [activeValuation, setActiveValuation] = useState(null)
-    
-    const { outstandingAwards, stockPool, usedStockUnits, estimatedValuation, totalStakeholders, activeStakeholders } = mockData
-    const companyValuation = activeValuation?.fmv || mockData.companyValuation
-    const remainingStockUnits = stockPool - usedStockUnits
-    const usedPercentage = (usedStockUnits / stockPool) * 100
-    const remainingPercentage = (remainingStockUnits / stockPool) * 100
+    const [plans, setPlans] = useState([])
+    const [loadingPlans, setLoadingPlans] = useState(true)
+
+    // Derived aggregates
+    const companyValuation = activeValuation
+        ? (typeof activeValuation.fmv === 'number' && activeValuation.fmv > 0
+            ? activeValuation.fmv
+            : activeValuation.profitAmount || 0)
+        : 0
+
+    // Total profit shares across all plans
+    const totalProfitShares = plans.reduce((sum, plan) => sum + (plan.totalShares || 0), 0)
+
+    // Total shares issued across all stakeholder awards
+    const usedProfitShares = stakeholders.reduce((outerSum, stakeholder) => {
+        const awards = stakeholder.profitAwards || []
+        const stakeholderShares = awards.reduce((innerSum, award) => innerSum + (award.sharesIssued || 0), 0)
+        return outerSum + stakeholderShares
+    }, 0)
+
+    const profitSharePool = totalProfitShares
+    const usedStockUnits = usedProfitShares
+    const stockPool = profitSharePool
+
+    const remainingStockUnits = Math.max(stockPool - usedStockUnits, 0)
+    const usedPercentage = stockPool > 0 ? (usedStockUnits / stockPool) * 100 : 0
+    const remainingPercentage = stockPool > 0 ? (remainingStockUnits / stockPool) * 100 : 0
+
+    const totalStakeholders = stakeholders.length
+
+    // Number of profit awards granted (all statuses)
+    const outstandingAwards = stakeholders.reduce((sum, stakeholder) => {
+        const awards = stakeholder.profitAwards || []
+        return sum + awards.length
+    }, 0)
+
+    const estimatedValuation = companyValuation
 
     // Load stakeholders and valuation from Firebase
     useEffect(() => {
         loadStakeholders()
         loadActiveValuation()
+        loadPlans()
         
         // Listen for stakeholder updates
         const handleStakeholdersUpdate = () => {
@@ -68,9 +89,15 @@ const OverviewTab = () => {
         }
         window.addEventListener('valuationsUpdated', handleValuationsUpdate)
         
+        const handlePlansUpdate = () => {
+            loadPlans()
+        }
+        window.addEventListener('plansUpdated', handlePlansUpdate)
+
         return () => {
             window.removeEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
             window.removeEventListener('valuationsUpdated', handleValuationsUpdate)
+            window.removeEventListener('plansUpdated', handlePlansUpdate)
         }
     }, [])
 
@@ -163,6 +190,25 @@ const OverviewTab = () => {
         }
     }
 
+    const loadPlans = async () => {
+        setLoadingPlans(true)
+        try {
+            const plansRef = collection(db, 'profitSharingPlans')
+            const q = query(plansRef, orderBy('name'))
+            const snapshot = await getDocs(q)
+            const plansData = snapshot.docs.map(docSnap => ({
+                id: docSnap.id,
+                ...docSnap.data(),
+            }))
+            setPlans(plansData)
+        } catch (error) {
+            console.error('Error loading plans for overview:', error)
+            setPlans([])
+        } finally {
+            setLoadingPlans(false)
+        }
+    }
+
     return (
         <div className="space-y-8">
             {/* Overview Header with View Plans Button */}
@@ -171,6 +217,7 @@ const OverviewTab = () => {
                 <Button 
                     variant="plain" 
                     size="sm"
+                    onClick={() => navigate('/profit-sharing?tab=plans')}
                     className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                 >
                     View plans
@@ -183,12 +230,12 @@ const OverviewTab = () => {
                 
                 {/* KPI Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Company Valuation Card */}
+                    {/* Latest Profit Card */}
                     <Card className="p-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Company Valuation</div>
+                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Latest Profit</div>
                             <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(companyValuation)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Est. Fair Market Value</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">From latest profit entry</div>
                         </div>
                     </Card>
 
@@ -196,17 +243,17 @@ const OverviewTab = () => {
                     <Card className="p-6">
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Outstanding Awards</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(outstandingAwards)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Total Potential Value</div>
+                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(outstandingAwards)}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit awards granted</div>
                         </div>
                     </Card>
 
-                    {/* Stock Pool Card */}
+                    {/* Profit Share Pool Card */}
                     <Card className="p-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Stock Pool</div>
+                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Profit Share Pool</div>
                             <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(stockPool)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">MARE Stock Units</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit shares across all plans</div>
                         </div>
                     </Card>
                 </div>
@@ -231,13 +278,13 @@ const OverviewTab = () => {
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-primary"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                Used: {formatNumber(usedStockUnits)} MARE Stock Units
+                                Used: {formatNumber(usedStockUnits)} profit shares
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-blue-200 dark:bg-blue-400/30"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                Remaining: {formatNumber(remainingStockUnits)} MARE Stock Units
+                                Remaining: {formatNumber(remainingStockUnits)} profit shares
                             </span>
                         </div>
                     </div>
@@ -252,7 +299,7 @@ const OverviewTab = () => {
                     {/* Estimated Valuation Card */}
                     <Card className="p-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Valuation</div>
+                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Profit</div>
                             <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(estimatedValuation)}</div>
                         </div>
                     </Card>

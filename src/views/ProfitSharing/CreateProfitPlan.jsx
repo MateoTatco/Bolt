@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import { Button, Card, Input, Select, DatePicker, Tag, Dialog, Switcher, Radio, Notification, toast } from '@/components/ui'
-import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog } from 'react-icons/hi'
+import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlinePlus, HiOutlineTrash } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, addDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
@@ -17,11 +17,13 @@ const DEFAULT_FORM_DATA = {
     description: '',
     schedule: null,
     startDate: null,
+    paymentScheduleDates: [],
     // Pool Size & Distribution
     profitDescription: '',
     poolShareType: 'above-trigger', // 'above-trigger' or 'total'
     // Milestones & Payments
     milestoneAmount: 0,
+    totalShares: 10000,
     paymentTerms: null,
     initialPayment: '',
     installmentSchedule: null,
@@ -153,6 +155,9 @@ const CreateProfitPlan = () => {
             formData.startDate &&
             formData.profitDescription &&
             formData.milestoneAmount > 0 &&
+            formData.totalShares > 0 &&
+            Array.isArray(formData.paymentScheduleDates) &&
+            formData.paymentScheduleDates.length > 0 &&
             formData.paymentTerms
         )
     }
@@ -179,6 +184,11 @@ const CreateProfitPlan = () => {
                 startDate: data.startDate
                     ? (data.startDate.toDate ? data.startDate.toDate() : new Date(data.startDate))
                     : null,
+                paymentScheduleDates: Array.isArray(data.paymentScheduleDates)
+                    ? data.paymentScheduleDates
+                          .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
+                          .filter(Boolean)
+                    : [],
             })
             setHasUnsavedChanges(false)
         } catch (error) {
@@ -248,6 +258,12 @@ const CreateProfitPlan = () => {
                 startDate: formData.startDate
                     ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate)
                     : null,
+                paymentScheduleDates: Array.isArray(formData.paymentScheduleDates)
+                    ? formData.paymentScheduleDates.map((d) =>
+                          d instanceof Date ? d.toISOString() : d
+                      )
+                    : [],
+                totalShares: formData.totalShares || 0,
                 updatedAt: serverTimestamp(),
             }
 
@@ -431,7 +447,7 @@ const CreateProfitPlan = () => {
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Payment schedule</h3>
                                 </div>
                                 
-                                <div className="max-w-2xl space-y-4">
+                                <div className="max-w-2xl space-y-6">
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                             Schedule
@@ -453,6 +469,61 @@ const CreateProfitPlan = () => {
                                             placeholder="Select a date..."
                                             inputFormat="MM/DD/YYYY"
                                         />
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                Payment dates
+                                            </label>
+                                            <Button
+                                                size="sm"
+                                                variant="twoTone"
+                                                icon={<HiOutlinePlus />}
+                                                onClick={() => {
+                                                    const nextDate = formData.startDate ? (formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate)) : null
+                                                    handleInputChange('paymentScheduleDates', [
+                                                        ...(formData.paymentScheduleDates || []),
+                                                        nextDate,
+                                                    ])
+                                                }}
+                                            >
+                                                Add date
+                                            </Button>
+                                        </div>
+                                        {(!formData.paymentScheduleDates || formData.paymentScheduleDates.length === 0) && (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                Add the specific dates profit payments are scheduled (e.g. quarter-end dates).
+                                            </p>
+                                        )}
+                                        <div className="space-y-3">
+                                            {formData.paymentScheduleDates && formData.paymentScheduleDates.map((date, index) => (
+                                                <div key={index} className="flex items-center gap-3">
+                                                    <div className="flex-1">
+                                                        <DatePicker
+                                                            value={date ? (date instanceof Date ? date : new Date(date)) : null}
+                                                            onChange={(newDate) => {
+                                                                const updated = [...formData.paymentScheduleDates]
+                                                                updated[index] = newDate
+                                                                handleInputChange('paymentScheduleDates', updated)
+                                                            }}
+                                                            placeholder="Select a date..."
+                                                            inputFormat="MM/DD/YYYY"
+                                                        />
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="plain"
+                                                        icon={<HiOutlineTrash />}
+                                                        className="text-gray-400 hover:text-red-500"
+                                                        onClick={() => {
+                                                            const updated = (formData.paymentScheduleDates || []).filter((_, i) => i !== index)
+                                                            handleInputChange('paymentScheduleDates', updated)
+                                                        }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -563,6 +634,26 @@ const CreateProfitPlan = () => {
                                                 className="pl-8"
                                             />
                                         </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Total profit shares in this plan
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            value={
+                                                formData.totalShares
+                                                    ? String(formData.totalShares).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                                    : ''
+                                            }
+                                            onChange={(e) => {
+                                                const value = e.target.value.replace(/[^0-9]/g, '')
+                                                const numValue = value ? parseInt(value, 10) : 0
+                                                handleInputChange('totalShares', numValue)
+                                            }}
+                                            placeholder="10,000"
+                                        />
                                     </div>
                                 </div>
                             </div>

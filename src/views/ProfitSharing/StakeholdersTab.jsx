@@ -5,82 +5,8 @@ import { Card, Button, Table, Input, Tag, Avatar, Checkbox, Notification, toast 
 import { HiOutlinePlus, HiOutlineSearch, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
 import AddStakeholderModal from './components/AddStakeholderModal'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
-
-// Mock data
-const mockData = {
-    companyValuation: 1941000,
-    outstandingAwards: 397905,
-    stockPool: 10000,
-    usedStockUnits: 2050,
-}
-
-const mockStakeholders = [
-    {
-        id: 1,
-        name: 'Simon Cox',
-        title: 'Director of Business Development',
-        email: 'simon@tatco.construction',
-        phone: '555-0101',
-        mareStock: 2000,
-        marePlans: ['Profit'],
-        status: 'Draft',
-        employmentStatus: 'Full time',
-        payType: 'Salary',
-        payAmount: 120000
-    },
-    {
-        id: 2,
-        name: 'Chase Gibson',
-        title: 'Controller',
-        email: 'chase@tatco.construction',
-        phone: '555-0102',
-        mareStock: 50,
-        marePlans: ['Profit'],
-        status: 'Draft',
-        employmentStatus: 'Full time',
-        payType: 'Salary',
-        payAmount: 95000
-    },
-    {
-        id: 3,
-        name: 'Jake Bogner',
-        title: 'Bogner',
-        email: 'jake@tatco.construction',
-        phone: '555-0103',
-        mareStock: null,
-        marePlans: [],
-        status: null,
-        employmentStatus: 'Full time',
-        payType: 'Hourly',
-        payAmount: 45
-    },
-    {
-        id: 4,
-        name: 'Joe Lassiter',
-        title: 'Lassiter',
-        email: 'joe@tatco.construction',
-        phone: '555-0104',
-        mareStock: null,
-        marePlans: [],
-        status: null,
-        employmentStatus: 'Part Time',
-        payType: 'Hourly',
-        payAmount: 35
-    },
-    {
-        id: 5,
-        name: 'Robb Billy',
-        title: 'VP of Business Operations',
-        email: 'robb@tatco.construction',
-        phone: '555-0105',
-        mareStock: null,
-        marePlans: [],
-        status: null,
-        employmentStatus: 'Full time',
-        payType: 'Salary',
-        payAmount: 150000
-    },
-]
+import { db } from '@/configs/firebase.config'
+import { collection, getDocs, query, orderBy } from 'firebase/firestore'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -112,15 +38,42 @@ const StakeholdersTab = () => {
     const [stakeholders, setStakeholders] = useState([])
     const [selectedStakeholders, setSelectedStakeholders] = useState([])
     const [loading, setLoading] = useState(true)
+    const [activeValuation, setActiveValuation] = useState(null)
+    const [plans, setPlans] = useState([])
+    const [loadingPlans, setLoadingPlans] = useState(true)
 
-    const { companyValuation, outstandingAwards, stockPool, usedStockUnits } = mockData
-    const remainingStockUnits = stockPool - usedStockUnits
-    const usedPercentage = (usedStockUnits / stockPool) * 100
-    const remainingPercentage = (remainingStockUnits / stockPool) * 100
+    // Derived aggregates
+    const companyValuation = activeValuation
+        ? (typeof activeValuation.fmv === 'number' && activeValuation.fmv > 0
+            ? activeValuation.fmv
+            : activeValuation.profitAmount || 0)
+        : 0
+
+    const totalProfitShares = plans.reduce((sum, plan) => sum + (plan.totalShares || 0), 0)
+
+    const usedProfitShares = stakeholders.reduce((outerSum, stakeholder) => {
+        const awards = stakeholder.profitAwards || []
+        const stakeholderShares = awards.reduce((innerSum, award) => innerSum + (award.sharesIssued || 0), 0)
+        return outerSum + stakeholderShares
+    }, 0)
+
+    const stockPool = totalProfitShares
+    const usedStockUnits = usedProfitShares
+
+    const remainingStockUnits = Math.max(stockPool - usedStockUnits, 0)
+    const usedPercentage = stockPool > 0 ? (usedStockUnits / stockPool) * 100 : 0
+    const remainingPercentage = stockPool > 0 ? (remainingStockUnits / stockPool) * 100 : 0
+
+    const outstandingAwards = stakeholders.reduce((sum, stakeholder) => {
+        const awards = stakeholder.profitAwards || []
+        return sum + awards.length
+    }, 0)
 
     // Load stakeholders from Firebase
     useEffect(() => {
         loadStakeholders()
+        loadActiveValuation()
+        loadPlans()
         
         // Listen for stakeholder updates (when awards are added/updated in detail page)
         const handleStakeholdersUpdate = () => {
@@ -155,8 +108,7 @@ const StakeholdersTab = () => {
                         `Failed to load stakeholders: ${response.error}`
                     )
                 )
-                // Fallback to mock data if Firebase fails
-                setStakeholders(mockStakeholders)
+                setStakeholders([])
             }
         } catch (error) {
             console.error('Error loading stakeholders:', error)
@@ -167,10 +119,51 @@ const StakeholdersTab = () => {
                     "Failed to load stakeholders"
                 )
             )
-            // Fallback to mock data
-            setStakeholders(mockStakeholders)
+            setStakeholders([])
         } finally {
             setLoading(false)
+        }
+    }
+
+    const loadActiveValuation = async () => {
+        try {
+            const valuationsRef = collection(db, 'valuations')
+            const allQ = query(valuationsRef, orderBy('valuationDate', 'desc'))
+            const allSnapshot = await getDocs(allQ)
+            if (!allSnapshot.empty) {
+                const docSnap = allSnapshot.docs[0]
+                const data = docSnap.data()
+                setActiveValuation({
+                    id: docSnap.id,
+                    ...data,
+                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                    updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
+                })
+            } else {
+                setActiveValuation(null)
+            }
+        } catch (error) {
+            console.error('Error loading active valuation for stakeholders:', error)
+            setActiveValuation(null)
+        }
+    }
+
+    const loadPlans = async () => {
+        setLoadingPlans(true)
+        try {
+            const plansRef = collection(db, 'profitSharingPlans')
+            const q = query(plansRef, orderBy('name'))
+            const snapshot = await getDocs(q)
+            const plansData = snapshot.docs.map(docSnap => ({
+                id: docSnap.id,
+                ...docSnap.data(),
+            }))
+            setPlans(plansData)
+        } catch (error) {
+            console.error('Error loading plans for stakeholders overview:', error)
+            setPlans([])
+        } finally {
+            setLoadingPlans(false)
         }
     }
 
@@ -438,9 +431,9 @@ const StakeholdersTab = () => {
                     {/* Company Valuation Card */}
                     <Card className="p-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Company Valuation</div>
+                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Latest Profit</div>
                             <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(companyValuation)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Est. Fair Market Value</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">From latest profit entry</div>
                         </div>
                     </Card>
 
@@ -448,17 +441,17 @@ const StakeholdersTab = () => {
                     <Card className="p-6">
                         <div className="space-y-2">
                             <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Outstanding Awards</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(outstandingAwards)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Total Potential Value</div>
+                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(outstandingAwards)}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit awards granted</div>
                         </div>
                     </Card>
 
-                    {/* Stock Pool Card */}
+                    {/* Profit Share Pool Card */}
                     <Card className="p-6">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Stock Pool</div>
+                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Profit Share Pool</div>
                             <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(stockPool)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Stock Units</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit shares across all plans</div>
                         </div>
                     </Card>
 
@@ -491,13 +484,13 @@ const StakeholdersTab = () => {
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-primary"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                Used: {formatNumber(usedStockUnits)} Stock Units
+                                Used: {formatNumber(usedStockUnits)} profit shares
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-blue-200 dark:bg-blue-400/30"></div>
                             <span className="text-gray-600 dark:text-gray-400">
-                                Remaining: {formatNumber(remainingStockUnits)} Stock Units
+                                Remaining: {formatNumber(remainingStockUnits)} profit shares
                             </span>
                         </div>
                     </div>
