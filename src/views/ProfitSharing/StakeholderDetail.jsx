@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Card, Button, Table, Tag, Drawer, Select, DatePicker, Input, Dialog } from '@/components/ui'
-import { HiOutlineArrowLeft, HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineInformationCircle, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlineCheckCircle, HiOutlineEye, HiOutlineDownload } from 'react-icons/hi'
+import { HiOutlineArrowLeft, HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineInformationCircle, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlineCheckCircle, HiOutlineEye, HiOutlineDownload, HiOutlineChevronDown, HiOutlineChevronUp } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
-import { collection, getDocs, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, getDoc, serverTimestamp, query, orderBy } from 'firebase/firestore'
 import React from 'react'
 import { Notification, toast } from '@/components/ui'
 import { getAllUsers } from '@/utils/userHelper'
@@ -144,6 +144,8 @@ const StakeholderDetail = () => {
     const [showDocumentModal, setShowDocumentModal] = useState(false)
     const [editingAward, setEditingAward] = useState(null)
     const [selectedPlan, setSelectedPlan] = useState(null)
+    const [valuations, setValuations] = useState([])
+    const [expandedAwardId, setExpandedAwardId] = useState(null)
 
     useEffect(() => {
         const loadStakeholder = async () => {
@@ -200,6 +202,7 @@ const StakeholderDetail = () => {
         loadStakeholder()
         loadProfitPlans()
         loadUsers()
+        loadValuations()
     }, [stakeholderId, navigate])
 
     useEffect(() => {
@@ -266,6 +269,60 @@ const StakeholderDetail = () => {
         } catch (error) {
             console.error('Error loading profit plans:', error)
         }
+    }
+
+    const loadValuations = async () => {
+        try {
+            const valuationsRef = collection(db, 'valuations')
+            const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
+            const querySnapshot = await getDocs(q)
+            const valuationsData = []
+            querySnapshot.forEach((doc) => {
+                const data = doc.data()
+                valuationsData.push({
+                    id: doc.id,
+                    ...data,
+                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                })
+            })
+            setValuations(valuationsData)
+        } catch (error) {
+            console.error('Error loading valuations:', error)
+        }
+    }
+
+    // Calculate payouts for a specific award
+    const calculateAwardPayouts = (award) => {
+        if (!award || !award.planId || !award.sharesIssued) return []
+        
+        const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
+        const awardEnd = award.awardEndDate ? new Date(award.awardEndDate) : null
+        
+        if (!awardStart || !awardEnd) return []
+        
+        return valuations
+            .filter(v => {
+                if (!v.valuationDate || v.planId !== award.planId) return false
+                const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                return valDate >= awardStart && valDate <= awardEnd
+            })
+            .map(v => {
+                const pricePerShare = v.pricePerShare || (v.profitAmount && v.totalShares ? v.profitAmount / v.totalShares : 0)
+                const payout = (award.sharesIssued || 0) * pricePerShare
+                return {
+                    valuationId: v.id,
+                    profitDate: v.valuationDate,
+                    profitAmount: v.profitAmount || v.fmv || 0,
+                    pricePerShare,
+                    sharesIssued: award.sharesIssued || 0,
+                    payout,
+                }
+            })
+            .sort((a, b) => {
+                const aDate = a.profitDate?.getTime() || 0
+                const bDate = b.profitDate?.getTime() || 0
+                return bDate - aDate // Most recent first
+            })
     }
 
     const formatCurrencyInput = (value) => {
@@ -820,22 +877,68 @@ const StakeholderDetail = () => {
                                         )
                                     }
                                     
-                                    const nextAward = stakeholder.profitAwards[0]
-                                    const endDate = nextAward.awardEndDate ? new Date(nextAward.awardEndDate) : null
+                                    // Find the next award that hasn't been fully paid out
+                                    const today = new Date()
+                                    const nextAward = stakeholder.profitAwards
+                                        .filter(award => {
+                                            const endDate = award.awardEndDate ? new Date(award.awardEndDate) : null
+                                            return endDate && endDate <= today
+                                        })
+                                        .sort((a, b) => {
+                                            const aDate = a.awardEndDate ? new Date(a.awardEndDate).getTime() : 0
+                                            const bDate = b.awardEndDate ? new Date(b.awardEndDate).getTime() : 0
+                                            return bDate - aDate // Most recent first
+                                        })[0]
                                     
-                                    // Mock award amount - replace with actual calculation when available
-                                    const mockAwardAmount = 12500.00
+                                    if (!nextAward) {
+                                        // Find the next upcoming award
+                                        const upcomingAward = stakeholder.profitAwards
+                                            .filter(award => {
+                                                const endDate = award.awardEndDate ? new Date(award.awardEndDate) : null
+                                                return endDate && endDate > today
+                                            })
+                                            .sort((a, b) => {
+                                                const aDate = a.awardEndDate ? new Date(a.awardEndDate).getTime() : 0
+                                                const bDate = b.awardEndDate ? new Date(b.awardEndDate).getTime() : 0
+                                                return aDate - bDate // Earliest first
+                                            })[0]
+                                        
+                                        if (upcomingAward) {
+                                            const endDate = upcomingAward.awardEndDate ? new Date(upcomingAward.awardEndDate) : null
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                        Pending - After {endDate ? endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                                                    </div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                    No upcoming payments
+                                                </div>
+                                            </>
+                                        )
+                                    }
+                                    
+                                    // Calculate estimated payout for the next award
+                                    const payouts = calculateAwardPayouts(nextAward)
+                                    const totalPayout = payouts.reduce((sum, p) => sum + p.payout, 0)
+                                    const endDate = nextAward.awardEndDate ? new Date(nextAward.awardEndDate) : null
                                     
                                     return (
                                         <>
                                             <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(mockAwardAmount)}
+                                                {formatCurrency(totalPayout)}
                                             </div>
-                                            {endDate && (
-                                                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                    after {endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                                </div>
-                                            )}
+                                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                                {nextAward.status === 'Finalized' ? 'Finalized' : 'To be paid'}
+                                                {endDate && ` - ${endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`}
+                                            </div>
                                         </>
                                     )
                                 })()}
@@ -868,6 +971,7 @@ const StakeholderDetail = () => {
                             <Table>
                                 <Table.THead>
                                     <Table.Tr>
+                                        <Table.Th></Table.Th>
                                         <Table.Th>Award Date</Table.Th>
                                         <Table.Th>Plan Name</Table.Th>
                                         <Table.Th>Award Start</Table.Th>
@@ -878,63 +982,148 @@ const StakeholderDetail = () => {
                                     </Table.Tr>
                                 </Table.THead>
                                 <Table.TBody>
-                                    {stakeholder.profitAwards.map((award) => (
-                                        <Table.Tr key={award.id}>
-                                            <Table.Td>
-                                                <span className="text-sm text-gray-900 dark:text-white">{award.awardDate || 'Pending'}</span>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <span className="text-sm text-gray-900 dark:text-white">{award.planName}</span>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <span className="text-sm text-gray-900 dark:text-white">
-                                                    {award.awardStartDate 
-                                                        ? new Date(award.awardStartDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                                                        : 'N/A'}
-                                                </span>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <span className="text-sm text-gray-900 dark:text-white">
-                                                    {award.awardEndDate 
-                                                        ? new Date(award.awardEndDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                                                        : 'N/A'}
-                                                </span>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <span className="text-sm text-gray-900 dark:text-white">{award.paymentSchedule || 'N/A'}</span>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <Tag className={`px-2 py-1 text-xs font-medium ${
-                                                    award.status === 'Draft' || award.status === 'Pending'
-                                                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                                                        : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                }`}>
-                                                    <span className="flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                        {award.status || 'Draft'}
-                                                    </span>
-                                                </Tag>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="plain"
-                                                        size="sm"
-                                                        icon={<HiOutlineTrash />}
-                                                        onClick={() => handleDeleteAward(award.id)}
-                                                        className="text-gray-400 hover:text-red-500"
-                                                    />
-                                                    <Button
-                                                        variant="plain"
-                                                        size="sm"
-                                                        icon={<HiOutlinePencil />}
-                                                        onClick={() => handleEditAward(award)}
-                                                        className="text-gray-400 hover:text-primary"
-                                                    />
-                                                </div>
-                                            </Table.Td>
-                                        </Table.Tr>
-                                    ))}
+                                    {stakeholder.profitAwards.map((award) => {
+                                        const payouts = calculateAwardPayouts(award)
+                                        const totalPayout = payouts.reduce((sum, p) => sum + p.payout, 0)
+                                        const isExpanded = expandedAwardId === award.id
+                                        
+                                        return (
+                                            <React.Fragment key={award.id}>
+                                                <Table.Tr>
+                                                    <Table.Td>
+                                                        {payouts.length > 0 && (
+                                                            <Button
+                                                                variant="plain"
+                                                                size="sm"
+                                                                icon={isExpanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}
+                                                                onClick={() => setExpandedAwardId(isExpanded ? null : award.id)}
+                                                                className="text-gray-400 hover:text-primary"
+                                                            />
+                                                        )}
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <span className="text-sm text-gray-900 dark:text-white">{award.awardDate || 'Pending'}</span>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <span className="text-sm text-gray-900 dark:text-white">{award.planName}</span>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <span className="text-sm text-gray-900 dark:text-white">
+                                                            {award.awardStartDate 
+                                                                ? new Date(award.awardStartDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                                                                : 'N/A'}
+                                                        </span>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <span className="text-sm text-gray-900 dark:text-white">
+                                                            {award.awardEndDate 
+                                                                ? new Date(award.awardEndDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                                                                : 'N/A'}
+                                                        </span>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <span className="text-sm text-gray-900 dark:text-white">{award.paymentSchedule || 'N/A'}</span>
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <Tag className={`px-2 py-1 text-xs font-medium ${
+                                                            award.status === 'Draft' || award.status === 'Pending'
+                                                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                                                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                        }`}>
+                                                            <span className="flex items-center gap-2">
+                                                                <span className="w-2 h-2 rounded-full bg-gray-500"></span>
+                                                                {award.status || 'Draft'}
+                                                            </span>
+                                                        </Tag>
+                                                        {payouts.length > 0 && (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                                Est. payout: {formatCurrency(totalPayout)}
+                                                            </div>
+                                                        )}
+                                                    </Table.Td>
+                                                    <Table.Td>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                variant="plain"
+                                                                size="sm"
+                                                                icon={<HiOutlineTrash />}
+                                                                onClick={() => handleDeleteAward(award.id)}
+                                                                className="text-gray-400 hover:text-red-500"
+                                                            />
+                                                            <Button
+                                                                variant="plain"
+                                                                size="sm"
+                                                                icon={<HiOutlinePencil />}
+                                                                onClick={() => handleEditAward(award)}
+                                                                className="text-gray-400 hover:text-primary"
+                                                            />
+                                                        </div>
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                                {isExpanded && payouts.length > 0 && (
+                                                    <Table.Tr>
+                                                        <Table.Td colSpan={8} className="bg-gray-50 dark:bg-gray-800/50 p-4">
+                                                            <div className="space-y-3">
+                                                                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Payout History</h4>
+                                                                <Table>
+                                                                    <Table.THead>
+                                                                        <Table.Tr>
+                                                                            <Table.Th>Profit Date</Table.Th>
+                                                                            <Table.Th>Profit</Table.Th>
+                                                                            <Table.Th>Price per Share</Table.Th>
+                                                                            <Table.Th>Shares</Table.Th>
+                                                                            <Table.Th>Estimated Payout</Table.Th>
+                                                                        </Table.Tr>
+                                                                    </Table.THead>
+                                                                    <Table.TBody>
+                                                                        {payouts.map((payout, idx) => (
+                                                                            <Table.Tr key={idx}>
+                                                                                <Table.Td>
+                                                                                    <span className="text-sm text-gray-900 dark:text-white">
+                                                                                        {payout.profitDate 
+                                                                                            ? payout.profitDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                                                                                            : 'N/A'}
+                                                                                    </span>
+                                                                                </Table.Td>
+                                                                                <Table.Td>
+                                                                                    <span className="text-sm text-gray-900 dark:text-white">
+                                                                                        {formatCurrency(payout.profitAmount)}
+                                                                                    </span>
+                                                                                </Table.Td>
+                                                                                <Table.Td>
+                                                                                    <span className="text-sm text-gray-900 dark:text-white">
+                                                                                        {formatCurrency(payout.pricePerShare)}
+                                                                                    </span>
+                                                                                </Table.Td>
+                                                                                <Table.Td>
+                                                                                    <span className="text-sm text-gray-900 dark:text-white">
+                                                                                        {formatNumber(payout.sharesIssued)}
+                                                                                    </span>
+                                                                                </Table.Td>
+                                                                                <Table.Td>
+                                                                                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                                                                        {formatCurrency(payout.payout)}
+                                                                                    </span>
+                                                                                </Table.Td>
+                                                                            </Table.Tr>
+                                                                        ))}
+                                                                    </Table.TBody>
+                                                                </Table>
+                                                                <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                                    <div className="text-sm">
+                                                                        <span className="text-gray-600 dark:text-gray-400">Total estimated payout: </span>
+                                                                        <span className="font-semibold text-gray-900 dark:text-white">
+                                                                            {formatCurrency(totalPayout)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </Table.Td>
+                                                    </Table.Tr>
+                                                )}
+                                            </React.Fragment>
+                                        )
+                                    })}
                                 </Table.TBody>
                             </Table>
                         </Card>

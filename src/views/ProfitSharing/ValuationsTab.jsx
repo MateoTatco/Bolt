@@ -4,6 +4,7 @@ import { HiOutlinePlus, HiOutlineCheckCircle, HiOutlineEye, HiOutlinePencil, HiO
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where } from 'firebase/firestore'
 import React from 'react'
+import Chart from '@/components/shared/Chart'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -462,10 +463,86 @@ const ValuationsTab = () => {
                                     <div className="text-sm text-gray-500 dark:text-gray-400">No previous valuation</div>
                                 )}
                             </div>
-                            {/* Placeholder for chart - you can add a real chart component here */}
-                            <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                                <span className="text-xs text-gray-400 dark:text-gray-500">Valuation trend chart</span>
-                            </div>
+                            {/* Profit Trend Chart */}
+                            {valuations.length > 0 ? (
+                                <div className="h-64">
+                                    <Chart
+                                        type="line"
+                                        series={[
+                                            {
+                                                name: 'Profit',
+                                                data: valuations
+                                                    .sort((a, b) => {
+                                                        const aDate = a.valuationDate?.getTime() || 0
+                                                        const bDate = b.valuationDate?.getTime() || 0
+                                                        return aDate - bDate
+                                                    })
+                                                    .map(v => {
+                                                        const profit = typeof v.fmv === 'number' && v.fmv > 0 ? v.fmv : v.profitAmount || 0
+                                                        return profit
+                                                    }),
+                                            },
+                                        ]}
+                                        xAxis={valuations
+                                            .sort((a, b) => {
+                                                const aDate = a.valuationDate?.getTime() || 0
+                                                const bDate = b.valuationDate?.getTime() || 0
+                                                return aDate - bDate
+                                            })
+                                            .map(v => {
+                                                if (!v.valuationDate) return 'N/A'
+                                                return v.valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                            })}
+                                        customOptions={{
+                                            legend: {
+                                                show: true,
+                                                position: 'top',
+                                                horizontalAlign: 'right',
+                                            },
+                                            yaxis: {
+                                                title: {
+                                                    text: 'Profit ($)',
+                                                    style: {
+                                                        fontSize: '12px',
+                                                        fontWeight: 500,
+                                                    },
+                                                },
+                                                labels: {
+                                                    formatter: function(val) {
+                                                        if (val >= 1000000) {
+                                                            return '$' + (val / 1000000).toFixed(1) + 'M'
+                                                        } else if (val >= 1000) {
+                                                            return '$' + (val / 1000).toFixed(0) + 'K'
+                                                        }
+                                                        return '$' + val.toFixed(0)
+                                                    },
+                                                },
+                                            },
+                                            xaxis: {
+                                                title: {
+                                                    text: 'Profit Date',
+                                                    style: {
+                                                        fontSize: '12px',
+                                                        fontWeight: 500,
+                                                    },
+                                                },
+                                            },
+                                            tooltip: {
+                                                y: {
+                                                    formatter: function(val) {
+                                                        return formatCurrency(val)
+                                                    },
+                                                },
+                                            },
+                                        }}
+                                        height={256}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">Add profit entries to see trend chart</span>
+                                </div>
+                            )}
                         </div>
                     </Card>
                 ) : (
