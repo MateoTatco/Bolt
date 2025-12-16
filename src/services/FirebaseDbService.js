@@ -1533,6 +1533,91 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // COMPANIES COLLECTION
+    companies: {
+        // Get all companies
+        getAll: async () => {
+            try {
+                const companiesRef = collection(db, 'companies')
+                const q = query(companiesRef, orderBy('name'))
+                const snapshot = await getDocs(q)
+                const companies = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: companies }
+            } catch (error) {
+                console.error('Firebase get all companies error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single company
+        getById: async (id) => {
+            try {
+                const stringId = String(id)
+                const companyRef = doc(db, 'companies', stringId)
+                const companySnap = await getDoc(companyRef)
+                if (companySnap.exists()) {
+                    return { success: true, data: { id: companySnap.id, ...companySnap.data() } }
+                } else {
+                    return { success: false, error: 'Company not found' }
+                }
+            } catch (error) {
+                console.error('Firebase get company by id error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new company
+        create: async (companyData) => {
+            try {
+                await ensureAuthUser()
+                const companiesRef = collection(db, 'companies')
+                const docRef = await addDoc(companiesRef, {
+                    ...companyData,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...companyData } }
+            } catch (error) {
+                console.error('Firebase create company error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update company
+        update: async (id, companyData) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const companyRef = doc(db, 'companies', stringId)
+                await updateDoc(companyRef, {
+                    ...companyData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: stringId, ...companyData } }
+            } catch (error) {
+                console.error('Firebase update company error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete company
+        delete: async (id) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const companyRef = doc(db, 'companies', stringId)
+                await deleteDoc(companyRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete company error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing

@@ -3,6 +3,7 @@ import { Card, Button, Table, Tag, Select } from '@/components/ui'
 import { HiOutlineFlag, HiOutlineCheckCircle, HiOutlineClock } from 'react-icons/hi'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy } from 'firebase/firestore'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 const formatCurrency = (value) => {
     if (!value && value !== 0) return '$0'
@@ -23,16 +24,26 @@ const formatDate = (date) => {
 }
 
 const MilestonesTab = () => {
+    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [plans, setPlans] = useState([])
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
     const [filterPlan, setFilterPlan] = useState(null)
 
     useEffect(() => {
+        if (loadingCompany || !selectedCompanyId) return
+        
         loadData()
-    }, [])
+    }, [selectedCompanyId, loadingCompany])
 
     const loadData = async () => {
+        if (!selectedCompanyId) {
+            setPlans([])
+            setValuations([])
+            setLoading(false)
+            return
+        }
+        
         setLoading(true)
         try {
             // Load plans
@@ -41,10 +52,13 @@ const MilestonesTab = () => {
             const plansData = []
             plansSnapshot.forEach((doc) => {
                 const data = doc.data()
-                plansData.push({
-                    id: doc.id,
-                    ...data,
-                })
+                // Filter by companyId
+                if (data.companyId === selectedCompanyId) {
+                    plansData.push({
+                        id: doc.id,
+                        ...data,
+                    })
+                }
             })
             setPlans(plansData)
 
@@ -55,11 +69,14 @@ const MilestonesTab = () => {
             const valuationsData = []
             valuationsSnapshot.forEach((doc) => {
                 const data = doc.data()
-                valuationsData.push({
-                    id: doc.id,
-                    ...data,
-                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                })
+                // Filter by companyId
+                if (data.companyId === selectedCompanyId) {
+                    valuationsData.push({
+                        id: doc.id,
+                        ...data,
+                        valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                    })
+                }
             })
             setValuations(valuationsData)
         } catch (error) {

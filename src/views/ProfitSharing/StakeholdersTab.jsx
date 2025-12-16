@@ -7,6 +7,7 @@ import AddStakeholderModal from './components/AddStakeholderModal'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy } from 'firebase/firestore'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -32,6 +33,7 @@ const getInitials = (name) => {
 
 const StakeholdersTab = () => {
     const navigate = useNavigate()
+    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [showAddModal, setShowAddModal] = useState(false)
     const [activeFilter, setActiveFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
@@ -71,6 +73,8 @@ const StakeholdersTab = () => {
 
     // Load stakeholders from Firebase
     useEffect(() => {
+        if (loadingCompany || !selectedCompanyId) return
+        
         loadStakeholders()
         loadActiveValuation()
         loadPlans()
@@ -84,7 +88,7 @@ const StakeholdersTab = () => {
         return () => {
             window.removeEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
         }
-    }, [])
+    }, [selectedCompanyId, loadingCompany])
 
     const loadStakeholders = async () => {
         setLoading(true)
@@ -126,19 +130,31 @@ const StakeholdersTab = () => {
     }
 
     const loadActiveValuation = async () => {
+        if (!selectedCompanyId) {
+            setActiveValuation(null)
+            return
+        }
+        
         try {
             const valuationsRef = collection(db, 'valuations')
             const allQ = query(valuationsRef, orderBy('valuationDate', 'desc'))
             const allSnapshot = await getDocs(allQ)
             if (!allSnapshot.empty) {
-                const docSnap = allSnapshot.docs[0]
-                const data = docSnap.data()
-                setActiveValuation({
-                    id: docSnap.id,
-                    ...data,
-                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                    updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
-                })
+                // Filter by companyId
+                const filtered = allSnapshot.docs
+                    .map(docSnap => ({
+                        id: docSnap.id,
+                        ...docSnap.data(),
+                        valuationDate: docSnap.data().valuationDate?.toDate ? docSnap.data().valuationDate.toDate() : (docSnap.data().valuationDate ? new Date(docSnap.data().valuationDate) : null),
+                        updatedDate: docSnap.data().updatedDate?.toDate ? docSnap.data().updatedDate.toDate() : (docSnap.data().updatedDate ? new Date(docSnap.data().updatedDate) : null),
+                    }))
+                    .filter(v => v.companyId === selectedCompanyId)
+                
+                if (filtered.length > 0) {
+                    setActiveValuation(filtered[0])
+                } else {
+                    setActiveValuation(null)
+                }
             } else {
                 setActiveValuation(null)
             }
@@ -149,15 +165,23 @@ const StakeholdersTab = () => {
     }
 
     const loadPlans = async () => {
+        if (!selectedCompanyId) {
+            setPlans([])
+            setLoadingPlans(false)
+            return
+        }
+        
         setLoadingPlans(true)
         try {
             const plansRef = collection(db, 'profitSharingPlans')
             const q = query(plansRef, orderBy('name'))
             const snapshot = await getDocs(q)
-            const plansData = snapshot.docs.map(docSnap => ({
-                id: docSnap.id,
-                ...docSnap.data(),
-            }))
+            const plansData = snapshot.docs
+                .map(docSnap => ({
+                    id: docSnap.id,
+                    ...docSnap.data(),
+                }))
+                .filter(plan => plan.companyId === selectedCompanyId)
             setPlans(plansData)
         } catch (error) {
             console.error('Error loading plans for stakeholders overview:', error)
@@ -253,8 +277,20 @@ const StakeholdersTab = () => {
     })
 
     const handleAddStakeholder = async (stakeholderData) => {
+        if (!selectedCompanyId) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "warning", duration: 2000, title: "Validation" },
+                    "Please select a company in Settings first"
+                )
+            )
+            return false
+        }
+        
         try {
             const stakeholderPayload = {
+                companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
                 title: stakeholderData.title,
                 email: stakeholderData.email,
@@ -305,8 +341,20 @@ const StakeholdersTab = () => {
     }
 
     const handleSaveAndAddAnother = async (stakeholderData) => {
+        if (!selectedCompanyId) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "warning", duration: 2000, title: "Validation" },
+                    "Please select a company in Settings first"
+                )
+            )
+            return false
+        }
+        
         try {
             const stakeholderPayload = {
+                companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
                 title: stakeholderData.title,
                 email: stakeholderData.email,

@@ -5,6 +5,7 @@ import { db } from '@/configs/firebase.config'
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where } from 'firebase/firestore'
 import React from 'react'
 import Chart from '@/components/shared/Chart'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -29,6 +30,7 @@ const formatNumber = (value) => {
 }
 
 const ValuationsTab = () => {
+    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
     const [plans, setPlans] = useState([])
@@ -47,11 +49,19 @@ const ValuationsTab = () => {
     })
 
     useEffect(() => {
+        if (loadingCompany || !selectedCompanyId) return
+        
         loadValuations()
         loadPlans()
-    }, [])
+    }, [selectedCompanyId, loadingCompany])
 
     const loadPlans = async () => {
+        if (!selectedCompanyId) {
+            setPlans([])
+            setLoadingPlans(false)
+            return
+        }
+        
         setLoadingPlans(true)
         try {
             const plansRef = collection(db, 'profitSharingPlans')
@@ -72,7 +82,7 @@ const ValuationsTab = () => {
                         paymentScheduleDates,
                     }
                 })
-                .filter(plan => ['draft', 'finalized'].includes(plan.status || 'draft'))
+                .filter(plan => plan.companyId === selectedCompanyId && ['draft', 'finalized'].includes(plan.status || 'draft'))
             setPlans(plansData)
         } catch (error) {
             console.error('Error loading plans for valuations:', error)
@@ -89,6 +99,12 @@ const ValuationsTab = () => {
     }
 
     const loadValuations = async () => {
+        if (!selectedCompanyId) {
+            setValuations([])
+            setLoading(false)
+            return
+        }
+        
         setLoading(true)
         try {
             const valuationsRef = collection(db, 'valuations')
@@ -97,12 +113,15 @@ const ValuationsTab = () => {
             const valuationsData = []
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
-                valuationsData.push({
-                    id: doc.id,
-                    ...data,
-                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                    updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
-                })
+                // Filter by companyId
+                if (data.companyId === selectedCompanyId) {
+                    valuationsData.push({
+                        id: doc.id,
+                        ...data,
+                        valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                        updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
+                    })
+                }
             })
             setValuations(valuationsData)
         } catch (error) {
@@ -226,6 +245,17 @@ const ValuationsTab = () => {
     }
 
     const handleSave = async () => {
+        if (!selectedCompanyId) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "warning", duration: 2000, title: "Validation" },
+                    "Please select a company in Settings first"
+                )
+            )
+            return
+        }
+        
         try {
             if (!formData.planId || !formData.valuationDate || !formData.source || !formData.profitAmount) {
                 toast.push(
@@ -255,6 +285,7 @@ const ValuationsTab = () => {
                     : null
 
             const valuationData = {
+                companyId: selectedCompanyId,
                 planId: formData.planId,
                 valuationDate: formData.valuationDate instanceof Date ? formData.valuationDate : new Date(formData.valuationDate),
                 source: formData.source,

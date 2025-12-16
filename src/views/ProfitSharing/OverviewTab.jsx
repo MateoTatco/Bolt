@@ -5,6 +5,7 @@ import { HiOutlineLockClosed, HiOutlineUsers } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 const getInitials = (name) => {
     if (!name) return ''
@@ -30,6 +31,7 @@ const formatNumber = (value) => {
 
 const OverviewTab = () => {
     const navigate = useNavigate()
+    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [stakeholders, setStakeholders] = useState([])
     const [loadingStakeholders, setLoadingStakeholders] = useState(true)
     const [activeValuation, setActiveValuation] = useState(null)
@@ -73,6 +75,8 @@ const OverviewTab = () => {
 
     // Load stakeholders and valuation from Firebase
     useEffect(() => {
+        if (loadingCompany || !selectedCompanyId) return
+        
         loadStakeholders()
         loadActiveValuation()
         loadPlans()
@@ -99,20 +103,28 @@ const OverviewTab = () => {
             window.removeEventListener('valuationsUpdated', handleValuationsUpdate)
             window.removeEventListener('plansUpdated', handlePlansUpdate)
         }
-    }, [])
+    }, [selectedCompanyId, loadingCompany])
 
     const loadStakeholders = async () => {
+        if (!selectedCompanyId) {
+            setStakeholders([])
+            setLoadingStakeholders(false)
+            return
+        }
+        
         setLoadingStakeholders(true)
         try {
             const response = await FirebaseDbService.stakeholders.getAll()
             if (response.success) {
-                // Convert Firestore timestamps and format data
-                const formattedStakeholders = response.data.map(stakeholder => ({
-                    ...stakeholder,
-                    // Handle Firestore Timestamp objects
-                    createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
-                    updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
-                }))
+                // Filter by companyId and convert Firestore timestamps
+                const formattedStakeholders = response.data
+                    .filter(stakeholder => stakeholder.companyId === selectedCompanyId)
+                    .map(stakeholder => ({
+                        ...stakeholder,
+                        // Handle Firestore Timestamp objects
+                        createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
+                        updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
+                    }))
                 setStakeholders(formattedStakeholders)
             } else {
                 console.error('Error loading stakeholders:', response.error)
@@ -127,42 +139,60 @@ const OverviewTab = () => {
     }
 
     const loadActiveValuation = async () => {
+        if (!selectedCompanyId) {
+            setActiveValuation(null)
+            return
+        }
+        
         try {
             const valuationsRef = collection(db, 'valuations')
-            // First try to get active valuation
+            // First try to get active valuation for this company
             const activeQ = query(valuationsRef, where('status', '==', 'Active'))
             const activeSnapshot = await getDocs(activeQ)
+            let valuations = []
+            
             if (!activeSnapshot.empty) {
-                // Get the most recent active valuation
-                const valuations = activeSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    valuationDate: doc.data().valuationDate?.toDate ? doc.data().valuationDate.toDate() : (doc.data().valuationDate ? new Date(doc.data().valuationDate) : null),
-                    updatedDate: doc.data().updatedDate?.toDate ? doc.data().updatedDate.toDate() : (doc.data().updatedDate ? new Date(doc.data().updatedDate) : null),
-                }))
+                // Filter by companyId and get the most recent active valuation
+                valuations = activeSnapshot.docs
+                    .map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                        valuationDate: doc.data().valuationDate?.toDate ? doc.data().valuationDate.toDate() : (doc.data().valuationDate ? new Date(doc.data().valuationDate) : null),
+                        updatedDate: doc.data().updatedDate?.toDate ? doc.data().updatedDate.toDate() : (doc.data().updatedDate ? new Date(doc.data().updatedDate) : null),
+                    }))
+                    .filter(v => v.companyId === selectedCompanyId)
                 // Sort by valuation date descending
                 valuations.sort((a, b) => {
                     const aDate = a.valuationDate?.getTime() || 0
                     const bDate = b.valuationDate?.getTime() || 0
                     return bDate - aDate
                 })
-                setActiveValuation(valuations[0])
-            } else {
-                // If no active valuation, get the most recent one
-                const allQ = query(valuationsRef, orderBy('valuationDate', 'desc'))
-                const allSnapshot = await getDocs(allQ)
-                if (!allSnapshot.empty) {
-                    const doc = allSnapshot.docs[0]
-                    const data = doc.data()
-                    setActiveValuation({
+                if (valuations.length > 0) {
+                    setActiveValuation(valuations[0])
+                    return
+                }
+            }
+            
+            // If no active valuation, get the most recent one for this company
+            const allQ = query(valuationsRef, orderBy('valuationDate', 'desc'))
+            const allSnapshot = await getDocs(allQ)
+            if (!allSnapshot.empty) {
+                const filtered = allSnapshot.docs
+                    .map(doc => ({
                         id: doc.id,
-                        ...data,
-                        valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                        updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
-                    })
+                        ...doc.data(),
+                        valuationDate: doc.data().valuationDate?.toDate ? doc.data().valuationDate.toDate() : (doc.data().valuationDate ? new Date(doc.data().valuationDate) : null),
+                        updatedDate: doc.data().updatedDate?.toDate ? doc.data().updatedDate.toDate() : (doc.data().updatedDate ? new Date(doc.data().updatedDate) : null),
+                    }))
+                    .filter(v => v.companyId === selectedCompanyId)
+                
+                if (filtered.length > 0) {
+                    setActiveValuation(filtered[0])
                 } else {
                     setActiveValuation(null)
                 }
+            } else {
+                setActiveValuation(null)
             }
         } catch (error) {
             console.error('Error loading active valuation:', error)
@@ -172,14 +202,20 @@ const OverviewTab = () => {
                 const allQ = query(valuationsRef, orderBy('valuationDate', 'desc'))
                 const allSnapshot = await getDocs(allQ)
                 if (!allSnapshot.empty) {
-                    const doc = allSnapshot.docs[0]
-                    const data = doc.data()
-                    setActiveValuation({
-                        id: doc.id,
-                        ...data,
-                        valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                        updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
-                    })
+                    const filtered = allSnapshot.docs
+                        .map(doc => ({
+                            id: doc.id,
+                            ...doc.data(),
+                            valuationDate: doc.data().valuationDate?.toDate ? doc.data().valuationDate.toDate() : (doc.data().valuationDate ? new Date(doc.data().valuationDate) : null),
+                            updatedDate: doc.data().updatedDate?.toDate ? doc.data().updatedDate.toDate() : (doc.data().updatedDate ? new Date(doc.data().updatedDate) : null),
+                        }))
+                        .filter(v => v.companyId === selectedCompanyId)
+                    
+                    if (filtered.length > 0) {
+                        setActiveValuation(filtered[0])
+                    } else {
+                        setActiveValuation(null)
+                    }
                 } else {
                     setActiveValuation(null)
                 }
@@ -191,15 +227,23 @@ const OverviewTab = () => {
     }
 
     const loadPlans = async () => {
+        if (!selectedCompanyId) {
+            setPlans([])
+            setLoadingPlans(false)
+            return
+        }
+        
         setLoadingPlans(true)
         try {
             const plansRef = collection(db, 'profitSharingPlans')
             const q = query(plansRef, orderBy('name'))
             const snapshot = await getDocs(q)
-            const plansData = snapshot.docs.map(docSnap => ({
-                id: docSnap.id,
-                ...docSnap.data(),
-            }))
+            const plansData = snapshot.docs
+                .map(docSnap => ({
+                    id: docSnap.id,
+                    ...docSnap.data(),
+                }))
+                .filter(plan => plan.companyId === selectedCompanyId)
             setPlans(plansData)
         } catch (error) {
             console.error('Error loading plans for overview:', error)
@@ -207,6 +251,33 @@ const OverviewTab = () => {
         } finally {
             setLoadingPlans(false)
         }
+    }
+
+    // Show message if no company is selected
+    if (!loadingCompany && !selectedCompanyId) {
+        return (
+            <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Overview</h2>
+                </div>
+                <Card className="p-8">
+                    <div className="flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="text-gray-400 dark:text-gray-500 text-lg">No company selected</div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                            Please go to Settings and select a company to view profit sharing data.
+                        </p>
+                        <Button 
+                            variant="solid" 
+                            size="sm"
+                            onClick={() => navigate('/profit-sharing?tab=settings')}
+                            className="mt-4"
+                        >
+                            Go to Settings
+                        </Button>
+                    </div>
+                </Card>
+            </div>
+        )
     }
 
     return (

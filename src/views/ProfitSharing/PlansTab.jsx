@@ -7,6 +7,7 @@ import { db } from '@/configs/firebase.config'
 import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore'
 import AgreementSettingsPanel from './components/AgreementSettingsPanel'
 import PdfViewerModal from './components/PdfViewerModal'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 // Authorized emails that can upload/delete PDFs
 const ADMIN_EMAILS = [
@@ -17,6 +18,7 @@ const ADMIN_EMAILS = [
 const PlansTab = () => {
     const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
+    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [showSettingsPanel, setShowSettingsPanel] = useState(false)
     const [showPdfModal, setShowPdfModal] = useState(false)
     const [activeFilter, setActiveFilter] = useState('profit')
@@ -30,6 +32,8 @@ const PlansTab = () => {
 
     // Load plans from Firestore
     useEffect(() => {
+        if (loadingCompany || !selectedCompanyId) return
+        
         loadPlans()
         
         // Listen for plan updates
@@ -41,9 +45,15 @@ const PlansTab = () => {
         return () => {
             window.removeEventListener('plansUpdated', handlePlansUpdate)
         }
-    }, [])
+    }, [selectedCompanyId, loadingCompany])
 
     const loadPlans = async () => {
+        if (!selectedCompanyId) {
+            setPlans([])
+            setLoading(false)
+            return
+        }
+        
         setLoading(true)
         try {
             const plansRef = collection(db, 'profitSharingPlans')
@@ -51,7 +61,11 @@ const PlansTab = () => {
             const querySnapshot = await getDocs(plansRef)
             const plansData = []
             querySnapshot.forEach((doc) => {
-                plansData.push({ id: doc.id, ...doc.data() })
+                const planData = { id: doc.id, ...doc.data() }
+                // Filter by companyId
+                if (planData.companyId === selectedCompanyId) {
+                    plansData.push(planData)
+                }
             })
             // Sort in memory by createdAt (if available)
             plansData.sort((a, b) => {
@@ -97,6 +111,33 @@ const PlansTab = () => {
         } finally {
             setDeletingId(null)
         }
+    }
+
+    // Show message if no company is selected
+    if (!loadingCompany && !selectedCompanyId) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Plans</h2>
+                </div>
+                <Card className="p-8">
+                    <div className="flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="text-gray-400 dark:text-gray-500 text-lg">No company selected</div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                            Please go to Settings and select a company to view profit plans.
+                        </p>
+                        <Button 
+                            variant="solid" 
+                            size="sm"
+                            onClick={() => navigate('/profit-sharing?tab=settings')}
+                            className="mt-4"
+                        >
+                            Go to Settings
+                        </Button>
+                    </div>
+                </Card>
+            </div>
+        )
     }
 
     return (

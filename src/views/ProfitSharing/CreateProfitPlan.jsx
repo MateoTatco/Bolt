@@ -5,6 +5,7 @@ import { HiOutlineChevronRight, HiOutlineDotsVertical, HiOutlineArrowLeft, HiOut
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, addDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 
 // Authorized emails that can access Profit Sharing
 const AUTHORIZED_EMAILS = [
@@ -57,6 +58,7 @@ const CreateProfitPlan = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const user = useSessionUser((state) => state.user)
+    const { selectedCompanyId } = useSelectedCompany()
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
     const [cancelContext, setCancelContext] = useState(null) // 'page'
@@ -250,10 +252,20 @@ const CreateProfitPlan = () => {
 
 
     const savePlan = async (status) => {
+        if (!selectedCompanyId) {
+            toast.push(
+                <Notification type="warning" duration={2000}>
+                    Please select a company in Settings first
+                </Notification>
+            )
+            return
+        }
+        
         try {
             const plansRef = collection(db, 'profitSharingPlans')
             const payload = {
                 ...formData,
+                companyId: selectedCompanyId,
                 status,
                 startDate: formData.startDate
                     ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate)
