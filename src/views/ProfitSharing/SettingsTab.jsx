@@ -1,16 +1,40 @@
 import { useState, useEffect } from 'react'
-import { Card, Button, Input, Table, Dialog, Notification, toast, Select, Tag } from '@/components/ui'
+import { Card, Button, Input, Table, Dialog, Notification, toast, Select, Tag, Avatar } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX } from 'react-icons/hi'
+import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX, HiOutlineUserGroup } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
+import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore'
 
 const DEFAULT_COMPANY_NAME = 'Tatco OKC'
 
+// Built-in super admins (always have access)
+const SUPER_ADMINS = [
+    { id: 'super-admin-1', userName: 'Admin', userEmail: 'admin-01@tatco.construction', role: 'admin', isBuiltIn: true },
+    { id: 'super-admin-2', userName: 'Brett', userEmail: 'brett@tatco.construction', role: 'admin', isBuiltIn: true },
+]
+
+const getInitials = (name) => {
+    if (!name) return '?'
+    const parts = name.split(' ')
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return name[0].toUpperCase()
+}
+
+const roleOptions = [
+    { value: 'admin', label: 'Admin - Full access to all features' },
+    { value: 'user', label: 'User - View only access' },
+]
+
 const SettingsTab = () => {
+    const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, setSelectedCompany, loading: loadingSelected } = useSelectedCompany()
+    const { refreshAccess } = useProfitSharingAccessContext()
     const [companies, setCompanies] = useState([])
     const [loading, setLoading] = useState(true)
     const [showAddDialog, setShowAddDialog] = useState(false)
@@ -23,9 +47,28 @@ const SettingsTab = () => {
         legalAddress: ''
     })
 
+    // User Management state
+    const [accessRecords, setAccessRecords] = useState([])
+    const [allUsers, setAllUsers] = useState([])
+    const [loadingUsers, setLoadingUsers] = useState(true)
+    const [showAddUserDialog, setShowAddUserDialog] = useState(false)
+    const [editingAccess, setEditingAccess] = useState(null)
+    const [showDeleteUserDialog, setShowDeleteUserDialog] = useState(null)
+    const [userFormData, setUserFormData] = useState({
+        userId: null,
+        role: 'user'
+    })
+
     useEffect(() => {
         loadCompanies()
+        loadAllUsers()
     }, [])
+
+    useEffect(() => {
+        if (selectedCompanyId) {
+            loadAccessRecords()
+        }
+    }, [selectedCompanyId])
 
     const loadCompanies = async () => {
         setLoading(true)
@@ -219,6 +262,242 @@ const SettingsTab = () => {
         )
     }
 
+    // User Management functions
+    const loadAllUsers = async () => {
+        setLoadingUsers(true)
+        try {
+            const result = await FirebaseDbService.users.getAll()
+            if (result.success) {
+                setAllUsers(result.data)
+            } else {
+                console.error('Failed to load users:', result.error)
+            }
+        } catch (error) {
+            console.error('Error loading users:', error)
+        } finally {
+            setLoadingUsers(false)
+        }
+    }
+
+    const loadAccessRecords = async () => {
+        if (!selectedCompanyId) return
+        
+        try {
+            const result = await FirebaseDbService.profitSharingAccess.getByCompany(selectedCompanyId)
+            if (result.success) {
+                setAccessRecords(result.data)
+            } else {
+                console.error('Failed to load access records:', result.error)
+            }
+        } catch (error) {
+            console.error('Error loading access records:', error)
+        }
+    }
+
+    const handleAddUser = () => {
+        setEditingAccess(null)
+        setUserFormData({
+            userId: null,
+            role: 'user'
+        })
+        setShowAddUserDialog(true)
+    }
+
+    const handleEditAccess = (access) => {
+        setEditingAccess(access)
+        setUserFormData({
+            userId: access.userId,
+            role: access.role
+        })
+        setShowAddUserDialog(true)
+    }
+
+    const handleSaveAccess = async () => {
+        if (!userFormData.userId) {
+            toast.push(
+                <Notification type="warning" duration={2000} title="Validation">
+                    Please select a user
+                </Notification>
+            )
+            return
+        }
+
+        setSaving(true)
+        try {
+            const selectedUser = allUsers.find(u => u.id === userFormData.userId)
+            
+            if (editingAccess) {
+                // Update existing
+                const result = await FirebaseDbService.profitSharingAccess.update(editingAccess.id, {
+                    role: userFormData.role
+                })
+                if (result.success) {
+                    toast.push(
+                        <Notification type="success" duration={2000} title="Success">
+                            Access updated successfully
+                        </Notification>
+                    )
+                    await loadAccessRecords()
+                    setShowAddUserDialog(false)
+                } else {
+                    throw new Error(result.error || 'Failed to update access')
+                }
+            } else {
+                // Check if user already has access
+                const existingAccess = accessRecords.find(a => a.userId === userFormData.userId)
+                if (existingAccess) {
+                    toast.push(
+                        <Notification type="warning" duration={2000} title="Warning">
+                            This user already has access to this company
+                        </Notification>
+                    )
+                    setSaving(false)
+                    return
+                }
+
+                // Create new
+                const result = await FirebaseDbService.profitSharingAccess.create({
+                    userId: userFormData.userId,
+                    userEmail: selectedUser?.email || '',
+                    userName: selectedUser?.name || selectedUser?.firstName ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : selectedUser?.email || 'Unknown',
+                    role: userFormData.role,
+                    companyId: selectedCompanyId,
+                    addedBy: user?.id || user?.uid
+                })
+                if (result.success) {
+                    toast.push(
+                        <Notification type="success" duration={2000} title="Success">
+                            User added successfully
+                        </Notification>
+                    )
+                    await loadAccessRecords()
+                    refreshAccess() // Refresh global access state
+                    setShowAddUserDialog(false)
+                } else {
+                    throw new Error(result.error || 'Failed to add user')
+                }
+            }
+        } catch (error) {
+            console.error('Error saving access:', error)
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    {error.message || 'Failed to save access'}
+                </Notification>
+            )
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleDeleteAccess = async (access) => {
+        setSaving(true)
+        try {
+            const result = await FirebaseDbService.profitSharingAccess.delete(access.id)
+            if (result.success) {
+                toast.push(
+                    <Notification type="success" duration={2000} title="Success">
+                        User access removed
+                    </Notification>
+                )
+                await loadAccessRecords()
+                refreshAccess() // Refresh global access state
+                setShowDeleteUserDialog(null)
+            } else {
+                throw new Error(result.error || 'Failed to remove access')
+            }
+        } catch (error) {
+            console.error('Error deleting access:', error)
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    {error.message || 'Failed to remove access'}
+                </Notification>
+            )
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    // Get users not yet added to this company
+    const availableUsers = allUsers.filter(u => 
+        !accessRecords.some(a => a.userId === u.id)
+    )
+
+    const userSelectOptions = availableUsers.map(u => ({
+        value: u.id,
+        label: u.name || (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.email) || u.email
+    }))
+
+    // Combine built-in admins with database records
+    const allAccessRecords = [...SUPER_ADMINS, ...accessRecords]
+
+    const accessColumns = [
+        {
+            header: 'User',
+            accessorKey: 'userName',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-3">
+                    <Avatar
+                        size={32}
+                        icon={<span className="text-xs font-semibold">{getInitials(row.original.userName)}</span>}
+                    />
+                    <div>
+                        <div className="font-medium">
+                            {row.original.userName}
+                            {row.original.isBuiltIn && (
+                                <Tag className="ml-2 bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                                    Built-in
+                                </Tag>
+                            )}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{row.original.userEmail}</div>
+                    </div>
+                </div>
+            )
+        },
+        {
+            header: 'Role',
+            accessorKey: 'role',
+            cell: ({ row }) => (
+                <Tag className={row.original.role === 'admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}>
+                    {row.original.role === 'admin' ? 'Admin' : 'User'}
+                </Tag>
+            )
+        },
+        {
+            header: 'Actions',
+            accessorKey: 'actions',
+            cell: ({ row }) => {
+                // Built-in admins cannot be edited or removed
+                if (row.original.isBuiltIn) {
+                    return (
+                        <span className="text-xs text-gray-400">Cannot modify</span>
+                    )
+                }
+                return (
+                    <div className="flex items-center gap-2">
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            icon={<HiOutlinePencil />}
+                            onClick={() => handleEditAccess(row.original)}
+                        >
+                            Edit
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            icon={<HiOutlineTrash />}
+                            onClick={() => setShowDeleteUserDialog(row.original)}
+                            className="text-red-600 hover:text-red-700"
+                        >
+                            Remove
+                        </Button>
+                    </div>
+                )
+            }
+        }
+    ]
+
     const columns = [
         {
             header: 'Company Name',
@@ -366,6 +645,146 @@ const SettingsTab = () => {
                     </div>
                 )}
             </Card>
+
+            {/* User Management Section */}
+            <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <HiOutlineUserGroup className="w-5 h-5" />
+                            User Management
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Manage who can access the Profit Sharing section. Admins have full access, Users can only view their own data.
+                        </p>
+                    </div>
+                    <Button
+                        icon={<HiOutlinePlus />}
+                        onClick={handleAddUser}
+                        disabled={!selectedCompanyId}
+                    >
+                        Add User
+                    </Button>
+                </div>
+
+                {!selectedCompanyId ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        Please select a company above to manage user access
+                    </div>
+                ) : loadingUsers ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        Loading users...
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <DataTable
+                            columns={accessColumns}
+                            data={allAccessRecords}
+                            loading={false}
+                        />
+                    </div>
+                )}
+            </Card>
+
+            {/* Add/Edit User Dialog */}
+            <Dialog
+                isOpen={showAddUserDialog}
+                onClose={() => setShowAddUserDialog(false)}
+                width={500}
+            >
+                <div className="p-6">
+                    <h3 className="text-xl font-semibold mb-4">
+                        {editingAccess ? 'Edit User Access' : 'Add User Access'}
+                    </h3>
+                    
+                    <div className="space-y-4">
+                        {!editingAccess && (
+                            <div>
+                                <label className="block text-sm font-medium mb-2">
+                                    Select User *
+                                </label>
+                                <Select
+                                    options={userSelectOptions}
+                                    value={userSelectOptions.find(opt => opt.value === userFormData.userId) || null}
+                                    onChange={(opt) => setUserFormData(prev => ({ ...prev, userId: opt?.value || null }))}
+                                    placeholder="Search and select a user..."
+                                    isSearchable
+                                />
+                                {availableUsers.length === 0 && (
+                                    <p className="text-xs text-gray-500 mt-1">All registered users already have access</p>
+                                )}
+                            </div>
+                        )}
+
+                        {editingAccess && (
+                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                <div className="font-medium">{editingAccess.userName}</div>
+                                <div className="text-sm text-gray-500">{editingAccess.userEmail}</div>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-sm font-medium mb-2">
+                                Role *
+                            </label>
+                            <Select
+                                options={roleOptions}
+                                value={roleOptions.find(opt => opt.value === userFormData.role) || roleOptions[1]}
+                                onChange={(opt) => setUserFormData(prev => ({ ...prev, role: opt?.value || 'user' }))}
+                            />
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                <div><strong>Admin:</strong> Full access to all tabs and features</div>
+                                <div><strong>User:</strong> Can only view Overview and their own Stakeholder data</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 mt-6">
+                        <Button
+                            variant="plain"
+                            onClick={() => setShowAddUserDialog(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSaveAccess}
+                            loading={saving}
+                        >
+                            {editingAccess ? 'Update' : 'Add User'}
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            {/* Delete User Confirmation Dialog */}
+            <Dialog
+                isOpen={!!showDeleteUserDialog}
+                onClose={() => setShowDeleteUserDialog(null)}
+                width={400}
+            >
+                <div className="p-6">
+                    <h3 className="text-xl font-semibold mb-4">Remove User Access</h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                        Are you sure you want to remove access for "{showDeleteUserDialog?.userName}"? They will no longer be able to view this company's profit sharing data.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            variant="plain"
+                            onClick={() => setShowDeleteUserDialog(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="solid"
+                            color="red"
+                            onClick={() => handleDeleteAccess(showDeleteUserDialog)}
+                            loading={saving}
+                        >
+                            Remove
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
 
             {/* Add/Edit Dialog */}
             <Dialog

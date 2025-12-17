@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Dialog, Input, Select, Button } from '@/components/ui'
 import { HiOutlineX, HiOutlineInformationCircle, HiOutlineUserAdd } from 'react-icons/hi'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) => {
     const [formData, setFormData] = useState({
         fullName: '',
+        linkedUserId: null,
         title: '',
         email: '',
         phone: '',
@@ -15,6 +17,8 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const [showInfoBanner, setShowInfoBanner] = useState(true)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+    const [allUsers, setAllUsers] = useState([])
+    const [loadingUsers, setLoadingUsers] = useState(true)
 
     const employmentStatusOptions = [
         { value: 'full-time', label: 'Full time' },
@@ -29,11 +33,31 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         { value: 'hourly', label: 'Hourly' },
     ]
 
+    // Load users on mount
+    useEffect(() => {
+        loadUsers()
+    }, [])
+
+    const loadUsers = async () => {
+        setLoadingUsers(true)
+        try {
+            const result = await FirebaseDbService.users.getAll()
+            if (result.success) {
+                setAllUsers(result.data)
+            }
+        } catch (error) {
+            console.error('Error loading users:', error)
+        } finally {
+            setLoadingUsers(false)
+        }
+    }
+
     // Reset form when modal opens
     useEffect(() => {
         if (isOpen) {
             setFormData({
                 fullName: '',
+                linkedUserId: null,
                 title: '',
                 email: '',
                 phone: '',
@@ -48,10 +72,34 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
 
     // Track unsaved changes
     useEffect(() => {
-        const hasChanges = formData.fullName || formData.title || formData.email || 
+        const hasChanges = formData.fullName || formData.linkedUserId || formData.title || formData.email || 
                           formData.phone || formData.employmentStatus || formData.payType || formData.payAmount
         setHasUnsavedChanges(hasChanges)
     }, [formData])
+
+    // User select options
+    const userSelectOptions = allUsers.map(u => ({
+        value: u.id,
+        label: u.name || (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.email) || u.email,
+        email: u.email
+    }))
+
+    const handleUserSelect = (option) => {
+        if (option) {
+            const selectedUser = allUsers.find(u => u.id === option.value)
+            setFormData(prev => ({
+                ...prev,
+                linkedUserId: option.value,
+                fullName: option.label,
+                email: selectedUser?.email || prev.email
+            }))
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                linkedUserId: null
+            }))
+        }
+    }
 
     const formatCurrencyInput = (value) => {
         // Remove all non-numeric characters except decimal point
@@ -77,6 +125,7 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const resetForm = () => {
         setFormData({
             fullName: '',
+            linkedUserId: null,
             title: '',
             email: '',
             phone: '',
@@ -164,6 +213,24 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
 
                 {/* Form Fields */}
                 <div className="space-y-4">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Select User (from Bolt)
+                        </label>
+                        <Select
+                            options={userSelectOptions}
+                            value={userSelectOptions.find(opt => opt.value === formData.linkedUserId) || null}
+                            onChange={handleUserSelect}
+                            placeholder="Search and select a user..."
+                            isSearchable
+                            isLoading={loadingUsers}
+                            isClearable
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Select an existing Bolt user or enter name manually below
+                        </p>
+                    </div>
+
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Full name

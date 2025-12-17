@@ -1192,6 +1192,23 @@ export const FirebaseDbService = {
 
     // USERS COLLECTION
     users: {
+        // Get all users
+        getAll: async () => {
+            try {
+                const usersRef = collection(db, 'users')
+                const q = query(usersRef, orderBy('email'))
+                const snapshot = await getDocs(q)
+                const users = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: users }
+            } catch (error) {
+                console.error('Firebase get all users error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
         // Get user profile by ID
         getById: async (userId) => {
             try {
@@ -1614,6 +1631,110 @@ export const FirebaseDbService = {
                 return { success: true }
             } catch (error) {
                 console.error('Firebase delete company error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // PROFIT SHARING ACCESS COLLECTION
+    profitSharingAccess: {
+        // Get all access records
+        getAll: async () => {
+            try {
+                const accessRef = collection(db, 'profitSharingAccess')
+                const q = query(accessRef, orderBy('userName'))
+                const snapshot = await getDocs(q)
+                const records = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: records }
+            } catch (error) {
+                console.error('Firebase get all profit sharing access error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get access by company
+        getByCompany: async (companyId) => {
+            try {
+                const accessRef = collection(db, 'profitSharingAccess')
+                const q = query(accessRef, where('companyId', '==', companyId))
+                const snapshot = await getDocs(q)
+                const records = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                // Sort client-side to avoid composite index
+                records.sort((a, b) => (a.userName || '').localeCompare(b.userName || ''))
+                return { success: true, data: records }
+            } catch (error) {
+                console.error('Firebase get profit sharing access by company error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get access by user ID
+        getByUserId: async (userId) => {
+            try {
+                const accessRef = collection(db, 'profitSharingAccess')
+                const q = query(accessRef, where('userId', '==', userId))
+                const snapshot = await getDocs(q)
+                const records = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: records }
+            } catch (error) {
+                console.error('Firebase get profit sharing access by user error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create access record
+        create: async (accessData) => {
+            try {
+                await ensureAuthUser()
+                const accessRef = collection(db, 'profitSharingAccess')
+                const docRef = await addDoc(accessRef, {
+                    ...accessData,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...accessData } }
+            } catch (error) {
+                console.error('Firebase create profit sharing access error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update access record
+        update: async (id, accessData) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const accessRef = doc(db, 'profitSharingAccess', stringId)
+                await updateDoc(accessRef, {
+                    ...accessData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: stringId, ...accessData } }
+            } catch (error) {
+                console.error('Firebase update profit sharing access error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete access record
+        delete: async (id) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const accessRef = doc(db, 'profitSharingAccess', stringId)
+                await deleteDoc(accessRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete profit sharing access error:', error)
                 return { success: false, error: error.message }
             }
         },

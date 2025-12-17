@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import Theme from '@/components/template/Theme'
 import Layout from '@/components/layouts'
 import { AuthProvider } from '@/auth'
+import { ProfitSharingAccessProvider } from '@/context/ProfitSharingAccessContext'
 import Views from '@/views'
 import appConfig from './configs/app.config'
 
@@ -35,10 +36,12 @@ function OAuthCallbackHandler() {
 function AppContent() {
     return (
         <AuthProvider>
-            <OAuthCallbackHandler />
-            <Layout>
-                <Views />
-            </Layout>
+            <ProfitSharingAccessProvider>
+                <OAuthCallbackHandler />
+                <Layout>
+                    <Views />
+                </Layout>
+            </ProfitSharingAccessProvider>
         </AuthProvider>
     )
 }

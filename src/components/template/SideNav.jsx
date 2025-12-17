@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/themeStore'
 import { useSessionUser } from '@/store/authStore'
 import { useRouteKeyStore } from '@/store/routeKeyStore'
 import { getNavigationConfig } from '@/configs/navigation.config'
+import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
 import appConfig from '@/configs/app.config'
 import { Link } from 'react-router'
 import {
@@ -44,9 +45,10 @@ const SideNav = ({
     const user = useSessionUser((state) => state.user)
     const userAuthority = user?.authority || []
     const userEmail = user?.email || ''
+    const { hasAccess: hasProfitSharingAccess } = useProfitSharingAccessContext()
     
-    // Filter navigation based on user email
-    const filteredNavigationConfig = getNavigationConfig(userEmail)
+    // Filter navigation based on user email and profit sharing access
+    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess)
 
     return (
         <div

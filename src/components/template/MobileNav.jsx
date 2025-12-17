@@ -4,11 +4,12 @@ import Drawer from '@/components/ui/Drawer'
 import NavToggle from '@/components/shared/NavToggle'
 import { DIR_RTL } from '@/constants/theme.constant'
 import withHeaderItem from '@/utils/hoc/withHeaderItem'
-import navigationConfig from '@/configs/navigation.config'
+import { getNavigationConfig } from '@/configs/navigation.config'
 import appConfig from '@/configs/app.config'
 import { useThemeStore } from '@/store/themeStore'
 import { useRouteKeyStore } from '@/store/routeKeyStore'
 import { useSessionUser } from '@/store/authStore'
+import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
 
 const VerticalMenuContent = lazy(
     () => import('@/components/template/VerticalMenuContent'),
@@ -30,7 +31,12 @@ const MobileNav = ({ translationSetup = appConfig.activeNavTranslation }) => {
     const direction = useThemeStore((state) => state.direction)
     const currentRouteKey = useRouteKeyStore((state) => state.currentRouteKey)
 
-    const userAuthority = useSessionUser((state) => state.user.authority)
+    const user = useSessionUser((state) => state.user)
+    const userAuthority = user?.authority || []
+    const userEmail = user?.email || ''
+    const { hasAccess: hasProfitSharingAccess } = useProfitSharingAccessContext()
+    
+    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess)
 
     return (
         <>
@@ -50,7 +56,7 @@ const MobileNav = ({ translationSetup = appConfig.activeNavTranslation }) => {
                     {isOpen && (
                         <VerticalMenuContent
                             collapsed={false}
-                            navigationTree={navigationConfig}
+                            navigationTree={filteredNavigationConfig}
                             routeKey={currentRouteKey}
                             userAuthority={userAuthority}
                             direction={direction}

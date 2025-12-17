@@ -31,7 +31,7 @@ const getInitials = (name) => {
     return name[0].toUpperCase()
 }
 
-const StakeholdersTab = () => {
+const StakeholdersTab = ({ isAdmin = true }) => {
     const navigate = useNavigate()
     const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [showAddModal, setShowAddModal] = useState(false)
@@ -292,6 +292,7 @@ const StakeholdersTab = () => {
             const stakeholderPayload = {
                 companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
+                linkedUserId: stakeholderData.linkedUserId || null,
                 title: stakeholderData.title,
                 email: stakeholderData.email,
                 phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
@@ -356,6 +357,7 @@ const StakeholdersTab = () => {
             const stakeholderPayload = {
                 companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
+                linkedUserId: stakeholderData.linkedUserId || null,
                 title: stakeholderData.title,
                 email: stakeholderData.email,
                 phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
@@ -464,12 +466,14 @@ const StakeholdersTab = () => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Stakeholders</h2>
-                <Button
-                    variant="solid"
-                    onClick={() => setShowAddModal(true)}
-                >
-                    Add Stakeholders
-                </Button>
+                {isAdmin && (
+                    <Button
+                        variant="solid"
+                        onClick={() => setShowAddModal(true)}
+                    >
+                        Add Stakeholders
+                    </Button>
+                )}
             </div>
 
             {/* Summary Metrics */}
@@ -672,13 +676,15 @@ const StakeholdersTab = () => {
                                                     onClick={() => navigate(`/profit-sharing/stakeholders/${stakeholder.id}`)}
                                                     className="text-gray-400 hover:text-primary"
                                                 />
-                                                <Button
-                                                    variant="plain"
-                                                    size="sm"
-                                                    icon={<HiOutlineTrash />}
-                                                    onClick={() => handleDeleteStakeholder(stakeholder.id)}
-                                                    className="text-gray-400 hover:text-red-500"
-                                                />
+                                                {isAdmin && (
+                                                    <Button
+                                                        variant="plain"
+                                                        size="sm"
+                                                        icon={<HiOutlineTrash />}
+                                                        onClick={() => handleDeleteStakeholder(stakeholder.id)}
+                                                        className="text-gray-400 hover:text-red-500"
+                                                    />
+                                                )}
                                             </div>
                                         </Table.Td>
                                     </Table.Tr>

@@ -11,7 +11,8 @@ import useResponsive from '@/utils/hooks/useResponsive'
 import { useThemeStore } from '@/store/themeStore'
 import { useRouteKeyStore } from '@/store/routeKeyStore'
 import { useSessionUser } from '@/store/authStore'
-import navigationConfig from '@/configs/navigation.config'
+import { getNavigationConfig } from '@/configs/navigation.config'
+import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
 import appConfig from '@/configs/app.config'
 import isEmpty from 'lodash/isEmpty'
 import useTranslation from '@/utils/hooks/useTranslation'
@@ -33,7 +34,12 @@ const StackedSideNav = ({
 
     const currentRouteKey = useRouteKeyStore((state) => state.currentRouteKey)
 
-    const userAuthority = useSessionUser((state) => state.user.authority)
+    const user = useSessionUser((state) => state.user)
+    const userAuthority = user?.authority || []
+    const userEmail = user?.email || ''
+    const { hasAccess: hasProfitSharingAccess } = useProfitSharingAccessContext()
+    
+    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess)
 
     const { larger } = useResponsive()
 
@@ -79,8 +85,8 @@ const StackedSideNav = ({
                         activeKeys={activeKeys}
                         mode={mode}
                         direction={direction}
-                        navigationTree={navigationConfig}
-                        userAuthority={userAuthority || []}
+                        navigationTree={filteredNavigationConfig}
+                        userAuthority={userAuthority}
                         selectedMenu={selectedMenu}
                         t={t}
                         onChange={handleChange}

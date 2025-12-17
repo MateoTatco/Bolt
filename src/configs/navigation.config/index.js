@@ -63,14 +63,18 @@ const baseNavigationConfig = [
     },
 ]
 
-// Function to get navigation config filtered by user email
-export const getNavigationConfig = (userEmail) => {
+// Function to get navigation config filtered by user email and access
+export const getNavigationConfig = (userEmail, hasProfitSharingAccess = false) => {
     const userEmailLower = userEmail?.toLowerCase() || ''
     const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmailLower)
     
-    // Filter out advancedFeatures and profitSharing if user is not authorized
+    // Filter out advancedFeatures if user is not authorized
+    // Filter out profitSharing if user doesn't have access (either super admin or added via Settings)
     return baseNavigationConfig.filter(nav => {
-        if ((nav.key === 'advancedFeatures' || nav.key === 'profitSharing') && !isAuthorized) {
+        if (nav.key === 'advancedFeatures' && !isAuthorized) {
+            return false
+        }
+        if (nav.key === 'profitSharing' && !hasProfitSharingAccess) {
             return false
         }
         return true
