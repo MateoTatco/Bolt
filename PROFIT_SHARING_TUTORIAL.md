@@ -421,15 +421,4 @@ Admins receive notifications for:
 
 ---
 
-## Support
-
-For issues or questions:
-1. Check this guide first
-2. Review console logs for errors
-3. Verify data in Firestore console
-4. Contact system administrator
-
----
-
-*Last Updated: December 2024*
 
