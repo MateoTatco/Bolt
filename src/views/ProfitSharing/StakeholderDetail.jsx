@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Card, Button, Table, Tag, Drawer, Select, DatePicker, Input, Dialog } from '@/components/ui'
 import { HiOutlineArrowLeft, HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineInformationCircle, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlineCheckCircle, HiOutlineEye, HiOutlineDownload, HiOutlineChevronDown, HiOutlineChevronUp } from 'react-icons/hi'
@@ -10,6 +10,10 @@ import React from 'react'
 import { Notification, toast } from '@/components/ui'
 import { getAllUsers } from '@/utils/userHelper'
 import AwardDocumentModal from './components/AwardDocumentModal'
+import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 
 // Mock data - in real app, this would come from API/Firebase
 const mockStakeholderData = {
@@ -117,6 +121,9 @@ const StakeholderDetail = () => {
     const navigate = useNavigate()
     const { stakeholderId } = useParams()
     const user = useSessionUser((state) => state.user)
+    const { userRole, canEdit, loading: loadingAccess } = useProfitSharingAccess()
+    const { selectedCompanyId } = useSelectedCompany()
+    const isAdmin = canEdit || userRole === 'admin'
     const [activeTab, setActiveTab] = useState('profit')
     const [stakeholder, setStakeholder] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -148,6 +155,11 @@ const StakeholderDetail = () => {
     const [expandedAwardId, setExpandedAwardId] = useState(null)
 
     useEffect(() => {
+        // Wait for access to load before checking permissions
+        if (loadingAccess) {
+            return
+        }
+        
         const loadStakeholder = async () => {
             if (!stakeholderId) {
                 navigate('/profit-sharing?tab=stakeholders')
@@ -160,6 +172,26 @@ const StakeholderDetail = () => {
                 const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
                 if (response.success) {
                     const data = response.data
+                    
+                    // Check if regular user is trying to access someone else's record
+                    // Only check if user is NOT an admin (admins can access all records)
+                    const currentIsAdmin = canEdit || userRole === 'admin'
+                    if (!currentIsAdmin) {
+                        const currentUserId = user?.id || user?.uid
+                        if (data.linkedUserId !== currentUserId) {
+                            // Regular user trying to access someone else's record - redirect
+                            toast.push(
+                                React.createElement(
+                                    Notification,
+                                    { type: "warning", duration: 2000, title: "Access Denied" },
+                                    "You can only view your own stakeholder information."
+                                )
+                            )
+                            navigate('/profit-sharing?tab=stakeholders')
+                            return
+                        }
+                    }
+                    
                     // Format the stakeholder data to match expected structure
                     setStakeholder({
                         id: data.id,
@@ -174,7 +206,8 @@ const StakeholderDetail = () => {
                         profitAwards: data.profitAwards || [],
                         totalStockUnits: data.mareStock || 0,
                         estimatedFMV: 0, // Calculate this if needed
-                        totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0)
+                        totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
+                        linkedUserId: data.linkedUserId,
                     })
                 } else {
                     // Fallback to mock data if Firebase fails
@@ -202,8 +235,7 @@ const StakeholderDetail = () => {
         loadStakeholder()
         loadProfitPlans()
         loadUsers()
-        loadValuations()
-    }, [stakeholderId, navigate])
+    }, [stakeholderId, navigate, loadingAccess, canEdit, userRole, user])
 
     useEffect(() => {
         if (stakeholder) {
@@ -271,25 +303,45 @@ const StakeholderDetail = () => {
         }
     }
 
-    const loadValuations = async () => {
+    const loadValuations = useCallback(async () => {
+        if (!selectedCompanyId) {
+            setValuations([])
+            return
+        }
+        
         try {
+            console.log('Loading valuations for company:', selectedCompanyId)
             const valuationsRef = collection(db, 'valuations')
             const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
             const querySnapshot = await getDocs(q)
             const valuationsData = []
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
-                valuationsData.push({
-                    id: doc.id,
-                    ...data,
-                    valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
-                })
+                // Filter by companyId
+                if (data.companyId === selectedCompanyId) {
+                    valuationsData.push({
+                        id: doc.id,
+                        ...data,
+                        valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                    })
+                }
             })
+            console.log(`Loaded ${valuationsData.length} valuations for company ${selectedCompanyId}`, valuationsData)
             setValuations(valuationsData)
         } catch (error) {
             console.error('Error loading valuations:', error)
+            setValuations([])
         }
-    }
+    }, [selectedCompanyId])
+    
+    // Load valuations when selectedCompanyId changes
+    useEffect(() => {
+        if (selectedCompanyId) {
+            loadValuations()
+        } else {
+            setValuations([])
+        }
+    }, [selectedCompanyId, loadValuations])
 
     // Calculate payouts for a specific award
     const calculateAwardPayouts = (award) => {
@@ -591,6 +643,18 @@ const StakeholderDetail = () => {
     }
 
     const handleEditAward = async (award) => {
+        // Regular users cannot edit awards
+        if (!isAdmin) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "warning", duration: 2000, title: "Access Denied" },
+                    "You can only view award details. Contact an administrator to make changes."
+                )
+            )
+            return
+        }
+        
         setEditingAwardId(award.id)
         setEditingAward(award)
         setAwardFormData({
@@ -631,41 +695,60 @@ const StakeholderDetail = () => {
             }
 
             const selectedPlan = profitPlans.find(p => p.value === awardFormData.planId)
-            const newAward = {
+            
+            // Helper function to remove undefined values from object
+            const removeUndefined = (obj) => {
+                const cleaned = {}
+                Object.keys(obj).forEach(key => {
+                    if (obj[key] !== undefined) {
+                        cleaned[key] = obj[key]
+                    }
+                })
+                return cleaned
+            }
+            
+            const newAward = removeUndefined({
                 id: Date.now().toString(),
-                planId: awardFormData.planId,
+                planId: awardFormData.planId || null,
                 planName: selectedPlan?.label || 'Unknown Plan',
                 planMilestoneAmount: awardFormData.milestoneAmount || 0,
                 awardStartDate: awardFormData.awardStartDate instanceof Date 
                     ? awardFormData.awardStartDate.toISOString() 
-                    : awardFormData.awardStartDate,
+                    : (awardFormData.awardStartDate || null),
                 awardEndDate: awardFormData.awardEndDate instanceof Date 
                     ? awardFormData.awardEndDate.toISOString() 
-                    : awardFormData.awardEndDate,
-                milestoneAmount: awardFormData.milestoneAmount,
+                    : (awardFormData.awardEndDate || null),
+                milestoneAmount: awardFormData.milestoneAmount || 0,
                 sharesIssued: awardFormData.sharesIssued ? parseInt(awardFormData.sharesIssued, 10) : 0,
                 paymentSchedule: selectedPlan?.schedule || 'Annually',
                 status: status === 'finalized' ? 'Finalized' : 'Draft',
                 awardDate: 'Pending',
-            }
+            })
 
             const existingAwards = currentData.data.profitAwards || []
             let updatedAwards
             
             if (editingAwardId) {
                 // Update existing award - preserve document info if it exists
+                const existingAward = existingAwards.find(a => a.id === editingAwardId)
+                const updatedAward = {
+                    ...newAward,
+                    id: editingAwardId,
+                }
+                
+                // Only include document fields if they exist (not undefined)
+                if (existingAward?.documentUrl !== undefined) {
+                    updatedAward.documentUrl = existingAward.documentUrl || null
+                }
+                if (existingAward?.documentStoragePath !== undefined) {
+                    updatedAward.documentStoragePath = existingAward.documentStoragePath || null
+                }
+                if (existingAward?.documentFileName !== undefined) {
+                    updatedAward.documentFileName = existingAward.documentFileName || null
+                }
+                
                 updatedAwards = existingAwards.map(a => 
-                    a.id === editingAwardId 
-                        ? { 
-                            ...a, 
-                            ...newAward, 
-                            id: editingAwardId,
-                            // Preserve document info
-                            documentUrl: a.documentUrl,
-                            documentStoragePath: a.documentStoragePath,
-                            documentFileName: a.documentFileName,
-                        }
-                        : a
+                    a.id === editingAwardId ? removeUndefined(updatedAward) : a
                 )
             } else {
                 // Add new award
@@ -705,6 +788,40 @@ const StakeholderDetail = () => {
                     totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                     reinsRole: data.reinsRole || 'User',
                 })
+            }
+
+            // If this award was finalized, notify the linked Bolt user (if any)
+            if (status === 'finalized' && currentData.data?.linkedUserId) {
+                try {
+                    const linkedUserId = currentData.data.linkedUserId
+                    // Find the finalized award we just saved
+                    const finalizedAward = updatedAwards.find(a => (editingAwardId ? a.id === editingAwardId : a.id === newAward.id))
+
+                    let estimatedPayout = 0
+                    if (finalizedAward) {
+                        const payouts = calculateAwardPayouts(finalizedAward)
+                        estimatedPayout = payouts.reduce((sum, p) => sum + p.payout, 0)
+                    }
+
+                    await createNotification({
+                        userId: linkedUserId,
+                        type: NOTIFICATION_TYPES.PROFIT_SHARING,
+                        title: 'New profit sharing award',
+                        message: estimatedPayout > 0
+                            ? `A profit sharing award has been finalized for you. Current estimated total payout is ${formatCurrency(estimatedPayout)} based on existing profit entries.`
+                            : 'A profit sharing award has been finalized for you. You can view details in the Profit Sharing section.',
+                        entityType: 'profit_sharing',
+                        entityId: stakeholderId,
+                        relatedUserId: user?.id || user?.uid || null,
+                        metadata: {
+                            stakeholderId,
+                            awardId: editingAwardId || newAward.id,
+                            estimatedPayout,
+                        },
+                    })
+                } catch (notifyError) {
+                    console.error('Error creating profit sharing award notification:', notifyError)
+                }
             }
 
             // Notify stakeholders list to refresh
@@ -749,14 +866,19 @@ const StakeholderDetail = () => {
         { key: 'details', label: 'Details' },
     ]
 
-    const sidebarItems = [
-        { key: 'overview', label: 'Overview', icon: <HiOutlineHome /> },
-        { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText /> },
-        { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers /> },
-        { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar /> },
-        { key: 'milestones', label: 'Milestones', icon: <HiOutlineFlag /> },
-        { key: 'settings', label: 'Settings', icon: <HiOutlineCog /> },
+    const allSidebarItems = [
+        { key: 'overview', label: 'Overview', icon: <HiOutlineHome />, adminOnly: true },
+        { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
+        { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers />, adminOnly: false },
+        { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar />, adminOnly: true },
+        { key: 'milestones', label: 'Milestones', icon: <HiOutlineFlag />, adminOnly: true },
+        { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
+    
+    // Filter sidebar items based on role - regular users should not see other tabs
+    const sidebarItems = isAdmin 
+        ? allSidebarItems 
+        : allSidebarItems.filter(item => item.key === 'stakeholders')
 
     return (
         <div className="flex min-h-screen bg-white dark:bg-gray-900">
@@ -818,7 +940,7 @@ const StakeholderDetail = () => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{stakeholder.name}</h2>
-                {activeTab === 'profit' && (
+                {activeTab === 'profit' && isAdmin && (
                     <Button
                         variant="solid"
                         icon={<HiOutlinePlus />}
@@ -859,7 +981,7 @@ const StakeholderDetail = () => {
                                     <HiOutlineInformationCircle className="w-4 h-4 text-gray-400 cursor-help" />
                                     <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 pointer-events-none">
                                         <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 w-64 shadow-lg">
-                                            This is an estimate based on previous performance and latest progress updates. Actual payment amount will vary once finalized by a Reins administrator.
+                                            This is an estimate based on previous performance and latest progress updates. Actual payment amount will vary once finalized by an administrator.
                                         </div>
                                     </div>
                                 </div>
@@ -877,21 +999,94 @@ const StakeholderDetail = () => {
                                         )
                                     }
                                     
-                                    // Find the next award that hasn't been fully paid out
-                                    const today = new Date()
-                                    const nextAward = stakeholder.profitAwards
-                                        .filter(award => {
-                                            const endDate = award.awardEndDate ? new Date(award.awardEndDate) : null
-                                            return endDate && endDate <= today
-                                        })
-                                        .sort((a, b) => {
-                                            const aDate = a.awardEndDate ? new Date(a.awardEndDate).getTime() : 0
-                                            const bDate = b.awardEndDate ? new Date(b.awardEndDate).getTime() : 0
-                                            return bDate - aDate // Most recent first
-                                        })[0]
+                                    // Calculate estimated payout using latest valuation's price per share
+                                    // For each active award, find the latest valuation and calculate: shares × price per share
+                                    let totalEstimatedPayout = 0
+                                    let nextPaymentDate = null
+                                    let hasActiveAwards = false
+                                    let debugInfo = [] // For debugging
                                     
-                                    if (!nextAward) {
-                                        // Find the next upcoming award
+                                    const today = new Date()
+                                    today.setHours(0, 0, 0, 0)
+                                    
+                                    // Get the latest/active valuation overall (fallback if plan-specific not found)
+                                    const latestValuationOverall = valuations.length > 0
+                                        ? valuations.sort((a, b) => {
+                                            const aDate = a.valuationDate?.getTime() || 0
+                                            const bDate = b.valuationDate?.getTime() || 0
+                                            return bDate - aDate // Most recent first
+                                          })[0]
+                                        : null
+                                    
+                                    stakeholder.profitAwards.forEach(award => {
+                                        if (!award.sharesIssued || award.sharesIssued === 0) {
+                                            debugInfo.push(`Award ${award.id}: No shares issued`)
+                                            return
+                                        }
+                                        
+                                        // Try to find valuation for this specific plan first
+                                        let latestValuation = null
+                                        if (award.planId) {
+                                            const planValuations = valuations
+                                                .filter(v => v.planId === award.planId)
+                                                .sort((a, b) => {
+                                                    const aDate = a.valuationDate?.getTime() || 0
+                                                    const bDate = b.valuationDate?.getTime() || 0
+                                                    return bDate - aDate // Most recent first
+                                                })
+                                            
+                                            if (planValuations.length > 0) {
+                                                latestValuation = planValuations[0]
+                                            }
+                                        }
+                                        
+                                        // Fallback to latest valuation overall if no plan-specific one found
+                                        if (!latestValuation && latestValuationOverall) {
+                                            latestValuation = latestValuationOverall
+                                        }
+                                        
+                                        if (latestValuation) {
+                                            // Calculate price per share
+                                            const pricePerShare = latestValuation.pricePerShare || 
+                                                (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
+                                                    ? latestValuation.profitAmount / latestValuation.totalShares 
+                                                    : 0)
+                                            
+                                            if (pricePerShare > 0) {
+                                                const awardPayout = (award.sharesIssued || 0) * pricePerShare
+                                                totalEstimatedPayout += awardPayout
+                                                hasActiveAwards = true
+                                                
+                                                debugInfo.push(`Award ${award.id}: ${award.sharesIssued} shares × $${pricePerShare.toFixed(2)} = $${awardPayout.toFixed(2)}`)
+                                                
+                                                // Track the next payment date (award end date if it's upcoming)
+                                                if (award.awardEndDate) {
+                                                    const endDate = new Date(award.awardEndDate)
+                                                    endDate.setHours(0, 0, 0, 0)
+                                                    if (endDate >= today && (!nextPaymentDate || endDate < nextPaymentDate)) {
+                                                        nextPaymentDate = endDate
+                                                    }
+                                                }
+                                            } else {
+                                                debugInfo.push(`Award ${award.id}: Price per share is 0 (profit: ${latestValuation.profitAmount}, shares: ${latestValuation.totalShares})`)
+                                            }
+                                        } else {
+                                            debugInfo.push(`Award ${award.id}: No valuation found (planId: ${award.planId}, total valuations: ${valuations.length})`)
+                                        }
+                                    })
+                                    
+                                    // Log debug info to console for troubleshooting
+                                    if (debugInfo.length > 0) {
+                                        console.log('Next Estimated Profit Payment calculation:', {
+                                            totalAwards: stakeholder.profitAwards.length,
+                                            totalValuations: valuations.length,
+                                            debugInfo,
+                                            totalEstimatedPayout
+                                        })
+                                    }
+                                    
+                                    if (!hasActiveAwards || totalEstimatedPayout === 0) {
+                                        // Check if there are upcoming awards without valuations yet
                                         const upcomingAward = stakeholder.profitAwards
                                             .filter(award => {
                                                 const endDate = award.awardEndDate ? new Date(award.awardEndDate) : null
@@ -919,25 +1114,21 @@ const StakeholderDetail = () => {
                                             <>
                                                 <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
                                                 <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                    No upcoming payments
+                                                    No valuations available yet
                                                 </div>
                                             </>
                                         )
                                     }
                                     
-                                    // Calculate estimated payout for the next award
-                                    const payouts = calculateAwardPayouts(nextAward)
-                                    const totalPayout = payouts.reduce((sum, p) => sum + p.payout, 0)
-                                    const endDate = nextAward.awardEndDate ? new Date(nextAward.awardEndDate) : null
-                                    
                                     return (
                                         <>
                                             <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(totalPayout)}
+                                                {formatCurrency(totalEstimatedPayout)}
                                             </div>
                                             <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                {nextAward.status === 'Finalized' ? 'Finalized' : 'To be paid'}
-                                                {endDate && ` - ${endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`}
+                                                {nextPaymentDate 
+                                                    ? `Estimated - ${nextPaymentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                                                    : 'Based on latest valuation'}
                                             </div>
                                         </>
                                     )
@@ -1042,22 +1233,27 @@ const StakeholderDetail = () => {
                                                         )}
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <div className="flex items-center gap-2">
-                                                            <Button
-                                                                variant="plain"
-                                                                size="sm"
-                                                                icon={<HiOutlineTrash />}
-                                                                onClick={() => handleDeleteAward(award.id)}
-                                                                className="text-gray-400 hover:text-red-500"
-                                                            />
-                                                            <Button
-                                                                variant="plain"
-                                                                size="sm"
-                                                                icon={<HiOutlinePencil />}
-                                                                onClick={() => handleEditAward(award)}
-                                                                className="text-gray-400 hover:text-primary"
-                                                            />
-                                                        </div>
+                                                        {isAdmin && (
+                                                            <div className="flex items-center gap-2">
+                                                                <Button
+                                                                    variant="plain"
+                                                                    size="sm"
+                                                                    icon={<HiOutlineTrash />}
+                                                                    onClick={() => handleDeleteAward(award.id)}
+                                                                    className="text-gray-400 hover:text-red-500"
+                                                                />
+                                                                <Button
+                                                                    variant="plain"
+                                                                    size="sm"
+                                                                    icon={<HiOutlinePencil />}
+                                                                    onClick={() => handleEditAward(award)}
+                                                                    className="text-gray-400 hover:text-primary"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {!isAdmin && (
+                                                            <span className="text-xs text-gray-400">View only</span>
+                                                        )}
                                                     </Table.Td>
                                                 </Table.Tr>
                                                 {isExpanded && payouts.length > 0 && (
@@ -1155,6 +1351,8 @@ const StakeholderDetail = () => {
                                         value={detailsFormData.name}
                                         onChange={(e) => setDetailsFormData(prev => ({ ...prev, name: e.target.value }))}
                                         placeholder="Full legal name"
+                                        disabled={!isAdmin}
+                                        className={!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}
                                     />
                                 </div>
                                 
@@ -1164,6 +1362,8 @@ const StakeholderDetail = () => {
                                         value={detailsFormData.title}
                                         onChange={(e) => setDetailsFormData(prev => ({ ...prev, title: e.target.value }))}
                                         placeholder="Their role in the company"
+                                        disabled={!isAdmin}
+                                        className={!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}
                                     />
                                 </div>
                                 
@@ -1174,6 +1374,8 @@ const StakeholderDetail = () => {
                                         value={detailsFormData.email}
                                         onChange={(e) => setDetailsFormData(prev => ({ ...prev, email: e.target.value }))}
                                         placeholder="Email address"
+                                        disabled={!isAdmin}
+                                        className={!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}
                                     />
                                 </div>
                                 
@@ -1191,7 +1393,8 @@ const StakeholderDetail = () => {
                                                 setDetailsFormData(prev => ({ ...prev, phone: sanitized }))
                                             }}
                                             placeholder="Phone number"
-                                            className="rounded-l-none flex-1"
+                                            className={`rounded-l-none flex-1 ${!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}`}
+                                            disabled={!isAdmin}
                                         />
                                     </div>
                                 </div>
@@ -1216,6 +1419,7 @@ const StakeholderDetail = () => {
                                         } : null}
                                         onChange={(opt) => setDetailsFormData(prev => ({ ...prev, employmentStatus: opt?.value || null }))}
                                         placeholder="Select..."
+                                        isDisabled={!isAdmin}
                                     />
                                 </div>
                                 
@@ -1232,6 +1436,7 @@ const StakeholderDetail = () => {
                                         } : null}
                                         onChange={(opt) => setDetailsFormData(prev => ({ ...prev, payType: opt?.value || null }))}
                                         placeholder="Select..."
+                                        isDisabled={!isAdmin}
                                     />
                                 </div>
                                 
@@ -1251,7 +1456,8 @@ const StakeholderDetail = () => {
                                                 setDetailsFormData(prev => ({ ...prev, payAmount: value }))
                                             }}
                                             placeholder="0"
-                                            className="pl-8"
+                                            className={`pl-8 ${!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}`}
+                                            disabled={!isAdmin}
                                         />
                                     </div>
                                 </div>
@@ -1277,21 +1483,31 @@ const StakeholderDetail = () => {
                                         value={reinsRole ? { value: reinsRole, label: reinsRole } : null}
                                         onChange={(opt) => setReinsRole(opt?.value || 'User')}
                                         placeholder="Select..."
+                                        isDisabled={!isAdmin}
                                     />
                                 </div>
                             </div>
                             
-                            <div className="mt-6 flex justify-end">
-                                <Button
-                                    variant="solid"
-                                    onClick={async () => {
-                                        await handleSaveDetails()
-                                        await handleSavePermissions()
-                                    }}
-                                >
-                                    Save details
-                                </Button>
-                            </div>
+                            {isAdmin && (
+                                <div className="mt-6 flex justify-end">
+                                    <Button
+                                        variant="solid"
+                                        onClick={async () => {
+                                            await handleSaveDetails()
+                                            await handleSavePermissions()
+                                        }}
+                                    >
+                                        Save details
+                                    </Button>
+                                </div>
+                            )}
+                            {!isAdmin && (
+                                <div className="mt-6 flex justify-end">
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                        View only - Contact an administrator to make changes
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </Card>
                 </div>
@@ -1347,8 +1563,8 @@ const StakeholderDetail = () => {
                                     />
                                 </div>
                                 
-                                {/* Finalize Award button - only show if plan is draft */}
-                                {selectedPlan && selectedPlan.status === 'draft' && editingAward.status !== 'Finalized' && (
+                                {/* Finalize Award button - only show if plan is draft and user is admin */}
+                                {isAdmin && selectedPlan && selectedPlan.status === 'draft' && editingAward.status !== 'Finalized' && (
                                     <Button
                                         variant="solid"
                                         icon={<HiOutlineCheckCircle />}
@@ -1579,42 +1795,51 @@ const StakeholderDetail = () => {
                         )}
                     </div>
 
-                    {/* Footer Buttons */}
-                    <div className="border-t border-gray-200 dark:border-gray-700 p-6 flex items-center justify-between">
-                        {editingAwardId && (
-                            <Button
-                                variant="solid"
-                                color="red-600"
-                                onClick={async () => {
-                                    if (window.confirm('Are you sure you want to delete this draft award?')) {
-                                        await handleDeleteAward(editingAwardId)
-                                        setShowNewAwardDrawer(false)
-                                        setEditingAwardId(null)
-                                        setEditingAward(null)
-                                    }
-                                }}
-                            >
-                                Delete Draft
-                            </Button>
-                        )}
-                        <div className="flex items-center gap-3 ml-auto">
-                            <Button
-                                variant="twoTone"
-                                icon={<HiOutlinePencil />}
-                                onClick={() => handleSaveAward('draft')}
-                            >
-                                Save draft
-                            </Button>
-                            <Button
-                                variant="solid"
-                                icon={<HiOutlineCheckCircle />}
-                                onClick={() => handleSaveAward('finalized')}
-                                disabled={!isAwardFormComplete()}
-                            >
-                                Finalize
-                            </Button>
+                    {/* Footer Buttons - Only show for admins */}
+                    {isAdmin && (
+                        <div className="border-t border-gray-200 dark:border-gray-700 p-6 flex items-center justify-between">
+                            {editingAwardId && (
+                                <Button
+                                    variant="solid"
+                                    color="red-600"
+                                    onClick={async () => {
+                                        if (window.confirm('Are you sure you want to delete this draft award?')) {
+                                            await handleDeleteAward(editingAwardId)
+                                            setShowNewAwardDrawer(false)
+                                            setEditingAwardId(null)
+                                            setEditingAward(null)
+                                        }
+                                    }}
+                                >
+                                    Delete Draft
+                                </Button>
+                            )}
+                            <div className="flex items-center gap-3 ml-auto">
+                                <Button
+                                    variant="twoTone"
+                                    icon={<HiOutlinePencil />}
+                                    onClick={() => handleSaveAward('draft')}
+                                >
+                                    Save draft
+                                </Button>
+                                <Button
+                                    variant="solid"
+                                    icon={<HiOutlineCheckCircle />}
+                                    onClick={() => handleSaveAward('finalized')}
+                                    disabled={!isAwardFormComplete()}
+                                >
+                                    Finalize
+                                </Button>
+                            </div>
                         </div>
-                    </div>
+                    )}
+                    {!isAdmin && (
+                        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+                            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                                View only - Contact an administrator to make changes
+                            </div>
+                        </div>
+                    )}
                 </div>
             </Drawer>
 

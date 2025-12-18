@@ -8,6 +8,7 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy } from 'firebase/firestore'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { useSessionUser } from '@/store/authStore'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -33,6 +34,7 @@ const getInitials = (name) => {
 
 const StakeholdersTab = ({ isAdmin = true }) => {
     const navigate = useNavigate()
+    const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
     const [showAddModal, setShowAddModal] = useState(false)
     const [activeFilter, setActiveFilter] = useState('all')
@@ -96,12 +98,26 @@ const StakeholdersTab = ({ isAdmin = true }) => {
             const response = await FirebaseDbService.stakeholders.getAll()
             if (response.success) {
                 // Convert Firestore timestamps and format data
-                const formattedStakeholders = response.data.map(stakeholder => ({
+                let formattedStakeholders = response.data.map(stakeholder => ({
                     ...stakeholder,
                     // Handle Firestore Timestamp objects
                     createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
                     updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
                 }))
+                
+                // Filter by companyId
+                formattedStakeholders = formattedStakeholders.filter(
+                    stakeholder => stakeholder.companyId === selectedCompanyId
+                )
+                
+                // For regular users, only show their own stakeholder record
+                if (!isAdmin) {
+                    const currentUserId = user?.id || user?.uid
+                    formattedStakeholders = formattedStakeholders.filter(
+                        stakeholder => stakeholder.linkedUserId === currentUserId
+                    )
+                }
+                
                 setStakeholders(formattedStakeholders)
             } else {
                 console.error('Error loading stakeholders:', response.error)

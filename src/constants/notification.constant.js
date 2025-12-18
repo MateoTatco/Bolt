@@ -22,6 +22,10 @@ export const NOTIFICATION_TYPES = {
     
     // System notifications
     SYSTEM: 'system',
+
+    // Profit sharing notifications
+    PROFIT_SHARING: 'profit_sharing',
+    PROFIT_SHARING_ADMIN: 'profit_sharing_admin',
 }
 
 // Entity Types
@@ -46,6 +50,8 @@ export const NOTIFICATION_ICONS = {
     [NOTIFICATION_TYPES.ATTACHMENT_DELETED]: 'HiOutlineTrash',
     [NOTIFICATION_TYPES.ACTIVITY_ADDED]: 'HiOutlineClock',
     [NOTIFICATION_TYPES.SYSTEM]: 'HiOutlineBell',
+    [NOTIFICATION_TYPES.PROFIT_SHARING]: 'HiOutlineChartBar',
+    [NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN]: 'HiOutlineCog',
 }
 
 // Notification Colors Mapping
@@ -63,5 +69,7 @@ export const NOTIFICATION_COLORS = {
     [NOTIFICATION_TYPES.ATTACHMENT_DELETED]: 'red',
     [NOTIFICATION_TYPES.ACTIVITY_ADDED]: 'gray',
     [NOTIFICATION_TYPES.SYSTEM]: 'gray',
+    [NOTIFICATION_TYPES.PROFIT_SHARING]: 'indigo',
+    [NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN]: 'purple',
 }
 

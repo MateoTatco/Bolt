@@ -13,6 +13,7 @@ import { storage } from '@/configs/firebase.config'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth } from 'firebase/auth'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
 
 const Profile = () => {
     const navigate = useNavigate()
@@ -42,6 +43,9 @@ const Profile = () => {
     // Notification preferences state
     const [notificationPreferences, setNotificationPreferences] = useState({})
     const [isSavingPreferences, setIsSavingPreferences] = useState(false)
+
+    // Profit sharing access (to conditionally show related notification settings)
+    const { hasAccess: hasProfitSharingAccess, userRole: profitSharingUserRole } = useProfitSharingAccess()
     
     // Time-based notification settings
     const timeOptions = [
@@ -1047,6 +1051,59 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Profit Sharing Notifications (visible only if user has access) */}
+                                    {hasProfitSharingAccess && (
+                                        <div className="mb-6 md:mb-8">
+                                            <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">
+                                                Profit Sharing
+                                            </h2>
+                                            <div className="space-y-3 md:space-y-4">
+                                                <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">
+                                                            Profit Sharing updates
+                                                        </p>
+                                                        <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                                                            Get notified when you are added to Profit Sharing, awards are set up for you, and upcoming payouts are updated.
+                                                        </p>
+                                                    </div>
+                                                    <Switcher
+                                                        checked={notificationPreferences[NOTIFICATION_TYPES.PROFIT_SHARING] !== false}
+                                                        onChange={(checked) =>
+                                                            handleNotificationPreferenceChange(
+                                                                NOTIFICATION_TYPES.PROFIT_SHARING,
+                                                                checked
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
+                                                
+                                                {/* Admin-only Profit Sharing notifications */}
+                                                {profitSharingUserRole === 'admin' && (
+                                                    <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">
+                                                                Profit Sharing (Admin)
+                                                            </p>
+                                                            <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                                                                Get notified about new valuations, payment date reminders, new plans, and user access changes.
+                                                            </p>
+                                                        </div>
+                                                        <Switcher
+                                                            checked={notificationPreferences[NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN] !== false}
+                                                            onChange={(checked) =>
+                                                                handleNotificationPreferenceChange(
+                                                                    NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN,
+                                                                    checked
+                                                                )
+                                                            }
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <FormItem>
                                         <div className="flex justify-end">

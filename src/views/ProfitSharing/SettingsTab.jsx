@@ -8,6 +8,8 @@ import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessCont
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 
 const DEFAULT_COMPANY_NAME = 'Tatco OKC'
 
@@ -328,10 +330,62 @@ const SettingsTab = () => {
             
             if (editingAccess) {
                 // Update existing
+                const oldRole = editingAccess.role
                 const result = await FirebaseDbService.profitSharingAccess.update(editingAccess.id, {
                     role: userFormData.role
                 })
                 if (result.success) {
+                    // Notify admins if role changed
+                    if (oldRole !== userFormData.role) {
+                        try {
+                            // Get all admins (super admins + profit sharing admins)
+                            const allUsersResult = await FirebaseDbService.users.getAll()
+                            const allUsers = allUsersResult.success ? allUsersResult.data : []
+                            
+                            // Get profit sharing access records to find admins
+                            const accessResult = await FirebaseDbService.profitSharingAccess.getAll()
+                            const accessRecords = accessResult.success ? accessResult.data : []
+                            
+                            // Find admin user IDs
+                            const adminUserIds = new Set()
+                            allUsers.forEach(u => {
+                                const email = u.email?.toLowerCase()
+                                if (email === 'admin-01@tatco.construction' || email === 'brett@tatco.construction') {
+                                    adminUserIds.add(u.id)
+                                }
+                            })
+                            accessRecords.forEach(access => {
+                                if (access.role === 'admin' && access.companyId === selectedCompanyId && access.userId !== editingAccess.userId) {
+                                    adminUserIds.add(access.userId)
+                                }
+                            })
+                            
+                            const userName = editingAccess.userName || selectedUser?.name || 'Unknown User'
+                            
+                            // Notify all admins
+                            await Promise.all(
+                                Array.from(adminUserIds).map(adminId =>
+                                    createNotification({
+                                        userId: adminId,
+                                        type: NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN,
+                                        title: 'User Role Changed',
+                                        message: `${userName}'s role has been changed from ${oldRole} to ${userFormData.role}.`,
+                                        entityType: 'profit_sharing',
+                                        entityId: selectedCompanyId,
+                                        metadata: {
+                                            userId: editingAccess.userId,
+                                            userName,
+                                            oldRole,
+                                            newRole: userFormData.role,
+                                        }
+                                    })
+                                )
+                            )
+                        } catch (notifError) {
+                            console.error('Error notifying admins about role change:', notifError)
+                        }
+                    }
+                    
                     toast.push(
                         <Notification type="success" duration={2000} title="Success">
                             Access updated successfully
@@ -365,6 +419,26 @@ const SettingsTab = () => {
                     addedBy: user?.id || user?.uid
                 })
                 if (result.success) {
+                    // Notify the user that they have been granted access to Profit Sharing
+                    try {
+                        await createNotification({
+                            userId: userFormData.userId,
+                            type: NOTIFICATION_TYPES.PROFIT_SHARING,
+                            title: 'You have been added to Profit Sharing',
+                            message: `You now have access to the Profit Sharing section for this company.`,
+                            entityType: 'profit_sharing',
+                            entityId: selectedCompanyId,
+                            relatedUserId: user?.id || user?.uid || null,
+                            metadata: {
+                                companyId: selectedCompanyId,
+                                role: userFormData.role,
+                            },
+                        })
+                    } catch (notifyError) {
+                        // Log but don't block main flow
+                        console.error('Error creating profit sharing access notification:', notifyError)
+                    }
+
                     toast.push(
                         <Notification type="success" duration={2000} title="Success">
                             User added successfully

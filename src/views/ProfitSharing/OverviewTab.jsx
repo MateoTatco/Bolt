@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Card, Button, Avatar, Tag } from '@/components/ui'
 import { HiOutlineLockClosed, HiOutlineUsers } from 'react-icons/hi'
@@ -6,6 +6,8 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 
 const getInitials = (name) => {
     if (!name) return ''
@@ -72,6 +74,9 @@ const OverviewTab = () => {
     }, 0)
 
     const estimatedValuation = companyValuation
+
+    // Track which payment date reminders have been sent (to avoid duplicates)
+    const paymentRemindersSentRef = useRef(new Set())
 
     // Load stakeholders and valuation from Firebase
     useEffect(() => {
@@ -239,10 +244,20 @@ const OverviewTab = () => {
             const q = query(plansRef, orderBy('name'))
             const snapshot = await getDocs(q)
             const plansData = snapshot.docs
-                .map(docSnap => ({
-                    id: docSnap.id,
-                    ...docSnap.data(),
-                }))
+                .map(docSnap => {
+                    const data = docSnap.data()
+                    // Convert payment schedule dates
+                    const paymentScheduleDates = Array.isArray(data.paymentScheduleDates)
+                        ? data.paymentScheduleDates
+                              .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
+                              .filter(Boolean)
+                        : []
+                    return {
+                        id: docSnap.id,
+                        ...data,
+                        paymentScheduleDates,
+                    }
+                })
                 .filter(plan => plan.companyId === selectedCompanyId)
             setPlans(plansData)
         } catch (error) {
@@ -252,6 +267,107 @@ const OverviewTab = () => {
             setLoadingPlans(false)
         }
     }
+
+    // Check for upcoming payment dates and notify admins
+    useEffect(() => {
+        if (!selectedCompanyId || plans.length === 0) return
+
+        const checkPaymentDates = async () => {
+            try {
+                const today = new Date()
+                today.setHours(0, 0, 0, 0)
+                
+                // Check dates 14 days and 3 days in advance
+                const reminderDays = [14, 3]
+                const upcomingDates = []
+                
+                plans.forEach(plan => {
+                    if (!plan.paymentScheduleDates || plan.paymentScheduleDates.length === 0) return
+                    
+                    plan.paymentScheduleDates.forEach(paymentDate => {
+                        if (!paymentDate) return
+                        const date = paymentDate instanceof Date ? paymentDate : new Date(paymentDate)
+                        date.setHours(0, 0, 0, 0)
+                        
+                        reminderDays.forEach(days => {
+                            const reminderDate = new Date(today)
+                            reminderDate.setDate(reminderDate.getDate() + days)
+                            
+                            // Check if this payment date matches the reminder date
+                            if (date.getTime() === reminderDate.getTime()) {
+                                const reminderKey = `${plan.id}-${date.toISOString()}-${days}`
+                                if (!paymentRemindersSentRef.current.has(reminderKey)) {
+                                    upcomingDates.push({
+                                        planId: plan.id,
+                                        planName: plan.name || 'Unnamed Plan',
+                                        paymentDate: date,
+                                        daysUntil: days,
+                                        reminderKey,
+                                    })
+                                }
+                            }
+                        })
+                    })
+                })
+                
+                if (upcomingDates.length === 0) return
+                
+                // Get all admins
+                const allUsersResult = await FirebaseDbService.users.getAll()
+                const allUsers = allUsersResult.success ? allUsersResult.data : []
+                
+                const accessResult = await FirebaseDbService.profitSharingAccess.getAll()
+                const accessRecords = accessResult.success ? accessResult.data : []
+                
+                // Find admin user IDs
+                const adminUserIds = new Set()
+                allUsers.forEach(u => {
+                    const email = u.email?.toLowerCase()
+                    if (email === 'admin-01@tatco.construction' || email === 'brett@tatco.construction') {
+                        adminUserIds.add(u.id)
+                    }
+                })
+                accessRecords.forEach(access => {
+                    if (access.role === 'admin' && access.companyId === selectedCompanyId) {
+                        adminUserIds.add(access.userId)
+                    }
+                })
+                
+                // Notify admins about each upcoming payment date
+                await Promise.all(
+                    upcomingDates.flatMap(upcoming =>
+                        Array.from(adminUserIds).map(adminId =>
+                            createNotification({
+                                userId: adminId,
+                                type: NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN,
+                                title: 'Payment Date Approaching',
+                                message: `Payment date for "${upcoming.planName}" is in ${upcoming.daysUntil} day${upcoming.daysUntil > 1 ? 's' : ''}. Set the profit entry and prepare payouts.`,
+                                entityType: 'profit_sharing',
+                                entityId: selectedCompanyId,
+                                metadata: {
+                                    planId: upcoming.planId,
+                                    planName: upcoming.planName,
+                                    paymentDate: upcoming.paymentDate.toISOString(),
+                                    daysUntil: upcoming.daysUntil,
+                                }
+                            }).then(() => {
+                                // Mark as sent
+                                paymentRemindersSentRef.current.add(upcoming.reminderKey)
+                            })
+                        )
+                    )
+                )
+            } catch (error) {
+                console.error('Error checking payment dates:', error)
+            }
+        }
+        
+        // Check immediately and then every hour
+        checkPaymentDates()
+        const interval = setInterval(checkPaymentDates, 60 * 60 * 1000) // 1 hour
+        
+        return () => clearInterval(interval)
+    }, [plans, selectedCompanyId])
 
     // Show message if no company is selected
     if (!loadingCompany && !selectedCompanyId) {

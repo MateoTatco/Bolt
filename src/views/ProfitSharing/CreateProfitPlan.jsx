@@ -6,6 +6,9 @@ import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, addDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 // Authorized emails that can access Profit Sharing
 const AUTHORIZED_EMAILS = [
@@ -300,6 +303,57 @@ const CreateProfitPlan = () => {
                     {status === 'finalized' ? 'Plan finalized successfully' : 'Plan saved as draft'}
                 </Notification>
             )
+            
+            // Notify admins when plan is finalized
+            if (status === 'finalized') {
+                try {
+                    const planName = formData.name || 'Unnamed Plan'
+                    
+                    // Get all admins (super admins + profit sharing admins)
+                    const allUsersResult = await FirebaseDbService.users.getAll()
+                    const allUsers = allUsersResult.success ? allUsersResult.data : []
+                    
+                    // Get profit sharing access records to find admins
+                    const accessResult = await FirebaseDbService.profitSharingAccess.getAll()
+                    const accessRecords = accessResult.success ? accessResult.data : []
+                    
+                    // Find admin user IDs
+                    const adminUserIds = new Set()
+                    allUsers.forEach(u => {
+                        const email = u.email?.toLowerCase()
+                        if (email === 'admin-01@tatco.construction' || email === 'brett@tatco.construction') {
+                            adminUserIds.add(u.id)
+                        }
+                    })
+                    accessRecords.forEach(access => {
+                        if (access.role === 'admin' && access.companyId === selectedCompanyId) {
+                            adminUserIds.add(access.userId)
+                        }
+                    })
+                    
+                    // Notify all admins
+                    await Promise.all(
+                        Array.from(adminUserIds).map(adminId =>
+                            createNotification({
+                                userId: adminId,
+                                type: NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN,
+                                title: 'Profit Plan Finalized',
+                                message: `The profit plan "${planName}" has been finalized and is ready for use.`,
+                                entityType: 'profit_sharing',
+                                entityId: selectedCompanyId,
+                                metadata: {
+                                    planId: planId || (planId ? planId : null),
+                                    planName,
+                                    companyId: selectedCompanyId,
+                                }
+                            })
+                        )
+                    )
+                } catch (notifError) {
+                    console.error('Error notifying admins about finalized plan:', notifError)
+                }
+            }
+            
             window.dispatchEvent(new Event('plansUpdated'))
             navigate('/profit-sharing?tab=plans')
         } catch (error) {

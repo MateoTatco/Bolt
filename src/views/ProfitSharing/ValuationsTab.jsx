@@ -6,6 +6,9 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
 import React from 'react'
 import Chart from '@/components/shared/Chart'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -347,6 +350,62 @@ const ValuationsTab = () => {
                         "Valuation added successfully"
                     )
                 )
+                
+                // Notify admins about new valuation
+                try {
+                    const selectedPlan = plans.find(p => p.id === formData.planId)
+                    const planName = selectedPlan?.name || 'Unknown Plan'
+                    const profitFormatted = new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                    }).format(profitValue)
+                    
+                    // Get all admins (super admins + profit sharing admins)
+                    const allUsersResult = await FirebaseDbService.users.getAll()
+                    const allUsers = allUsersResult.success ? allUsersResult.data : []
+                    
+                    // Get profit sharing access records to find admins
+                    const accessResult = await FirebaseDbService.profitSharingAccess.getAll()
+                    const accessRecords = accessResult.success ? accessResult.data : []
+                    
+                    // Find admin user IDs
+                    const adminUserIds = new Set()
+                    allUsers.forEach(u => {
+                        const email = u.email?.toLowerCase()
+                        if (email === 'admin-01@tatco.construction' || email === 'brett@tatco.construction') {
+                            adminUserIds.add(u.id)
+                        }
+                    })
+                    accessRecords.forEach(access => {
+                        if (access.role === 'admin' && access.companyId === selectedCompanyId) {
+                            adminUserIds.add(access.userId)
+                        }
+                    })
+                    
+                    // Notify all admins
+                    await Promise.all(
+                        Array.from(adminUserIds).map(adminId =>
+                            createNotification({
+                                userId: adminId,
+                                type: NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN,
+                                title: 'New Profit Entry Created',
+                                message: `A new profit entry of ${profitFormatted} has been added for ${planName}.`,
+                                entityType: 'profit_sharing',
+                                entityId: selectedCompanyId,
+                                metadata: {
+                                    planId: formData.planId,
+                                    planName,
+                                    profitAmount: profitValue,
+                                    valuationDate: valuationData.valuationDate,
+                                }
+                            })
+                        )
+                    )
+                } catch (notifError) {
+                    console.error('Error notifying admins about new valuation:', notifError)
+                }
             }
 
             await loadValuations()

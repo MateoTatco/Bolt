@@ -11,7 +11,9 @@ import {
     HiOutlineTrash,
     HiOutlinePaperClip,
     HiOutlineBell,
-    HiOutlineX
+    HiOutlineX,
+    HiOutlineChartBar,
+    HiOutlineCog
 } from 'react-icons/hi'
 import { NOTIFICATION_TYPES, NOTIFICATION_COLORS } from '@/constants/notification.constant'
 import { useNotificationStore } from '@/store/notificationStore'
@@ -31,6 +33,8 @@ const ICON_MAP = {
     [NOTIFICATION_TYPES.ATTACHMENT_DELETED]: HiOutlineTrash,
     [NOTIFICATION_TYPES.ACTIVITY_ADDED]: HiOutlineClock,
     [NOTIFICATION_TYPES.SYSTEM]: HiOutlineBell,
+    [NOTIFICATION_TYPES.PROFIT_SHARING]: HiOutlineChartBar,
+    [NOTIFICATION_TYPES.PROFIT_SHARING_ADMIN]: HiOutlineCog,
 }
 
 const COLOR_CLASSES = {
@@ -103,11 +107,32 @@ const NotificationItem = ({ notification }) => {
                 path = `/clients/${notification.entityId}`
             } else if (notification.entityType === 'project') {
                 path = `/projects/${notification.entityId}`
+            } else if (notification.entityType === 'profit_sharing') {
+                // Handle profit sharing notifications
+                // If metadata has awardId, it's an award notification - use entityId (which is stakeholderId) or metadata.stakeholderId
+                // If metadata has awardId, navigate to stakeholder detail page
+                if (notification.metadata?.awardId) {
+                    const stakeholderId = notification.metadata?.stakeholderId || notification.entityId
+                    if (stakeholderId) {
+                        path = `/profit-sharing/stakeholder/${stakeholderId}`
+                    } else {
+                        path = '/profit-sharing?tab=overview'
+                    }
+                } else {
+                    // Access granted notification - navigate to overview
+                    path = '/profit-sharing?tab=overview'
+                }
             }
 
             if (path) {
                 navigate(path)
+            } else if (notification.type === 'profit_sharing' || notification.type === 'profit_sharing_admin') {
+                // Fallback: if it's a profit sharing notification but no entityId, go to overview
+                navigate('/profit-sharing?tab=overview')
             }
+        } else if (notification.type === 'profit_sharing' || notification.type === 'profit_sharing_admin') {
+            // If no entityType/entityId but it's a profit sharing notification, go to overview
+            navigate('/profit-sharing?tab=overview')
         }
     }
 
