@@ -48,6 +48,7 @@ const ValuationsTab = () => {
         milestoneAmount: '',
         pricePerShare: '',
         totalShares: '',
+        planPoolShareType: 'total', // Store plan's poolShareType for calculation
         notes: '',
     })
 
@@ -175,25 +176,39 @@ const ValuationsTab = () => {
                 if (selectedPlan) {
                     next.milestoneAmount = selectedPlan.milestoneAmount || selectedPlan.milestone || 0
                     next.totalShares = selectedPlan.totalShares || 0
+                    // Store poolShareType for calculation
+                    next.planPoolShareType = selectedPlan.poolShareType || 'total'
                     // Reset date when plan changes to force re-selection from that plan's schedule
                     next.valuationDate = null
                 } else {
                     next.milestoneAmount = ''
                     next.totalShares = ''
+                    next.planPoolShareType = 'total'
                     next.valuationDate = null
                 }
             }
 
-            // Recalculate price per share whenever profit or totalShares changes
-            if (['profitAmount', 'totalShares', 'planId'].includes(field)) {
+            // Recalculate price per share whenever profit, totalShares, milestoneAmount, or planId changes
+            if (['profitAmount', 'totalShares', 'milestoneAmount', 'planId'].includes(field)) {
                 const profitRaw = next.profitAmount
                 const totalSharesRaw = next.totalShares
+                const milestoneRaw = next.milestoneAmount
+                const poolShareType = next.planPoolShareType || 'total'
 
                 const profit = profitRaw ? parseFloat(String(profitRaw).replace(/,/g, '')) : 0
                 const total = totalSharesRaw ? parseFloat(String(totalSharesRaw).replace(/,/g, '')) : 0
+                const milestone = milestoneRaw ? parseFloat(String(milestoneRaw).replace(/,/g, '')) : 0
 
                 if (total > 0 && profit > 0) {
-                    const perShare = profit / total
+                    let perShare
+                    if (poolShareType === 'above-trigger') {
+                        // Formula: (profitAmount - milestoneAmount) / totalShares
+                        const profitAboveTrigger = Math.max(0, profit - milestone)
+                        perShare = profitAboveTrigger / total
+                    } else {
+                        // Formula: profitAmount / totalShares (default)
+                        perShare = profit / total
+                    }
                     next.pricePerShare = perShare.toFixed(2)
                 } else {
                     next.pricePerShare = ''
@@ -213,6 +228,7 @@ const ValuationsTab = () => {
             milestoneAmount: '',
             pricePerShare: '',
             totalShares: '',
+            planPoolShareType: 'total',
             notes: '',
         })
         setEditingValuation(null)
@@ -225,6 +241,10 @@ const ValuationsTab = () => {
 
     const handleOpenEdit = (valuation) => {
         setEditingValuation(valuation)
+
+        // Get plan's poolShareType for calculation
+        const selectedPlan = plans.find(p => p.id === valuation.planId)
+        const planPoolShareType = selectedPlan?.poolShareType || 'total'
 
         // Derive price per share if it's missing on older records
         const derivedPricePerShare =
@@ -242,6 +262,7 @@ const ValuationsTab = () => {
             milestoneAmount: valuation.milestoneAmount ? String(valuation.milestoneAmount) : '',
             pricePerShare: derivedPricePerShare ? String(derivedPricePerShare.toFixed(2)) : '',
             totalShares: valuation.totalShares ? String(valuation.totalShares) : '',
+            planPoolShareType: planPoolShareType,
             notes: valuation.notes || '',
         })
         setShowAddDrawer(true)
@@ -281,11 +302,21 @@ const ValuationsTab = () => {
                 ? parseFloat(String(formData.totalShares).replace(/,/g, ''))
                 : null
 
-            // Always compute price per share from profit and total shares
-            const pricePerShareValue =
-                profitValue && totalSharesValue && totalSharesValue > 0
-                    ? profitValue / totalSharesValue
-                    : null
+            // Compute price per share based on plan's poolShareType
+            const selectedPlan = plans.find(p => p.id === formData.planId)
+            const poolShareType = selectedPlan?.poolShareType || formData.planPoolShareType || 'total'
+            
+            let pricePerShareValue = null
+            if (profitValue && totalSharesValue && totalSharesValue > 0) {
+                if (poolShareType === 'above-trigger') {
+                    // Formula: (profitAmount - milestoneAmount) / totalShares
+                    const profitAboveTrigger = Math.max(0, profitValue - milestoneValue)
+                    pricePerShareValue = profitAboveTrigger / totalSharesValue
+                } else {
+                    // Formula: profitAmount / totalShares (default)
+                    pricePerShareValue = profitValue / totalSharesValue
+                }
+            }
 
             const valuationData = {
                 companyId: selectedCompanyId,
@@ -664,7 +695,7 @@ const ValuationsTab = () => {
                                     <Table.Th>Source</Table.Th>
                                     <Table.Th>Status</Table.Th>
                                     <Table.Th>Profit</Table.Th>
-                                    <Table.Th>Milestone</Table.Th>
+                                    <Table.Th>Trigger</Table.Th>
                                     <Table.Th>Price per Share</Table.Th>
                                     <Table.Th>Total Shares</Table.Th>
                                     <Table.Th>Plan</Table.Th>
@@ -884,7 +915,7 @@ const ValuationsTab = () => {
 
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Plan profit threshold (milestone)
+                                Plan profit threshold (trigger)
                             </label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
@@ -924,7 +955,14 @@ const ValuationsTab = () => {
                                 />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Automatically calculated as profit ÷ total shares.
+                                {(() => {
+                                    const selectedPlan = plans.find(p => p.id === formData.planId)
+                                    const poolShareType = selectedPlan?.poolShareType || formData.planPoolShareType || 'total'
+                                    if (poolShareType === 'above-trigger') {
+                                        return 'Automatically calculated as (profit - trigger amount) ÷ total shares.'
+                                    }
+                                    return 'Automatically calculated as profit ÷ total shares.'
+                                })()}
                             </p>
                         </div>
 

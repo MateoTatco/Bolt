@@ -156,11 +156,11 @@ const MilestonesTab = () => {
             <div className="space-y-6">
                 <div className="flex items-center space-x-3">
                     <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Milestones</h2>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Trigger Tracking</h2>
                 </div>
                 <Card className="p-6">
                     <div className="text-center py-12">
-                        <div className="text-gray-400 dark:text-gray-500 text-lg">Loading milestones...</div>
+                        <div className="text-gray-400 dark:text-gray-500 text-lg">Loading trigger data...</div>
                     </div>
                 </Card>
             </div>
@@ -172,7 +172,7 @@ const MilestonesTab = () => {
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                     <div className="w-1 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Milestones</h2>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Trigger Tracking</h2>
                 </div>
                 {plans.length > 0 && (
                     <div className="w-64">
@@ -188,9 +188,9 @@ const MilestonesTab = () => {
             {milestones.length === 0 ? (
                 <Card className="p-6">
                     <div className="text-center py-12">
-                        <div className="text-gray-400 dark:text-gray-500 text-lg">No milestones defined yet</div>
+                        <div className="text-gray-400 dark:text-gray-500 text-lg">No triggers defined yet</div>
                         <div className="text-gray-400 dark:text-gray-500 text-sm mt-2">
-                            Create profit plans with milestone amounts to track progress and trigger payouts
+                            Create profit plans with trigger amounts to track progress and trigger payouts
                         </div>
                     </div>
                 </Card>
@@ -200,7 +200,7 @@ const MilestonesTab = () => {
                         <Table.THead>
                             <Table.Tr>
                                 <Table.Th>Plan Name</Table.Th>
-                                <Table.Th>Milestone Amount</Table.Th>
+                                <Table.Th>Trigger Amount</Table.Th>
                                 <Table.Th>Current Progress</Table.Th>
                                 <Table.Th>Status</Table.Th>
                                 <Table.Th>Met Date</Table.Th>

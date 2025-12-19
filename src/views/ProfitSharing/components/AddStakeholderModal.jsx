@@ -184,35 +184,38 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
             onClose={onClose}
             width={600}
         >
-            <div className="p-6">
-                {/* Header */}
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <HiOutlineUserAdd className="w-5 h-5 text-primary" />
+            <div className="flex flex-col h-full max-h-[70vh] overflow-hidden">
+                {/* Header - Fixed */}
+                <div className="flex-shrink-0 p-6 pb-4">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <HiOutlineUserAdd className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add Stakeholder</h3>
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Add Stakeholder</h3>
+
+                    {/* Info Banner */}
+                    {showInfoBanner && (
+                        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-3">
+                            <HiOutlineInformationCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <p className="text-sm text-blue-800 dark:text-blue-200">
+                                    Adding a stakeholder does not notify them. Stakeholders are only notified after clicking "Finalize Award".
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowInfoBanner(false)}
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 flex-shrink-0"
+                            >
+                                <HiOutlineX className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
-                {/* Info Banner */}
-                {showInfoBanner && (
-                    <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-3">
-                        <HiOutlineInformationCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                            <p className="text-sm text-blue-800 dark:text-blue-200">
-                                Adding a stakeholder does not notify them. Stakeholders are only notified after clicking "Finalize Award".
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => setShowInfoBanner(false)}
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 flex-shrink-0"
-                        >
-                            <HiOutlineX className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-
-                {/* Form Fields */}
-                <div className="space-y-4">
+                {/* Form Fields - Scrollable */}
+                <div className="flex-1 overflow-y-auto px-6">
+                    <div className="space-y-4 pb-4">
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Select User (from Bolt)
@@ -324,10 +327,11 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                             />
                         </div>
                     </div>
+                    </div>
                 </div>
 
-                {/* Footer Buttons */}
-                <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                {/* Footer Buttons - Fixed */}
+                <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                     <Button
                         variant="plain"
                         onClick={handleCancel}

@@ -68,6 +68,8 @@ const CreateProfitPlan = () => {
     const [planId, setPlanId] = useState(null)
     const [loadingPlan, setLoadingPlan] = useState(false)
     const [existingCreatedAt, setExistingCreatedAt] = useState(null)
+    const [companies, setCompanies] = useState([])
+    const [loadingCompanies, setLoadingCompanies] = useState(true)
 
     // Check authorization on mount
     useEffect(() => {
@@ -79,6 +81,11 @@ const CreateProfitPlan = () => {
         }
     }, [user, navigate])
 
+    // Load companies on mount
+    useEffect(() => {
+        loadCompanies()
+    }, [])
+
     // Load plan when id changes
     useEffect(() => {
         const params = new URLSearchParams(location.search)
@@ -89,11 +96,12 @@ const CreateProfitPlan = () => {
         } else {
             setPlanId(null)
             setExistingCreatedAt(null)
-            setFormData({ ...DEFAULT_FORM_DATA })
+            // Set default company to selected company
+            setFormData({ ...DEFAULT_FORM_DATA, companyId: selectedCompanyId || '' })
             setHasUnsavedChanges(false)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location.search])
+    }, [location.search, selectedCompanyId])
 
     // Don't render if unauthorized
     const userEmail = user?.email?.toLowerCase() || ''
@@ -165,6 +173,24 @@ const CreateProfitPlan = () => {
             formData.paymentScheduleDates.length > 0 &&
             formData.paymentTerms
         )
+    }
+
+    const loadCompanies = async () => {
+        setLoadingCompanies(true)
+        try {
+            const result = await FirebaseDbService.companies.getAll()
+            if (result.success) {
+                setCompanies(result.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')))
+            } else {
+                console.error('Failed to load companies:', result.error)
+                setCompanies([])
+            }
+        } catch (error) {
+            console.error('Error loading companies:', error)
+            setCompanies([])
+        } finally {
+            setLoadingCompanies(false)
+        }
     }
 
     const loadPlan = async (id) => {
@@ -255,10 +281,10 @@ const CreateProfitPlan = () => {
 
 
     const savePlan = async (status) => {
-        if (!selectedCompanyId) {
+        if (!formData.companyId) {
             toast.push(
                 <Notification type="warning" duration={2000}>
-                    Please select a company in Settings first
+                    Please select a company for this plan
                 </Notification>
             )
             return
@@ -268,7 +294,7 @@ const CreateProfitPlan = () => {
             const plansRef = collection(db, 'profitSharingPlans')
             const payload = {
                 ...formData,
-                companyId: selectedCompanyId,
+                companyId: formData.companyId,
                 status,
                 startDate: formData.startDate
                     ? (formData.startDate instanceof Date ? formData.startDate.toISOString() : formData.startDate)
@@ -481,6 +507,23 @@ const CreateProfitPlan = () => {
                                 </div>
                                 
                                 <div className="max-w-2xl space-y-4">
+                                    {/* Company Field */}
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Company
+                                        </label>
+                                        <Select
+                                            options={companies.map(c => ({ value: c.id, label: c.name || 'Unnamed Company' }))}
+                                            value={companies.find(c => c.id === formData.companyId) ? { value: formData.companyId, label: companies.find(c => c.id === formData.companyId)?.name || 'Unnamed Company' } : null}
+                                            onChange={(opt) => handleInputChange('companyId', opt?.value || '')}
+                                            placeholder="Select a company..."
+                                            isLoading={loadingCompanies}
+                                            isSearchable
+                                        />
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            Select the company this plan is associated with
+                                        </p>
+                                    </div>
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                             Name
@@ -669,20 +712,20 @@ const CreateProfitPlan = () => {
                         {/* Separator */}
                         <div className="border-t border-gray-200 dark:border-gray-700"></div>
 
-                        {/* Milestones Section */}
+                        {/* Trigger Section */}
                         <div className="space-y-8">
-                            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Milestones</h2>
+                            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Trigger</h2>
                             
                             <div className="space-y-4">
                                 <div>
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Select your milestones</h3>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Select your trigger amount</h3>
                                 </div>
 
-                                {/* Milestone Amount Input */}
+                                {/* Trigger Amount Input */}
                                 <div className="max-w-2xl space-y-4">
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                            Milestone amount (Profit as defined by the plan)
+                                            Trigger amount (Profit as defined by the plan)
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">

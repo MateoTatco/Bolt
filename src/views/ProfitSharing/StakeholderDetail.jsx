@@ -131,6 +131,7 @@ const StakeholderDetail = () => {
     const [profitPlans, setProfitPlans] = useState([])
     const [awardFormData, setAwardFormData] = useState({
         planId: null,
+        awardDate: new Date(), // Default to current date
         awardStartDate: null,
         awardEndDate: null,
         milestoneAmount: 0,
@@ -659,6 +660,7 @@ const StakeholderDetail = () => {
         setEditingAward(award)
         setAwardFormData({
             planId: award.planId || null,
+            awardDate: award.awardDate ? new Date(award.awardDate) : (award.awardStartDate ? new Date(award.awardStartDate) : new Date()),
             awardStartDate: award.awardStartDate ? new Date(award.awardStartDate) : null,
             awardEndDate: award.awardEndDate ? new Date(award.awardEndDate) : null,
             milestoneAmount: award.milestoneAmount || 0,
@@ -712,6 +714,9 @@ const StakeholderDetail = () => {
                 planId: awardFormData.planId || null,
                 planName: selectedPlan?.label || 'Unknown Plan',
                 planMilestoneAmount: awardFormData.milestoneAmount || 0,
+                awardDate: awardFormData.awardDate instanceof Date 
+                    ? awardFormData.awardDate.toISOString() 
+                    : (awardFormData.awardDate ? new Date(awardFormData.awardDate).toISOString() : new Date().toISOString()),
                 awardStartDate: awardFormData.awardStartDate instanceof Date 
                     ? awardFormData.awardStartDate.toISOString() 
                     : (awardFormData.awardStartDate || null),
@@ -833,9 +838,11 @@ const StakeholderDetail = () => {
             setSelectedPlan(null)
             setAwardFormData({
                 planId: null,
+                awardDate: new Date(),
                 awardStartDate: null,
                 awardEndDate: null,
                 milestoneAmount: 0,
+                sharesIssued: '',
             })
         } catch (error) {
             console.error('Error saving award:', error)
@@ -871,7 +878,7 @@ const StakeholderDetail = () => {
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
         { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers />, adminOnly: false },
         { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar />, adminOnly: true },
-        { key: 'milestones', label: 'Milestones', icon: <HiOutlineFlag />, adminOnly: true },
+        { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
     
@@ -1525,9 +1532,11 @@ const StakeholderDetail = () => {
                     setEditingAward(null)
                     setAwardFormData({
                         planId: null,
+                        awardDate: new Date(),
                         awardStartDate: null,
                         awardEndDate: null,
                         milestoneAmount: 0,
+                        sharesIssued: '',
                     })
                 }}
                 title={editingAwardId ? (editingAward?.planName || "Edit Profit Award") : "Grant New Profit Award"}
@@ -1722,6 +1731,20 @@ const StakeholderDetail = () => {
 
                                 {awardFormData.planId && (
                                     <>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                Award date
+                                            </label>
+                                            <DatePicker
+                                                value={awardFormData.awardDate ? (awardFormData.awardDate instanceof Date ? awardFormData.awardDate : new Date(awardFormData.awardDate)) : new Date()}
+                                                onChange={(date) => handleAwardInputChange('awardDate', date)}
+                                                placeholder="Select a date..."
+                                                inputFormat="MM/DD/YYYY"
+                                            />
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                The date this award is issued/sent to the stakeholder
+                                            </p>
+                                        </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1751,17 +1774,17 @@ const StakeholderDetail = () => {
                             </div>
                         </div>
 
-                        {/* Milestones Section */}
+                        {/* Trigger Section */}
                         {awardFormData.planId && (
                             <div className="space-y-4">
                                 <div>
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Milestones</h3>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Trigger</h3>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                            Plan profit threshold (milestone)
+                                            Plan profit threshold (trigger)
                                         </label>
                                         <div className="relative">
                                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
