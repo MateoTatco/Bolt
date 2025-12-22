@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Dialog, Tag, Notification, toast } from '@/components/ui'
-import { HiOutlineBadgeCheck, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineUsers, HiOutlineTrash } from 'react-icons/hi'
+import { HiOutlineBadgeCheck, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineUsers, HiOutlineTrash, HiOutlineEye } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
 import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore'
@@ -202,17 +202,33 @@ const PlansTab = () => {
                                     className="p-5 border border-gray-200 dark:border-gray-700 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer bg-white dark:bg-gray-800 relative"
                                     onClick={() => navigate(`/profit-sharing/create-plan?id=${plan.id}`)}
                                 >
-                                    <button
-                                        className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            handleDeletePlan(plan.id)
-                                        }}
-                                        disabled={deletingId === plan.id}
-                                        title="Delete plan"
-                                    >
-                                        <HiOutlineTrash className="w-4 h-4" />
-                                    </button>
+                                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                                        {plan.status === 'finalized' && plan.planDocumentUrl && (
+                                            <button
+                                                className="text-gray-400 hover:text-primary transition-colors"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setShowPdfModal(true)
+                                                    // Store the plan document URL temporarily
+                                                    window.__currentPlanDocumentUrl = plan.planDocumentUrl
+                                                }}
+                                                title="View document"
+                                            >
+                                                <HiOutlineEye className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                        <button
+                                            className="text-gray-400 hover:text-red-500 transition-colors"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDeletePlan(plan.id)
+                                            }}
+                                            disabled={deletingId === plan.id}
+                                            title="Delete plan"
+                                        >
+                                            <HiOutlineTrash className="w-4 h-4" />
+                                        </button>
+                                    </div>
 
                                     <div className="space-y-3">
                                         {/* Tags */}
@@ -268,8 +284,27 @@ const PlansTab = () => {
             {/* PDF Viewer Modal */}
             <PdfViewerModal
                 isOpen={showPdfModal}
-                onClose={() => setShowPdfModal(false)}
+                onClose={() => {
+                    setShowPdfModal(false)
+                    window.__currentPlanDocumentUrl = null
+                }}
                 isAdmin={isAdmin}
+                planDocumentUrl={window.__currentPlanDocumentUrl || (() => {
+                    // Find the latest finalized plan's document URL (for Agreement Settings)
+                    const finalizedPlans = plans.filter(p => p.status === 'finalized' && p.planDocumentUrl)
+                    if (finalizedPlans.length > 0) {
+                        // Sort by creation date and get the latest
+                        finalizedPlans.sort((a, b) => {
+                            const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 
+                                         (a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0)
+                            const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 
+                                         (b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0)
+                            return bTime - aTime
+                        })
+                        return finalizedPlans[0].planDocumentUrl
+                    }
+                    return null
+                })()}
             />
 
             {/* Create Plan Modal */}

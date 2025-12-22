@@ -9,6 +9,9 @@ import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { generatePlanDocument, generateDocumentPreview } from '@/services/DocumentGenerationService'
+import DocumentPreviewModal from './components/DocumentPreviewModal'
+import { HiOutlineEye } from 'react-icons/hi'
 
 // Authorized emails that can access Profit Sharing
 const AUTHORIZED_EMAILS = [
@@ -61,7 +64,7 @@ const CreateProfitPlan = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const user = useSessionUser((state) => state.user)
-    const { selectedCompanyId } = useSelectedCompany()
+    const { selectedCompanyId, setSelectedCompany } = useSelectedCompany()
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
     const [cancelContext, setCancelContext] = useState(null) // 'page'
@@ -70,6 +73,8 @@ const CreateProfitPlan = () => {
     const [existingCreatedAt, setExistingCreatedAt] = useState(null)
     const [companies, setCompanies] = useState([])
     const [loadingCompanies, setLoadingCompanies] = useState(true)
+    const [showPlanPreview, setShowPlanPreview] = useState(false)
+    const [planPreviewData, setPlanPreviewData] = useState(null)
 
     // Check authorization on mount
     useEffect(() => {
@@ -308,6 +313,7 @@ const CreateProfitPlan = () => {
                 updatedAt: serverTimestamp(),
             }
 
+            let finalPlanId = planId
             if (planId) {
                 const planRef = doc(db, 'profitSharingPlans', planId)
                 await updateDoc(planRef, {
@@ -319,11 +325,50 @@ const CreateProfitPlan = () => {
                     ...payload,
                     createdAt: serverTimestamp(),
                 })
-                setPlanId(docRef.id)
+                finalPlanId = docRef.id
+                setPlanId(finalPlanId)
             }
 
             setFormData(prev => ({ ...prev, status }))
             setHasUnsavedChanges(false)
+            
+            // If the plan's company is different from the currently selected company, switch to it
+            if (formData.companyId && formData.companyId !== selectedCompanyId) {
+                await setSelectedCompany(formData.companyId)
+            }
+            
+            // Generate and upload plan document
+            try {
+                const companyResult = await FirebaseDbService.companies.getById(formData.companyId)
+                if (companyResult.success) {
+                    const documentResult = await generatePlanDocument(
+                        { ...formData, id: finalPlanId },
+                        companyResult.data,
+                        finalPlanId
+                    )
+                    
+                    // Update plan with document URLs (both DOCX and PDF)
+                    const planRef = doc(db, 'profitSharingPlans', finalPlanId)
+                    await updateDoc(planRef, {
+                        planDocumentUrl: documentResult.url, // PDF URL (preferred for viewing)
+                        planDocumentStoragePath: documentResult.path,
+                        planDocumentDocxUrl: documentResult.docxUrl, // Original DOCX
+                        planDocumentDocxPath: documentResult.docxPath,
+                        planDocumentPdfUrl: documentResult.pdfUrl, // PDF version
+                        planDocumentPdfPath: documentResult.pdfPath,
+                        planDocumentGeneratedAt: serverTimestamp(),
+                    })
+                }
+            } catch (docError) {
+                console.error('Error generating plan document:', docError)
+                // Don't fail the save if document generation fails
+                toast.push(
+                    <Notification type="warning" duration={2000}>
+                        Plan saved, but document generation failed. Please try again.
+                    </Notification>
+                )
+            }
+            
             toast.push(
                 <Notification type="success" duration={2000}>
                     {status === 'finalized' ? 'Plan finalized successfully' : 'Plan saved as draft'}
@@ -887,6 +932,47 @@ const CreateProfitPlan = () => {
                             </Button>
                             <div className="flex items-center gap-3">
                                 <Button
+                                    variant="plain"
+                                    icon={<HiOutlineEye />}
+                                    onClick={async () => {
+                                        if (!formData.companyId) {
+                                            toast.push(
+                                                <Notification type="warning" duration={2000}>
+                                                    Please select a company first
+                                                </Notification>
+                                            )
+                                            return
+                                        }
+                                        
+                                        try {
+                                            const companyResult = await FirebaseDbService.companies.getById(formData.companyId)
+                                            if (companyResult.success) {
+                                                setPlanPreviewData({
+                                                    planData: formData,
+                                                    companyData: companyResult.data,
+                                                })
+                                                setShowPlanPreview(true)
+                                            } else {
+                                                toast.push(
+                                                    <Notification type="warning" duration={2000}>
+                                                        Failed to load company data
+                                                    </Notification>
+                                                )
+                                            }
+                                        } catch (error) {
+                                            console.error('Error preparing preview:', error)
+                                            toast.push(
+                                                <Notification type="danger" duration={2000}>
+                                                    Failed to prepare document preview
+                                                </Notification>
+                                            )
+                                        }
+                                    }}
+                                    disabled={!formData.companyId || !formData.startDate}
+                                >
+                                    View Draft
+                                </Button>
+                                <Button
                                     variant="twoTone"
                                     onClick={() => savePlan('draft')}
                                 >
@@ -906,6 +992,19 @@ const CreateProfitPlan = () => {
                 </div>
             </div>
 
+
+            {/* Plan Document Preview Modal */}
+            <DocumentPreviewModal
+                isOpen={showPlanPreview}
+                onClose={() => {
+                    setShowPlanPreview(false)
+                    setPlanPreviewData(null)
+                }}
+                templateType="PLAN"
+                templateData={planPreviewData}
+                documentName={`plan-preview-${formData.name || 'profit-plan'}`}
+                autoGenerate={true}
+            />
 
             {/* Cancel Confirmation Dialog */}
             <Dialog

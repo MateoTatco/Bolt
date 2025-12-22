@@ -10,10 +10,12 @@ import React from 'react'
 import { Notification, toast } from '@/components/ui'
 import { getAllUsers } from '@/utils/userHelper'
 import AwardDocumentModal from './components/AwardDocumentModal'
+import DocumentPreviewModal from './components/DocumentPreviewModal'
 import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { generateAwardDocument } from '@/services/DocumentGenerationService'
 
 // Mock data - in real app, this would come from API/Firebase
 const mockStakeholderData = {
@@ -128,6 +130,8 @@ const StakeholderDetail = () => {
     const [stakeholder, setStakeholder] = useState(null)
     const [loading, setLoading] = useState(true)
     const [showNewAwardDrawer, setShowNewAwardDrawer] = useState(false)
+    const [showAwardPreview, setShowAwardPreview] = useState(false)
+    const [awardPreviewData, setAwardPreviewData] = useState(null)
     const [profitPlans, setProfitPlans] = useState([])
     const [awardFormData, setAwardFormData] = useState({
         planId: null,
@@ -311,7 +315,6 @@ const StakeholderDetail = () => {
         }
         
         try {
-            console.log('Loading valuations for company:', selectedCompanyId)
             const valuationsRef = collection(db, 'valuations')
             const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
             const querySnapshot = await getDocs(q)
@@ -327,7 +330,6 @@ const StakeholderDetail = () => {
                     })
                 }
             })
-            console.log(`Loaded ${valuationsData.length} valuations for company ${selectedCompanyId}`, valuationsData)
             setValuations(valuationsData)
         } catch (error) {
             console.error('Error loading valuations:', error)
@@ -658,11 +660,28 @@ const StakeholderDetail = () => {
         
         setEditingAwardId(award.id)
         setEditingAward(award)
+        
+        // Helper to safely parse date
+        const parseDate = (dateValue) => {
+            if (!dateValue) return null
+            const date = dateValue instanceof Date ? dateValue : new Date(dateValue)
+            return isNaN(date.getTime()) ? null : date
+        }
+        
+        // Get awardDate, fallback to awardStartDate, then current date
+        let awardDate = parseDate(award.awardDate)
+        if (!awardDate && award.awardStartDate) {
+            awardDate = parseDate(award.awardStartDate)
+        }
+        if (!awardDate) {
+            awardDate = new Date()
+        }
+        
         setAwardFormData({
             planId: award.planId || null,
-            awardDate: award.awardDate ? new Date(award.awardDate) : (award.awardStartDate ? new Date(award.awardStartDate) : new Date()),
-            awardStartDate: award.awardStartDate ? new Date(award.awardStartDate) : null,
-            awardEndDate: award.awardEndDate ? new Date(award.awardEndDate) : null,
+            awardDate: awardDate,
+            awardStartDate: parseDate(award.awardStartDate),
+            awardEndDate: parseDate(award.awardEndDate),
             milestoneAmount: award.milestoneAmount || 0,
             sharesIssued: award.sharesIssued ? String(award.sharesIssued) : '',
         })
@@ -709,14 +728,26 @@ const StakeholderDetail = () => {
                 return cleaned
             }
             
+            // Safely get awardDate - ensure it's a valid Date
+            let awardDateValue = awardFormData.awardDate
+            if (!(awardDateValue instanceof Date)) {
+                if (awardDateValue) {
+                    awardDateValue = new Date(awardDateValue)
+                } else {
+                    awardDateValue = new Date()
+                }
+            }
+            // Validate the date is not invalid
+            if (isNaN(awardDateValue.getTime())) {
+                awardDateValue = new Date()
+            }
+            
             const newAward = removeUndefined({
                 id: Date.now().toString(),
                 planId: awardFormData.planId || null,
                 planName: selectedPlan?.label || 'Unknown Plan',
                 planMilestoneAmount: awardFormData.milestoneAmount || 0,
-                awardDate: awardFormData.awardDate instanceof Date 
-                    ? awardFormData.awardDate.toISOString() 
-                    : (awardFormData.awardDate ? new Date(awardFormData.awardDate).toISOString() : new Date().toISOString()),
+                awardDate: awardDateValue.toISOString(),
                 awardStartDate: awardFormData.awardStartDate instanceof Date 
                     ? awardFormData.awardStartDate.toISOString() 
                     : (awardFormData.awardStartDate || null),
@@ -727,7 +758,6 @@ const StakeholderDetail = () => {
                 sharesIssued: awardFormData.sharesIssued ? parseInt(awardFormData.sharesIssued, 10) : 0,
                 paymentSchedule: selectedPlan?.schedule || 'Annually',
                 status: status === 'finalized' ? 'Finalized' : 'Draft',
-                awardDate: 'Pending',
             })
 
             const existingAwards = currentData.data.profitAwards || []
@@ -736,9 +766,25 @@ const StakeholderDetail = () => {
             if (editingAwardId) {
                 // Update existing award - preserve document info if it exists
                 const existingAward = existingAwards.find(a => a.id === editingAwardId)
+                
+                // Safely get awardDate for update - ensure it's a valid Date
+                let updateAwardDateValue = awardFormData.awardDate
+                if (!(updateAwardDateValue instanceof Date)) {
+                    if (updateAwardDateValue) {
+                        updateAwardDateValue = new Date(updateAwardDateValue)
+                    } else {
+                        updateAwardDateValue = new Date()
+                    }
+                }
+                // Validate the date is not invalid
+                if (isNaN(updateAwardDateValue.getTime())) {
+                    updateAwardDateValue = new Date()
+                }
+                
                 const updatedAward = {
                     ...newAward,
                     id: editingAwardId,
+                    awardDate: updateAwardDateValue.toISOString(),
                 }
                 
                 // Only include document fields if they exist (not undefined)
@@ -756,14 +802,92 @@ const StakeholderDetail = () => {
                     a.id === editingAwardId ? removeUndefined(updatedAward) : a
                 )
             } else {
-                // Add new award
-                updatedAwards = [...existingAwards, newAward]
+                // Add new award - ensure it has no undefined values
+                updatedAwards = [...existingAwards, removeUndefined(newAward)]
             }
 
+            // Clean all awards before saving to prevent undefined values
+            const cleanedAwards = updatedAwards.map(award => removeUndefined(award))
+            
             await updateDoc(stakeholderRef, {
-                profitAwards: updatedAwards,
+                profitAwards: cleanedAwards,
                 updatedAt: serverTimestamp(),
             })
+
+            // Generate and upload award document
+            const finalAwardId = editingAwardId || newAward.id
+            try {
+                // Get plan data
+                let planData = null
+                if (awardFormData.planId) {
+                    const planRef = doc(db, 'profitSharingPlans', awardFormData.planId)
+                    const planSnap = await getDoc(planRef)
+                    if (planSnap.exists()) {
+                        planData = { id: planSnap.id, ...planSnap.data() }
+                    }
+                }
+
+                // Get company data
+                let companyData = null
+                if (planData?.companyId) {
+                    const companyResult = await FirebaseDbService.companies.getById(planData.companyId)
+                    if (companyResult.success) {
+                        companyData = companyResult.data
+                    }
+                }
+
+                // Get stakeholder data
+                const stakeholderData = currentData.data
+
+                if (planData && companyData && stakeholderData) {
+                    const finalAward = updatedAwards.find(a => a.id === finalAwardId)
+                    const documentResult = await generateAwardDocument(
+                        finalAward || newAward,
+                        planData,
+                        stakeholderData,
+                        companyData,
+                        stakeholderId,
+                        finalAwardId
+                    )
+                    
+                    // Update award with document URLs (both DOCX and PDF)
+                    const updatedAwardsWithDoc = updatedAwards.map(a => 
+                        a.id === finalAwardId 
+                            ? removeUndefined({ 
+                                ...a, 
+                                documentUrl: documentResult.url || null, // PDF URL (preferred for viewing)
+                                documentStoragePath: documentResult.path || null,
+                                documentDocxUrl: documentResult.docxUrl || null, // Original DOCX
+                                documentDocxPath: documentResult.docxPath || null,
+                                documentPdfUrl: documentResult.pdfUrl || null, // PDF version
+                                documentPdfPath: documentResult.pdfPath || null,
+                                documentFileName: documentResult.pdfUrl ? `award-${finalAwardId}.pdf` : null // PDF filename
+                            })
+                            : a
+                    )
+                    
+                    await updateDoc(stakeholderRef, {
+                        profitAwards: updatedAwardsWithDoc,
+                        updatedAt: serverTimestamp(),
+                    })
+                }
+            } catch (docError) {
+                console.error('Error generating award document:', docError)
+                // Don't fail the save if document generation fails
+                // But ensure we still clean up any undefined values in the awards array
+                const cleanedAwards = updatedAwards.map(award => removeUndefined(award))
+                await updateDoc(stakeholderRef, {
+                    profitAwards: cleanedAwards,
+                    updatedAt: serverTimestamp(),
+                })
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 2000, title: "Warning" },
+                        "Award saved, but document generation failed. Please try again."
+                    )
+                )
+            }
 
             toast.push(
                 React.createElement(
@@ -1083,14 +1207,7 @@ const StakeholderDetail = () => {
                                     })
                                     
                                     // Log debug info to console for troubleshooting
-                                    if (debugInfo.length > 0) {
-                                        console.log('Next Estimated Profit Payment calculation:', {
-                                            totalAwards: stakeholder.profitAwards.length,
-                                            totalValuations: valuations.length,
-                                            debugInfo,
-                                            totalEstimatedPayout
-                                        })
-                                    }
+                                    // Debug logs disabled
                                     
                                     if (!hasActiveAwards || totalEstimatedPayout === 0) {
                                         // Check if there are upcoming awards without valuations yet
@@ -1200,7 +1317,18 @@ const StakeholderDetail = () => {
                                                         )}
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <span className="text-sm text-gray-900 dark:text-white">{award.awardDate || 'Pending'}</span>
+                                                        <span className="text-sm text-gray-900 dark:text-white">
+                                                            {award.awardDate 
+                                                                ? (() => {
+                                                                    const date = award.awardDate instanceof Date 
+                                                                        ? award.awardDate 
+                                                                        : new Date(award.awardDate)
+                                                                    return isNaN(date.getTime()) 
+                                                                        ? 'Invalid Date' 
+                                                                        : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                                })()
+                                                                : 'Pending'}
+                                                        </span>
                                                     </Table.Td>
                                                     <Table.Td>
                                                         <span className="text-sm text-gray-900 dark:text-white">{award.planName}</span>
@@ -1223,41 +1351,67 @@ const StakeholderDetail = () => {
                                                         <span className="text-sm text-gray-900 dark:text-white">{award.paymentSchedule || 'N/A'}</span>
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <Tag className={`px-2 py-1 text-xs font-medium ${
-                                                            award.status === 'Draft' || award.status === 'Pending'
-                                                                ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                                                                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                        }`}>
-                                                            <span className="flex items-center gap-2">
-                                                                <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                                {award.status || 'Draft'}
-                                                            </span>
-                                                        </Tag>
-                                                        {payouts.length > 0 && (
-                                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                                Est. payout: {formatCurrency(totalPayout)}
-                                                            </div>
-                                                        )}
+                                                        <div className="flex flex-col gap-2">
+                                                            <Tag className={`px-2 py-1 text-xs font-medium ${
+                                                                award.status === 'Draft' || award.status === 'Pending'
+                                                                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                                                    : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                            }`}>
+                                                                <span className="flex items-center gap-2">
+                                                                    <span className="w-2 h-2 rounded-full bg-gray-500"></span>
+                                                                    {award.status || 'Draft'}
+                                                                </span>
+                                                            </Tag>
+                                                            {/* Signature Status */}
+                                                            {award.status === 'Finalized' && (
+                                                                award.signatureMetadata ? (
+                                                                    <Tag className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                                                                        <HiOutlineCheckCircle className="mr-1" />
+                                                                        Signed
+                                                                    </Tag>
+                                                                ) : (
+                                                                    <Tag className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs">
+                                                                        Signature Pending
+                                                                    </Tag>
+                                                                )
+                                                            )}
+                                                        </div>
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        {isAdmin && (
-                                                            <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            {award.documentUrl && (
                                                                 <Button
                                                                     variant="plain"
                                                                     size="sm"
-                                                                    icon={<HiOutlineTrash />}
-                                                                    onClick={() => handleDeleteAward(award.id)}
-                                                                    className="text-gray-400 hover:text-red-500"
-                                                                />
-                                                                <Button
-                                                                    variant="plain"
-                                                                    size="sm"
-                                                                    icon={<HiOutlinePencil />}
-                                                                    onClick={() => handleEditAward(award)}
+                                                                    icon={<HiOutlineEye />}
+                                                                    onClick={() => {
+                                                                        setEditingAward(award)
+                                                                        setEditingAwardId(award.id)
+                                                                        setShowDocumentModal(true)
+                                                                    }}
                                                                     className="text-gray-400 hover:text-primary"
+                                                                    title="View document"
                                                                 />
-                                                            </div>
-                                                        )}
+                                                            )}
+                                                            {isAdmin && (
+                                                                <>
+                                                                    <Button
+                                                                        variant="plain"
+                                                                        size="sm"
+                                                                        icon={<HiOutlineTrash />}
+                                                                        onClick={() => handleDeleteAward(award.id)}
+                                                                        className="text-gray-400 hover:text-red-500"
+                                                                    />
+                                                                    <Button
+                                                                        variant="plain"
+                                                                        size="sm"
+                                                                        icon={<HiOutlinePencil />}
+                                                                        onClick={() => handleEditAward(award)}
+                                                                        className="text-gray-400 hover:text-primary"
+                                                                    />
+                                                                </>
+                                                            )}
+                                                        </div>
                                                         {!isAdmin && (
                                                             <span className="text-xs text-gray-400">View only</span>
                                                         )}
@@ -1736,7 +1890,14 @@ const StakeholderDetail = () => {
                                                 Award date
                                             </label>
                                             <DatePicker
-                                                value={awardFormData.awardDate ? (awardFormData.awardDate instanceof Date ? awardFormData.awardDate : new Date(awardFormData.awardDate)) : new Date()}
+                                                value={(() => {
+                                                    if (!awardFormData.awardDate) return new Date()
+                                                    if (awardFormData.awardDate instanceof Date) {
+                                                        return isNaN(awardFormData.awardDate.getTime()) ? new Date() : awardFormData.awardDate
+                                                    }
+                                                    const parsed = new Date(awardFormData.awardDate)
+                                                    return isNaN(parsed.getTime()) ? new Date() : parsed
+                                                })()}
                                                 onChange={(date) => handleAwardInputChange('awardDate', date)}
                                                 placeholder="Select a date..."
                                                 inputFormat="MM/DD/YYYY"
@@ -1839,6 +2000,75 @@ const StakeholderDetail = () => {
                             )}
                             <div className="flex items-center gap-3 ml-auto">
                                 <Button
+                                    variant="plain"
+                                    icon={<HiOutlineEye />}
+                                    onClick={async () => {
+                                        // Prepare template data for preview
+                                        try {
+                                            // Get plan data
+                                            let planData = null
+                                            if (awardFormData.planId) {
+                                                const planRef = doc(db, 'profitSharingPlans', awardFormData.planId)
+                                                const planSnap = await getDoc(planRef)
+                                                if (planSnap.exists()) {
+                                                    planData = { id: planSnap.id, ...planSnap.data() }
+                                                }
+                                            }
+
+                                            // Get company data
+                                            let companyData = null
+                                            if (planData?.companyId) {
+                                                const companyResult = await FirebaseDbService.companies.getById(planData.companyId)
+                                                if (companyResult.success) {
+                                                    companyData = companyResult.data
+                                                }
+                                            }
+
+                                            // Get stakeholder data
+                                            const stakeholderData = stakeholder
+
+                                            if (planData && companyData && stakeholderData) {
+                                                // Prepare award data for preview
+                                                const previewAwardData = {
+                                                    awardDate: awardFormData.awardDate,
+                                                    awardStartDate: awardFormData.awardStartDate,
+                                                    awardEndDate: awardFormData.awardEndDate,
+                                                    sharesIssued: awardFormData.sharesIssued ? parseInt(awardFormData.sharesIssued, 10) : 0,
+                                                }
+
+                                                // Store preview data in component state (we'll pass it to modal)
+                                                setAwardPreviewData({
+                                                    awardData: previewAwardData,
+                                                    planData,
+                                                    stakeholderData,
+                                                    companyData,
+                                                })
+                                                setShowAwardPreview(true)
+                                            } else {
+                                                toast.push(
+                                                    React.createElement(
+                                                        Notification,
+                                                        { type: "warning", duration: 2000, title: "Warning" },
+                                                        "Please select a plan and ensure all required data is available"
+                                                    )
+                                                )
+                                            }
+                                        } catch (error) {
+                                            console.error('Error preparing preview:', error)
+                                            toast.push(
+                                                React.createElement(
+                                                    Notification,
+                                                    { type: "danger", duration: 2000, title: "Error" },
+                                                    "Failed to prepare document preview"
+                                                )
+                                            )
+                                        }
+                                    }}
+                                    disabled={!awardFormData.planId || !isAwardFormComplete()}
+                                >
+                                    View Draft
+                                </Button>
+                                <Button
                                     variant="twoTone"
                                     icon={<HiOutlinePencil />}
                                     onClick={() => handleSaveAward('draft')}
@@ -1866,12 +2096,26 @@ const StakeholderDetail = () => {
                 </div>
             </Drawer>
 
+            {/* Award Document Preview Modal */}
+            <DocumentPreviewModal
+                isOpen={showAwardPreview}
+                onClose={() => {
+                    setShowAwardPreview(false)
+                    setAwardPreviewData(null)
+                }}
+                templateType="AWARD"
+                templateData={awardPreviewData}
+                documentName={`award-preview-${stakeholder?.name || 'stakeholder'}`}
+                autoGenerate={true}
+            />
+
             {/* Document Viewer Modal */}
             <AwardDocumentModal
                 isOpen={showDocumentModal}
                 onClose={() => setShowDocumentModal(false)}
                 award={editingAward}
                 stakeholderId={stakeholderId}
+                isAdmin={isAdmin}
                 onDocumentUpdated={async () => {
                     // Reload stakeholder data to get updated document info
                     if (stakeholderId) {
