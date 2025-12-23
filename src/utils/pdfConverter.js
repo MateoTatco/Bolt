@@ -190,8 +190,24 @@ export const convertDocxToPdf = async (docxBlob) => {
         tempDiv.style.boxSizing = 'border-box'
         document.body.appendChild(tempDiv)
 
-        // Wait for images to load
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Wait for images to load - increased timeout for signature images
+        const images = tempDiv.querySelectorAll('img')
+        if (images.length > 0) {
+            await Promise.all(
+                Array.from(images).map(img => {
+                    if (img.complete) return Promise.resolve()
+                    return new Promise((resolve, reject) => {
+                        img.onload = resolve
+                        img.onerror = resolve // Don't fail if image fails to load
+                        // Timeout after 3 seconds
+                        setTimeout(resolve, 3000)
+                    })
+                })
+            )
+        } else {
+            // No images, just wait a bit for layout
+            await new Promise(resolve => setTimeout(resolve, 200))
+        }
 
         // Convert HTML to canvas
         const canvas = await html2canvas(tempDiv, {

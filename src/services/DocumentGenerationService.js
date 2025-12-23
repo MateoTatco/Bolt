@@ -86,11 +86,14 @@ export const generateDocument = async (templateType, data) => {
             console.log(`[DocumentGeneration] SIGNATURE data provided:`, !!data.SIGNATURE && data.SIGNATURE.startsWith('data:'))
         }
         
-        // Create Docxtemplater instance with image module support (if signature image is present)
+        // Create Docxtemplater instance with image module support (if image data is present)
         const modules = []
-        // Only load image module if SIGNATURE is a data URL (not empty string)
+        // Only load image module if there's actual image data (data URL), not text signatures
+        // SIGNATURE is now text, so we check other fields for images
         const hasSignatureImage = data.SIGNATURE && typeof data.SIGNATURE === 'string' && data.SIGNATURE.startsWith('data:')
-        if (hasSignatureImage || Object.keys(data).some(key => key.includes('IMAGE') && data[key] && typeof data[key] === 'string' && data[key].startsWith('data:'))) {
+        const hasOtherImages = Object.keys(data).some(key => key.includes('IMAGE') && data[key] && typeof data[key] === 'string' && data[key].startsWith('data:'))
+        // Don't load ImageModule for text signatures - only for actual image data
+        if (hasOtherImages) {
             modules.push(
                 new ImageModule({
                     centered: false,
@@ -299,16 +302,16 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
  * @param {string} signatureImageDataUrl - Signature image as data URL (base64)
  * @returns {Promise<{url: string, path: string, pdfUrl: string, pdfPath: string, docxUrl: string, docxPath: string}>} Document URLs and storage paths
  */
-export const generateAwardDocumentWithSignature = async (awardData, planData, stakeholderData, companyData, stakeholderId, awardId, signatureImageDataUrl) => {
+export const generateAwardDocumentWithSignature = async (awardData, planData, stakeholderData, companyData, stakeholderId, awardId, signatureText) => {
     try {
         console.log(`[DocumentGeneration] Generating signed award document for award ${awardId}`)
         // Map award, plan, stakeholder, and company data to template placeholders
         const templateData = mapAwardDataToTemplate(awardData, planData, stakeholderData, companyData)
         
-        // Add signature image to template data
+        // Add signature text to template data (using text instead of image for better PDF compatibility)
         // The template should have {SIGNATURE} placeholder
-        templateData['SIGNATURE'] = signatureImageDataUrl
-        console.log(`[DocumentGeneration] Signature image added to template data (${signatureImageDataUrl.substring(0, 50)}...)`)
+        templateData['SIGNATURE'] = signatureText || ''
+        console.log(`[DocumentGeneration] Signature text added to template data: "${signatureText}"`)
         
         // Generate document with signature
         const documentBlob = await generateDocument('AWARD', templateData)

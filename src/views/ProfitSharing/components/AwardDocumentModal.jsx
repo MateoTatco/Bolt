@@ -56,9 +56,7 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                 hasPdf: !!award.documentPdfUrl,
                 hasDocx: !!award.documentUrl,
                 usingUrl: pdfUrlToUse ? pdfUrlToUse.substring(0, 100) : 'none',
-                willConvertDocx: shouldConvertDocx,
-                signedDocxUrl: award.signedDocumentDocxUrl ? 'Present' : 'Missing',
-                signedUrl: award.signedDocumentUrl ? 'Present' : 'Missing'
+                willConvertDocx: shouldConvertDocx
             })
             
             if (pdfUrlToUse) {
@@ -374,35 +372,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
         }
     }
 
-    // Generate signature image from text
-    const generateSignatureImage = (signatureData) => {
-        return new Promise((resolve) => {
-            // Create a canvas for the signature
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')
-            
-            // Set canvas size
-            canvas.width = 400
-            canvas.height = 100
-            
-            // Set background to transparent
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-            
-            // Set font style
-            ctx.font = `${signatureData.fontSize}px "${signatureData.fontFamily}", cursive`
-            ctx.fillStyle = '#1f2937'
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            
-            // Draw signature text
-            ctx.fillText(signatureData.name, canvas.width / 2, canvas.height / 2)
-            
-            // Convert to data URL
-            const dataUrl = canvas.toDataURL('image/png')
-            resolve(dataUrl)
-        })
-    }
-
     // Helper function to remove undefined values from object (recursive for nested objects)
     const removeUndefined = (obj) => {
         if (obj === null || obj === undefined) return null
@@ -438,21 +407,9 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             // Import FirebaseDbService once at the beginning to avoid initialization issues
             const { FirebaseDbService } = await import('@/services/FirebaseDbService')
             
-            // Generate signature image
-            const signatureImageDataUrl = await generateSignatureImage(signatureData)
-            console.log('[AwardDocumentModal] Signature image generated')
-            
-            // Convert data URL to blob
-            const response = await fetch(signatureImageDataUrl)
-            const signatureBlob = await response.blob()
-            
-            // Upload signature image to Firebase Storage
-            const signatureFileName = `signature-${award.id}-${Date.now()}.png`
-            const signatureStoragePath = `profitSharing/signatures/${stakeholderId}/${award.id}/${signatureFileName}`
-            const signatureRef = storageRef(storage, signatureStoragePath)
-            await uploadBytes(signatureRef, signatureBlob)
-            const signatureUrl = await getDownloadURL(signatureRef)
-            console.log('[AwardDocumentModal] Signature image uploaded to storage')
+            // Use signature text directly (not image) for better PDF compatibility
+            const signatureText = signatureData.name || ''
+            console.log('[AwardDocumentModal] Using signature text:', signatureText)
             
             // Get plan and company data for document regeneration
             let planData = null
@@ -479,8 +436,8 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             }
             const stakeholderData = stakeholderResult.data
             
-            // Regenerate document with signature embedded
-            console.log('[AwardDocumentModal] Regenerating document with signature using latest template')
+            // Regenerate document with signature text embedded (not image)
+            console.log('[AwardDocumentModal] Regenerating document with signature text using latest template')
             const signedDocumentResult = await generateAwardDocumentWithSignature(
                 award,
                 planData,
@@ -488,7 +445,7 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                 companyData,
                 stakeholderId,
                 award.id,
-                signatureImageDataUrl
+                signatureText // Pass text instead of image
             )
             console.log('[AwardDocumentModal] Signed document generated:', {
                 hasPdf: !!signedDocumentResult.pdfUrl,
@@ -503,8 +460,8 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             // Build the updated award object, ensuring no undefined values
             const updatedAward = {
                 ...award,
-                signatureUrl: signatureUrl || null,
-                signatureStoragePath: signatureStoragePath || null,
+                signatureUrl: null, // No longer storing signature image
+                signatureStoragePath: null, // No longer storing signature image
                 // Use DOCX URL explicitly for signed document (not the fallback URL)
                 signedDocumentUrl: signedDocumentResult?.docxUrl || signedDocumentResult?.pdfUrl || signedDocumentResult?.url || null,
                 signedDocumentPdfUrl: signedDocumentResult?.pdfUrl || null,
@@ -514,9 +471,7 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                     signedAt: new Date().toISOString(),
                     signedBy: currentUser.id || currentUser.uid || null,
                     signedByEmail: currentUser.email || null,
-                    signedByName: signatureData.name || null,
-                    signatureFont: signatureData.fontFamily || null,
-                    signatureFontSize: signatureData.fontSize || null
+                    signedByName: signatureData.name || null
                 }
             }
             
@@ -538,17 +493,71 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             })
             console.log('[AwardDocumentModal] Awards saved to Firestore successfully')
             
-            // Update the award prop by calling onDocumentUpdated first
-            if (onDocumentUpdated) {
-                console.log('[AwardDocumentModal] Calling onDocumentUpdated to refresh award data')
-                await onDocumentUpdated()
+            // Directly load the signed document - try PDF first, fallback to HTML preview
+            console.log('[AwardDocumentModal] Loading signed document directly')
+            const signedDocxUrl = signedDocumentResult?.docxUrl
+            const signedPdfUrl = signedDocumentResult?.pdfUrl
+            
+            if (signedPdfUrl) {
+                // Use PDF if available
+                try {
+                    const cleanUrl = signedPdfUrl.split('?')[0] + '?alt=media'
+                    const response = await fetch(cleanUrl, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/pdf' }
+                    })
+                    const pdfBlob = await response.blob()
+                    const pdfBlobUrl = URL.createObjectURL(new Blob([pdfBlob], { type: 'application/pdf' }))
+                    setPdfUrl(pdfBlobUrl)
+                    setPdfBlob(pdfBlob)
+                    setHtmlContent(null)
+                    console.log('[AwardDocumentModal] Signed document loaded successfully as PDF')
+                } catch (pdfError) {
+                    console.warn('[AwardDocumentModal] Could not load signed PDF, trying DOCX:', pdfError)
+                    // Fall through to DOCX conversion
+                }
             }
             
-            // Reload PDF to show signed version (award prop should now be updated)
-            console.log('[AwardDocumentModal] Reloading PDF to show signed version')
-            // Small delay to ensure parent component has updated the award prop
-            await new Promise(resolve => setTimeout(resolve, 100))
-            await loadPdf()
+            if (!pdfUrl && signedDocxUrl) {
+                // Convert DOCX to PDF for viewing
+                try {
+                    const { convertDocxUrlToPdf } = await import('@/utils/pdfConverter')
+                    const convertedPdfBlob = await convertDocxUrlToPdf(signedDocxUrl)
+                    const pdfViewUrl = URL.createObjectURL(convertedPdfBlob)
+                    setPdfUrl(pdfViewUrl)
+                    setPdfBlob(convertedPdfBlob)
+                    setHtmlContent(null)
+                    console.log('[AwardDocumentModal] Signed document converted to PDF successfully')
+                } catch (convertError) {
+                    console.warn('[AwardDocumentModal] Could not convert signed DOCX to PDF, using HTML preview:', convertError)
+                    // Fall back to HTML preview
+                    try {
+                        const html = await convertDocxUrlToHtml(signedDocxUrl)
+                        setHtmlContent(html)
+                        setPdfUrl(null)
+                        console.log('[AwardDocumentModal] Signed document loaded successfully as HTML preview')
+                    } catch (htmlError) {
+                        console.error('[AwardDocumentModal] Could not convert signed DOCX to HTML either:', htmlError)
+                        setPdfUrl(signedDocxUrl) // Last resort
+                    }
+                }
+            }
+            
+            if (!pdfUrl && !htmlContent && !signedDocxUrl) {
+                console.warn('[AwardDocumentModal] No signed document URL available, falling back to loadPdf')
+                // Fallback: try to reload from award prop
+                if (onDocumentUpdated) {
+                    await onDocumentUpdated()
+                }
+                await new Promise(resolve => setTimeout(resolve, 100))
+                await loadPdf()
+            }
+            
+            // Update the award prop by calling onDocumentUpdated (for parent component state)
+            if (onDocumentUpdated) {
+                console.log('[AwardDocumentModal] Calling onDocumentUpdated to refresh award data in parent')
+                await onDocumentUpdated()
+            }
             
             // Notify admins
             const { createNotification } = await import('@/utils/notificationHelper')

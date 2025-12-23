@@ -96,3 +96,4 @@ If you encounter any issues:
 3. Ensure the template is in the correct Firebase Storage path: `profitSharing/templates/`
 4. Check browser console for any error messages during document generation
 
+

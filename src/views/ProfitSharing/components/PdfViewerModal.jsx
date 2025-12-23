@@ -59,8 +59,36 @@ const PdfViewerModal = ({ isOpen, onClose, isAdmin, planDocumentUrl = null }) =>
                         }
                     }
                 } else {
-                    // It's already a PDF
-                    setPdfUrl(planDocumentUrl)
+                    // It's already a PDF - fetch it as blob to prevent auto-download
+                    try {
+                        // Remove any download parameters from Firebase Storage URL
+                        const cleanUrl = planDocumentUrl.split('?')[0] + '?alt=media'
+                        const response = await fetch(cleanUrl, {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/pdf'
+                            }
+                        })
+                        
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`)
+                        }
+                        
+                        const pdfBlob = await response.blob()
+                        
+                        // Ensure the blob has the correct MIME type
+                        const typedBlob = pdfBlob.type === 'application/pdf' 
+                            ? pdfBlob 
+                            : new Blob([pdfBlob], { type: 'application/pdf' })
+                        
+                        const pdfBlobUrl = URL.createObjectURL(typedBlob)
+                        setPdfUrl(pdfBlobUrl)
+                        setConvertedPdfBlob(pdfBlobUrl) // Store for cleanup
+                    } catch (fetchError) {
+                        console.warn('[PdfViewerModal] Could not fetch PDF as blob:', fetchError)
+                        // Fallback to direct URL
+                        setPdfUrl(planDocumentUrl)
+                    }
                 }
                 setPdfStoragePath(null) // We don't have storage path for generated documents
                 setLoading(false)

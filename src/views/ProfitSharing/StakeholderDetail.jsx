@@ -240,7 +240,7 @@ const StakeholderDetail = () => {
         loadStakeholder()
         loadProfitPlans()
         loadUsers()
-    }, [stakeholderId, navigate, loadingAccess, canEdit, userRole, user])
+    }, [stakeholderId, navigate, loadingAccess, canEdit, userRole, user, selectedCompanyId])
 
     useEffect(() => {
         if (stakeholder) {
@@ -289,18 +289,25 @@ const StakeholderDetail = () => {
 
     const loadProfitPlans = async () => {
         try {
+            if (!selectedCompanyId) {
+                setProfitPlans([])
+                return
+            }
+            
             const plansRef = collection(db, 'profitSharingPlans')
             const querySnapshot = await getDocs(plansRef)
             const plansData = []
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
-                // Include all plans (both draft and finalized) for selection
-                plansData.push({ 
-                    value: doc.id, 
-                    label: data.name || 'Unnamed Plan',
-                    status: data.status || 'draft',
-                    ...data 
-                })
+                // Only include plans from the selected company
+                if (data.companyId === selectedCompanyId) {
+                    plansData.push({ 
+                        value: doc.id, 
+                        label: data.name || 'Unnamed Plan',
+                        status: data.status || 'draft',
+                        ...data 
+                    })
+                }
             })
             setProfitPlans(plansData)
         } catch (error) {
