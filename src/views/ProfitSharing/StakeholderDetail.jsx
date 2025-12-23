@@ -126,8 +126,10 @@ const StakeholderDetail = () => {
     const { userRole, canEdit, loading: loadingAccess } = useProfitSharingAccess()
     const { selectedCompanyId } = useSelectedCompany()
     const isAdmin = canEdit || userRole === 'admin'
+    const isRegularUser = !isAdmin
     const [activeTab, setActiveTab] = useState('profit')
     const [stakeholder, setStakeholder] = useState(null)
+    const [linkedUserProfile, setLinkedUserProfile] = useState(null)
     const [loading, setLoading] = useState(true)
     const [showNewAwardDrawer, setShowNewAwardDrawer] = useState(false)
     const [showAwardPreview, setShowAwardPreview] = useState(false)
@@ -214,6 +216,23 @@ const StakeholderDetail = () => {
                         totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                         linkedUserId: data.linkedUserId,
                     })
+
+                    // Load linked user profile for display overrides
+                    if (data.linkedUserId) {
+                        try {
+                            const userResult = await FirebaseDbService.users.getById(data.linkedUserId)
+                            if (userResult.success && userResult.data) {
+                                setLinkedUserProfile(userResult.data)
+                            } else {
+                                setLinkedUserProfile(null)
+                            }
+                        } catch (profileError) {
+                            console.warn('Error loading linked user profile for stakeholder detail:', profileError)
+                            setLinkedUserProfile(null)
+                        }
+                    } else {
+                        setLinkedUserProfile(null)
+                    }
                 } else {
                     // Fallback to mock data if Firebase fails
                     const mockData = mockStakeholderData[stakeholderId]
@@ -265,18 +284,28 @@ const StakeholderDetail = () => {
             // Extract phone number (remove +1 prefix if present)
             const phoneNumber = stakeholder.phone ? stakeholder.phone.replace(/^\+1/, '') : ''
 
+            // Use Bolt profile data if available (for linked users), otherwise fall back to stakeholder data
+            // Match the logic from StakeholdersTab: use firstName primarily, fallback to userName, name, or email
+            const displayName = linkedUserProfile 
+                ? (linkedUserProfile.firstName || linkedUserProfile.userName || linkedUserProfile.name || stakeholder.name || stakeholder.email || '')
+                : (stakeholder.name || stakeholder.email || '')
+            
+            const displayPhone = linkedUserProfile?.phoneNumber 
+                ? linkedUserProfile.phoneNumber.replace(/^\+1/, '')
+                : phoneNumber
+
             setDetailsFormData({
-                name: stakeholder.name || '',
+                name: displayName,
                 title: stakeholder.title || '',
-                email: stakeholder.email || '',
-                phone: phoneNumber,
+                email: linkedUserProfile?.email || stakeholder.email || '',
+                phone: displayPhone,
                 employmentStatus: normalizeEmploymentStatus(stakeholder.employmentStatus),
                 payType: normalizePayType(stakeholder.payType),
                 payAmount: stakeholder.payAmount ? String(stakeholder.payAmount) : '',
             })
             setReinsRole(stakeholder.reinsRole || 'User')
         }
-    }, [stakeholder])
+    }, [stakeholder, linkedUserProfile])
 
     const loadUsers = async () => {
         try {
@@ -1007,7 +1036,7 @@ const StakeholderDetail = () => {
     const allSidebarItems = [
         { key: 'overview', label: 'Overview', icon: <HiOutlineHome />, adminOnly: true },
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
-        { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers />, adminOnly: false },
+        { key: 'stakeholders', label: isAdmin ? 'Stakeholders' : 'My Awards', icon: <HiOutlineUsers />, adminOnly: false },
         { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar />, adminOnly: true },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
@@ -1016,7 +1045,10 @@ const StakeholderDetail = () => {
     // Filter sidebar items based on role - regular users should not see other tabs
     const sidebarItems = isAdmin 
         ? allSidebarItems 
-        : allSidebarItems.filter(item => item.key === 'stakeholders')
+        : allSidebarItems.filter(item => item.key === 'stakeholders').map(item => ({
+            ...item,
+            label: 'My Awards' // Ensure label is "My Awards" for non-admins
+        }))
 
     return (
         <div className="flex min-h-screen bg-white dark:bg-gray-900">
@@ -1077,7 +1109,11 @@ const StakeholderDetail = () => {
                     <div className="space-y-8">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{stakeholder.name}</h2>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                    {isAdmin
+                        ? stakeholder.name
+                        : 'My Awards'}
+                </h2>
                 {activeTab === 'profit' && isAdmin && (
                     <Button
                         variant="solid"
@@ -1277,15 +1313,19 @@ const StakeholderDetail = () => {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No awards found</h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Click below to grant an award to this stakeholder.</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                                        {isAdmin ? 'Click below to grant an award to this stakeholder.' : 'You don\'t have any awards yet.'}
+                                    </p>
                                 </div>
-                                <Button
-                                    variant="solid"
-                                    icon={<HiOutlinePlus />}
-                                    onClick={() => setShowNewAwardDrawer(true)}
-                                >
-                                    New Award
-                                </Button>
+                                {isAdmin && (
+                                    <Button
+                                        variant="solid"
+                                        icon={<HiOutlinePlus />}
+                                        onClick={() => setShowNewAwardDrawer(true)}
+                                    >
+                                        New Award
+                                    </Button>
+                                )}
                             </div>
                         </Card>
                     ) : (

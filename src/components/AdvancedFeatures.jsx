@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, Card, Alert, Badge, Dialog, Input, Select } from '@/components/ui'
+import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast } from '@/components/ui'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
 import { useSessionUser } from '@/store/authStore'
+import { createNotification } from '@/utils/notificationHelper'
+import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 
 // Authorized emails that can access Advanced Features Dashboard
 const AUTHORIZED_EMAILS = [
@@ -60,6 +62,20 @@ const AdvancedFeatures = () => {
     const [showProcoreTemplates, setShowProcoreTemplates] = useState(false)
     const [procoreTemplates, setProcoreTemplates] = useState(null)
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+
+    // Simple Bolt user invite state
+    const [inviteForm, setInviteForm] = useState({
+        email: '',
+        firstName: '',
+        lastName: '',
+        role: 'user',
+    })
+    const [isInvitingUser, setIsInvitingUser] = useState(false)
+
+    const roleOptions = [
+        { value: 'admin', label: 'Admin - Full access' },
+        { value: 'user', label: 'User - View only / My Awards' },
+    ]
 
     // Online/Offline detection
     useEffect(() => {
@@ -153,6 +169,83 @@ const AdvancedFeatures = () => {
             alert(`Error fetching templates: ${error?.message || error?.details || 'Unknown error'}`)
         } finally {
             setIsLoadingTemplates(false)
+        }
+    }
+
+    const handleInviteUser = async () => {
+        const trimmedEmail = inviteForm.email.trim().toLowerCase()
+        const trimmedFirst = inviteForm.firstName.trim()
+        const trimmedLast = inviteForm.lastName.trim()
+
+        if (!trimmedEmail) {
+            toast.push(
+                <Notification type="warning" duration={2500} title="Validation">
+                    Email is required to invite a user.
+                </Notification>
+            )
+            return
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(trimmedEmail)) {
+            toast.push(
+                <Notification type="warning" duration={2500} title="Validation">
+                    Please enter a valid email address.
+                </Notification>
+            )
+            return
+        }
+
+        setIsInvitingUser(true)
+        try {
+            const invitedByEmail = user?.email || null
+            const invitedByName = user?.userName || user?.name || null
+
+            const metadata = {
+                email: trimmedEmail,
+                firstName: trimmedFirst || null,
+                lastName: trimmedLast || null,
+                role: inviteForm.role || 'user',
+                invitedByEmail,
+                invitedByName,
+            }
+
+            const notifyResult = await createNotification({
+                userId: user?.id || user?.uid || null,
+                type: NOTIFICATION_TYPES.SYSTEM,
+                title: 'Bolt User Invite Recorded',
+                message: `Invitation details saved for ${trimmedEmail}.`,
+                entityType: null,
+                entityId: null,
+                relatedUserId: user?.id || user?.uid || null,
+                metadata,
+            })
+
+            if (!notifyResult.success) {
+                throw new Error(notifyResult.error || 'Failed to record user invitation')
+            }
+
+            toast.push(
+                <Notification type="success" duration={2500} title="User Invitation Created">
+                    Invitation recorded for {trimmedEmail}. Please create the auth user in Firebase when ready.
+                </Notification>
+            )
+
+            setInviteForm({
+                email: '',
+                firstName: '',
+                lastName: '',
+                role: 'user',
+            })
+        } catch (error) {
+            console.error('Error creating user invitation:', error)
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    {error.message || 'Failed to create user invitation.'}
+                </Notification>
+            )
+        } finally {
+            setIsInvitingUser(false)
         }
     }
 
@@ -822,6 +915,62 @@ const AdvancedFeatures = () => {
                     </div>
                 </div>
             </Dialog>
+
+            {/* Bolt User Invitations */}
+            <Card className="p-4 mt-4">
+                <h3 className="text-lg font-semibold mb-2">Bolt User Invitations</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Create a record for new Bolt users you plan to add. This helps keep email, name, and intended role
+                    aligned with Profit Sharing access. (Auth user creation is still handled in Firebase for now.)
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-1">Email *</label>
+                        <Input
+                            value={inviteForm.email}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                            placeholder="new.user@company.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">First Name</label>
+                        <Input
+                            value={inviteForm.firstName}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, firstName: e.target.value }))}
+                            placeholder="First name"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Last Name</label>
+                        <Input
+                            value={inviteForm.lastName}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, lastName: e.target.value }))}
+                            placeholder="Last name"
+                        />
+                    </div>
+                </div>
+                <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="max-w-xs">
+                        <label className="block text-sm font-medium mb-1">Intended Role</label>
+                        <Select
+                            options={roleOptions}
+                            value={roleOptions.find(opt => opt.value === inviteForm.role) || roleOptions[1]}
+                            onChange={(opt) =>
+                                setInviteForm(prev => ({ ...prev, role: opt?.value || 'user' }))
+                            }
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button
+                            onClick={handleInviteUser}
+                            loading={isInvitingUser}
+                            disabled={isInvitingUser}
+                        >
+                            Save Invitation
+                        </Button>
+                    </div>
+                </div>
+            </Card>
         </div>
     )
 }

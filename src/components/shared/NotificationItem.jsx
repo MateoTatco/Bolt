@@ -17,6 +17,7 @@ import {
 } from 'react-icons/hi'
 import { NOTIFICATION_TYPES, NOTIFICATION_COLORS } from '@/constants/notification.constant'
 import { useNotificationStore } from '@/store/notificationStore'
+import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
 import classNames from '@/utils/classNames'
 
 const ICON_MAP = {
@@ -49,6 +50,7 @@ const COLOR_CLASSES = {
 const NotificationItem = ({ notification }) => {
     const navigate = useNavigate()
     const { markAsRead, deleteNotification } = useNotificationStore()
+    const { hasAccess, loading: loadingAccess } = useProfitSharingAccess()
 
     const Icon = useMemo(() => {
         return ICON_MAP[notification.type] || HiOutlineBell
@@ -108,13 +110,19 @@ const NotificationItem = ({ notification }) => {
             } else if (notification.entityType === 'project') {
                 path = `/projects/${notification.entityId}`
             } else if (notification.entityType === 'profit_sharing') {
+                // Check if user still has access before navigating
+                if (!loadingAccess && !hasAccess) {
+                    // User no longer has access - don't navigate, just mark as read
+                    return
+                }
+                
                 // Handle profit sharing notifications
                 // If metadata has awardId, it's an award notification - use entityId (which is stakeholderId) or metadata.stakeholderId
                 // If metadata has awardId, navigate to stakeholder detail page
                 if (notification.metadata?.awardId) {
                     const stakeholderId = notification.metadata?.stakeholderId || notification.entityId
                     if (stakeholderId) {
-                        path = `/profit-sharing/stakeholder/${stakeholderId}`
+                        path = `/profit-sharing/stakeholders/${stakeholderId}`
                     } else {
                         path = '/profit-sharing?tab=overview'
                     }
@@ -125,12 +133,25 @@ const NotificationItem = ({ notification }) => {
             }
 
             if (path) {
+                // Double-check access for profit sharing paths
+                if (path.startsWith('/profit-sharing') && !loadingAccess && !hasAccess) {
+                    // User no longer has access - don't navigate
+                    return
+                }
                 navigate(path)
             } else if (notification.type === 'profit_sharing' || notification.type === 'profit_sharing_admin') {
+                // Check access before navigating
+                if (!loadingAccess && !hasAccess) {
+                    return
+                }
                 // Fallback: if it's a profit sharing notification but no entityId, go to overview
                 navigate('/profit-sharing?tab=overview')
             }
         } else if (notification.type === 'profit_sharing' || notification.type === 'profit_sharing_admin') {
+            // Check access before navigating
+            if (!loadingAccess && !hasAccess) {
+                return
+            }
             // If no entityType/entityId but it's a profit sharing notification, go to overview
             navigate('/profit-sharing?tab=overview')
         }

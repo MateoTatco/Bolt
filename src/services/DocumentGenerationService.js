@@ -28,15 +28,8 @@ const loadTemplate = async (templateType) => {
             throw new Error(`Unknown template type: ${templateType}`)
         }
 
-        console.log(`[DocumentGeneration] Loading template: ${templateType} from ${templatePath}`)
         const templateRef = storageRef(storage, templatePath)
-        
-        // Add cache-busting timestamp to ensure we get the latest template
-        // Note: getBytes doesn't support query parameters, but we can add a timestamp to the ref
-        // Actually, Firebase Storage getBytes should always get the latest version
-        // But let's add logging to verify the template is being loaded
         const templateBytes = await getBytes(templateRef)
-        console.log(`[DocumentGeneration] Template loaded successfully: ${templateType}, size: ${templateBytes.byteLength} bytes`)
         
         // Verify the template contains the SIGNATURE placeholder (for award templates)
         if (templateType === 'AWARD') {
@@ -45,7 +38,6 @@ const loadTemplate = async (templateType) => {
                 const zip = new PizZip(templateBytes)
                 const docContent = zip.files['word/document.xml'].asText()
                 const hasSignaturePlaceholder = docContent.includes('{SIGNATURE}')
-                console.log(`[DocumentGeneration] Template contains {SIGNATURE} placeholder:`, hasSignaturePlaceholder)
                 if (!hasSignaturePlaceholder) {
                     console.warn(`[DocumentGeneration] WARNING: Template does not contain {SIGNATURE} placeholder!`)
                 }
@@ -69,9 +61,6 @@ const loadTemplate = async (templateType) => {
  */
 export const generateDocument = async (templateType, data) => {
     try {
-        console.log(`[DocumentGeneration] Generating ${templateType} document with data keys:`, Object.keys(data))
-        console.log(`[DocumentGeneration] SIGNATURE data:`, data.SIGNATURE ? `${data.SIGNATURE.substring(0, 50)}... (${data.SIGNATURE.length} chars)` : 'Empty or missing')
-        
         // Load template
         const templateBytes = await loadTemplate(templateType)
         
@@ -82,8 +71,9 @@ export const generateDocument = async (templateType, data) => {
         if (templateType === 'AWARD') {
             const docContent = zip.files['word/document.xml'].asText()
             const hasSignaturePlaceholder = docContent.includes('{SIGNATURE}')
-            console.log(`[DocumentGeneration] Template contains {SIGNATURE} placeholder:`, hasSignaturePlaceholder)
-            console.log(`[DocumentGeneration] SIGNATURE data provided:`, !!data.SIGNATURE && data.SIGNATURE.startsWith('data:'))
+            if (!hasSignaturePlaceholder) {
+                console.warn(`[DocumentGeneration] Template does not contain {SIGNATURE} placeholder`)
+            }
         }
         
         // Create Docxtemplater instance with image module support (if image data is present)
@@ -134,12 +124,7 @@ export const generateDocument = async (templateType, data) => {
 
         try {
             // Render the document with data (new API - render with data directly)
-            console.log(`[DocumentGeneration] Rendering document with template data keys:`, Object.keys(templateData))
-            if (templateData.SIGNATURE) {
-                console.log(`[DocumentGeneration] SIGNATURE data present in template data (length: ${templateData.SIGNATURE.length})`)
-            }
             doc.render(templateData)
-            console.log(`[DocumentGeneration] Document rendered successfully`)
         } catch (error) {
             // Handle rendering errors (e.g., missing placeholders)
             console.error('[DocumentGeneration] Document rendering error:', error)
@@ -159,7 +144,6 @@ export const generateDocument = async (templateType, data) => {
             compression: 'DEFLATE',
         })
 
-        console.log(`[DocumentGeneration] Document generated successfully: ${templateType}, size: ${blob.size} bytes`)
         return blob
     } catch (error) {
         console.error('Error generating document:', error)
@@ -304,14 +288,12 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
  */
 export const generateAwardDocumentWithSignature = async (awardData, planData, stakeholderData, companyData, stakeholderId, awardId, signatureText) => {
     try {
-        console.log(`[DocumentGeneration] Generating signed award document for award ${awardId}`)
         // Map award, plan, stakeholder, and company data to template placeholders
         const templateData = mapAwardDataToTemplate(awardData, planData, stakeholderData, companyData)
         
         // Add signature text to template data (using text instead of image for better PDF compatibility)
         // The template should have {SIGNATURE} placeholder
         templateData['SIGNATURE'] = signatureText || ''
-        console.log(`[DocumentGeneration] Signature text added to template data: "${signatureText}"`)
         
         // Generate document with signature
         const documentBlob = await generateDocument('AWARD', templateData)
@@ -325,10 +307,7 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
         // Convert DOCX to PDF with signature
         let pdfResult = null
         try {
-            console.log(`[DocumentGeneration] Converting signed DOCX to PDF...`)
-            console.log(`[DocumentGeneration] DOCX blob size: ${documentBlob.size} bytes`)
             const pdfBlob = await convertDocxToPdf(documentBlob)
-            console.log(`[DocumentGeneration] PDF conversion successful, size: ${pdfBlob.size} bytes`)
             
             // Validate PDF size - should be at least 5KB for a valid PDF
             if (pdfBlob.size < 5000) {
@@ -347,7 +326,6 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
             const pdfFileName = `award-signed-${stakeholderId}-${awardId}-${Date.now()}.pdf`
             const pdfStoragePath = `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
             pdfResult = await uploadGeneratedDocument(pdfBlob, pdfStoragePath)
-            console.log(`[DocumentGeneration] Signed PDF uploaded successfully: ${pdfResult.url}`)
         } catch (pdfError) {
             console.error('[DocumentGeneration] Could not generate PDF version:', pdfError)
             console.error('[DocumentGeneration] PDF conversion error details:', {
@@ -367,11 +345,6 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
             pdfUrl: pdfResult?.url || null, // Will be null if PDF conversion failed
             pdfPath: pdfResult?.path || null
         }
-        console.log(`[DocumentGeneration] Signed document generated successfully:`, { 
-            pdfUrl: result.pdfUrl ? 'Present' : 'Missing (will use DOCX)',
-            docxUrl: result.docxUrl ? 'Present' : 'Missing',
-            note: result.pdfUrl ? 'PDF available' : 'PDF conversion failed, DOCX will be converted on-the-fly'
-        })
         return result
     } catch (error) {
         console.error('[DocumentGeneration] Error generating signed award document:', error)

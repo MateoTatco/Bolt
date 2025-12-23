@@ -10,6 +10,8 @@ import { db } from '@/configs/firebase.config'
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { components } from 'react-select'
+import React from 'react'
 
 const DEFAULT_COMPANY_NAME = 'Tatco OKC'
 
@@ -18,6 +20,161 @@ const SUPER_ADMINS = [
     { id: 'super-admin-1', userName: 'Admin', userEmail: 'admin-01@tatco.construction', role: 'admin', isBuiltIn: true },
     { id: 'super-admin-2', userName: 'Brett', userEmail: 'brett@tatco.construction', role: 'admin', isBuiltIn: true },
 ]
+
+// Custom ValueContainer to show selected value or count badge (from Master Tracker)
+const CustomValueContainer = ({ children, ...props }) => {
+    const { getValue, selectProps } = props
+    const selected = getValue()
+    const hasValue = selected && selected.length > 0
+    
+    // Filter out placeholder when there's a value
+    const childrenArray = React.Children.toArray(children)
+    const filteredChildren = hasValue 
+        ? childrenArray.filter(child => {
+            // Remove placeholder element when value exists
+            if (React.isValidElement(child) && child.props && child.props.className) {
+                return !child.props.className.includes('select-placeholder')
+            }
+            return true
+        })
+        : childrenArray
+    
+    if (selectProps.isMulti && hasValue) {
+        // Get input and indicators (usually the last 2 children)
+        const input = filteredChildren[filteredChildren.length - 2]
+        const indicators = filteredChildren[filteredChildren.length - 1]
+        
+        if (selected.length === 1) {
+            // Single selection - show the value name
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px'
+                    }}>
+                        {selected[0].label}
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        } else {
+            // Multiple selections - show count badge
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <span>{selected.length} selected</span>
+                        <span className="px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded">
+                            {selected.length}
+                        </span>
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        }
+    }
+    
+    // Default behavior for no selection
+    return <div className="select-value-container">{filteredChildren}</div>
+}
+
+// Custom MultiValue component to hide multi-value tags
+const CustomMultiValue = () => {
+    return null
+}
+
+// Custom MenuList to pin selected items to top
+const CustomMenuList = (props) => {
+    const { children, selectProps, ...rest } = props
+    const selected = selectProps.value || []
+    const selectedValues = Array.isArray(selected) ? selected.map(s => s.value) : []
+    
+    // Separate selected and unselected options
+    const childrenArray = React.Children.toArray(children)
+    const selectedOptions = []
+    const unselectedOptions = []
+    
+    childrenArray.forEach((child) => {
+        if (React.isValidElement(child) && child.props) {
+            const optionValue = child.props.data?.value
+            if (optionValue && selectedValues.includes(optionValue)) {
+                selectedOptions.push(child)
+            } else {
+                unselectedOptions.push(child)
+            }
+        } else {
+            unselectedOptions.push(child)
+        }
+    })
+    
+    // Use default MenuList component but with sorted children
+    if (selectedOptions.length > 0 && unselectedOptions.length > 0) {
+        // Add separator between selected and unselected
+        const separator = (
+            <div 
+                key="separator" 
+                className="border-t border-gray-200 dark:border-gray-700 my-1"
+            />
+        )
+        const sortedChildren = [
+            ...selectedOptions,
+            separator,
+            ...unselectedOptions
+        ]
+        return <components.MenuList {...rest} selectProps={selectProps}>{sortedChildren}</components.MenuList>
+    }
+    
+    return <components.MenuList {...rest} selectProps={selectProps}>{children}</components.MenuList>
+}
+
+// Custom Option with checkmark
+const CustomOption = (props) => {
+    const { innerProps, label, isSelected, isDisabled, data } = props
+    
+    return (
+        <div
+            className={`
+                select-option
+                ${!isDisabled && !isSelected && 'hover:text-gray-800 dark:hover:text-gray-100'}
+                ${isSelected && 'text-primary bg-primary-subtle'}
+                ${isDisabled && 'opacity-50 cursor-not-allowed'}
+            `}
+            {...innerProps}
+        >
+            <span className="ml-2 flex-1">{label}</span>
+            {isSelected && (
+                <span className="text-primary text-lg">✓</span>
+            )}
+        </div>
+    )
+}
+
+// Custom Placeholder that hides when there's a value
+const CustomPlaceholder = (props) => {
+    const { selectProps } = props
+    const hasValue = selectProps.value && (Array.isArray(selectProps.value) ? selectProps.value.length > 0 : true)
+    
+    if (hasValue) {
+        return null
+    }
+    
+    return <components.Placeholder {...props} />
+}
 
 const getInitials = (name) => {
     if (!name) return '?'
@@ -58,7 +215,8 @@ const SettingsTab = () => {
     const [showDeleteUserDialog, setShowDeleteUserDialog] = useState(null)
     const [userFormData, setUserFormData] = useState({
         userId: null,
-        role: 'user'
+        role: 'user',
+        companyIds: [] // Multi-select companies
     })
 
     useEffect(() => {
@@ -300,7 +458,8 @@ const SettingsTab = () => {
         setEditingAccess(null)
         setUserFormData({
             userId: null,
-            role: 'user'
+            role: 'user',
+            companyIds: selectedCompanyId ? [selectedCompanyId] : [] // Pre-select current company if available
         })
         setShowAddUserDialog(true)
     }
@@ -309,7 +468,8 @@ const SettingsTab = () => {
         setEditingAccess(access)
         setUserFormData({
             userId: access.userId,
-            role: access.role
+            role: access.role,
+            companyIds: access.companyId ? [access.companyId] : [] // Single company for editing existing
         })
         setShowAddUserDialog(true)
     }
@@ -324,12 +484,22 @@ const SettingsTab = () => {
             return
         }
 
+        // Validate company selection for new users
+        if (!editingAccess && (!userFormData.companyIds || userFormData.companyIds.length === 0)) {
+            toast.push(
+                <Notification type="warning" duration={2000} title="Validation">
+                    Please select at least one company
+                </Notification>
+            )
+            return
+        }
+
         setSaving(true)
         try {
             const selectedUser = allUsers.find(u => u.id === userFormData.userId)
             
             if (editingAccess) {
-                // Update existing
+                // Update existing (single company)
                 const oldRole = editingAccess.role
                 const result = await FirebaseDbService.profitSharingAccess.update(editingAccess.id, {
                     role: userFormData.role
@@ -355,7 +525,7 @@ const SettingsTab = () => {
                                 }
                             })
                             accessRecords.forEach(access => {
-                                if (access.role === 'admin' && access.companyId === selectedCompanyId && access.userId !== editingAccess.userId) {
+                                if (access.role === 'admin' && access.companyId === editingAccess.companyId && access.userId !== editingAccess.userId) {
                                     adminUserIds.add(access.userId)
                                 }
                             })
@@ -371,7 +541,7 @@ const SettingsTab = () => {
                                         title: 'User Role Changed',
                                         message: `${userName}'s role has been changed from ${oldRole} to ${userFormData.role}.`,
                                         entityType: 'profit_sharing',
-                                        entityId: selectedCompanyId,
+                                        entityId: editingAccess.companyId,
                                         metadata: {
                                             userId: editingAccess.userId,
                                             userName,
@@ -397,58 +567,92 @@ const SettingsTab = () => {
                     throw new Error(result.error || 'Failed to update access')
                 }
             } else {
-                // Check if user already has access
-                const existingAccess = accessRecords.find(a => a.userId === userFormData.userId)
-                if (existingAccess) {
+                // Create new access records for each selected company
+                const userName = selectedUser?.name || selectedUser?.firstName ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : selectedUser?.email || 'Unknown'
+                const userEmail = selectedUser?.email || ''
+                
+                // Check for existing access per company
+                const companiesToAdd = []
+                const companiesAlreadyAdded = []
+                
+                userFormData.companyIds.forEach(companyId => {
+                    const existingAccess = accessRecords.find(a => a.userId === userFormData.userId && a.companyId === companyId)
+                    if (existingAccess) {
+                        companiesAlreadyAdded.push(companyId)
+                    } else {
+                        companiesToAdd.push(companyId)
+                    }
+                })
+                
+                if (companiesAlreadyAdded.length > 0) {
+                    const companyNames = companies
+                        .filter(c => companiesAlreadyAdded.includes(c.id))
+                        .map(c => c.name)
+                        .join(', ')
                     toast.push(
-                        <Notification type="warning" duration={2000} title="Warning">
-                            This user already has access to this company
+                        <Notification type="warning" duration={3000} title="Warning">
+                            User already has access to: {companyNames}. Skipping those companies.
                         </Notification>
                     )
+                }
+                
+                if (companiesToAdd.length === 0) {
                     setSaving(false)
                     return
                 }
-
-                // Create new
-                const result = await FirebaseDbService.profitSharingAccess.create({
-                    userId: userFormData.userId,
-                    userEmail: selectedUser?.email || '',
-                    userName: selectedUser?.name || selectedUser?.firstName ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : selectedUser?.email || 'Unknown',
-                    role: userFormData.role,
-                    companyId: selectedCompanyId,
-                    addedBy: user?.id || user?.uid
-                })
-                if (result.success) {
-                    // Notify the user that they have been granted access to Profit Sharing
+                
+                // Create access records for each company
+                const createPromises = companiesToAdd.map(companyId =>
+                    FirebaseDbService.profitSharingAccess.create({
+                        userId: userFormData.userId,
+                        userEmail,
+                        userName,
+                        role: userFormData.role,
+                        companyId,
+                        addedBy: user?.id || user?.uid
+                    })
+                )
+                
+                const results = await Promise.all(createPromises)
+                const successful = results.filter(r => r.success)
+                const failed = results.filter(r => !r.success)
+                
+                if (successful.length > 0) {
+                    // Notify the user for each company they were added to
                     try {
-                        await createNotification({
-                            userId: userFormData.userId,
-                            type: NOTIFICATION_TYPES.PROFIT_SHARING,
-                            title: 'You have been added to Profit Sharing',
-                            message: `You now have access to the Profit Sharing section for this company.`,
-                            entityType: 'profit_sharing',
-                            entityId: selectedCompanyId,
-                            relatedUserId: user?.id || user?.uid || null,
-                            metadata: {
-                                companyId: selectedCompanyId,
-                                role: userFormData.role,
-                            },
-                        })
+                        await Promise.all(
+                            companiesToAdd.map(companyId =>
+                                createNotification({
+                                    userId: userFormData.userId,
+                                    type: NOTIFICATION_TYPES.PROFIT_SHARING,
+                                    title: 'You have been added to Profit Sharing',
+                                    message: `You now have access to the Profit Sharing section.`,
+                                    entityType: 'profit_sharing',
+                                    entityId: companyId,
+                                    relatedUserId: user?.id || user?.uid || null,
+                                    metadata: {
+                                        companyId,
+                                        role: userFormData.role,
+                                    },
+                                })
+                            )
+                        )
                     } catch (notifyError) {
-                        // Log but don't block main flow
-                        console.error('Error creating profit sharing access notification:', notifyError)
+                        console.error('Error creating profit sharing access notifications:', notifyError)
                     }
-
+                    
                     toast.push(
                         <Notification type="success" duration={2000} title="Success">
-                            User added successfully
+                            User added successfully to {successful.length} company{successful.length > 1 ? 'ies' : ''}
                         </Notification>
                     )
                     await loadAccessRecords()
                     refreshAccess() // Refresh global access state
                     setShowAddUserDialog(false)
-                } else {
-                    throw new Error(result.error || 'Failed to add user')
+                }
+                
+                if (failed.length > 0) {
+                    throw new Error(`Failed to add user to ${failed.length} company${failed.length > 1 ? 'ies' : ''}`)
                 }
             }
         } catch (error) {
@@ -729,7 +933,7 @@ const SettingsTab = () => {
                             User Management
                         </h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Manage who can access the Profit Sharing section. Admins have full access, Users can only view their own data.
+                            Manage who can access the Profit Sharing section. Admins have full access, Users can only view the Overview and their own awards.
                         </p>
                     </div>
                     <Button
@@ -794,6 +998,48 @@ const SettingsTab = () => {
                             <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <div className="font-medium">{editingAccess.userName}</div>
                                 <div className="text-sm text-gray-500">{editingAccess.userEmail}</div>
+                                <div className="text-xs text-gray-400 mt-1">Company: {companies.find(c => c.id === editingAccess.companyId)?.name || 'Unknown'}</div>
+                            </div>
+                        )}
+
+                        {!editingAccess && (
+                            <div>
+                                <label className="block text-sm font-medium mb-2">
+                                    Select Companies *
+                                </label>
+                                <Select
+                                    options={companies.map(c => ({ value: c.id, label: c.name }))}
+                                    value={companies.filter(c => userFormData.companyIds.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
+                                    onChange={(selected) => {
+                                        const selectedIds = Array.isArray(selected) 
+                                            ? selected.map(opt => opt.value)
+                                            : selected 
+                                                ? [selected.value]
+                                                : []
+                                        setUserFormData(prev => ({ ...prev, companyIds: selectedIds }))
+                                    }}
+                                    placeholder="Select one or more companies..."
+                                    isMulti
+                                    isSearchable
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
+                                    styles={{
+                                        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                        menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                    }}
+                                    components={{
+                                        ValueContainer: CustomValueContainer,
+                                        MultiValue: CustomMultiValue,
+                                        MenuList: CustomMenuList,
+                                        Option: CustomOption,
+                                        Placeholder: CustomPlaceholder,
+                                    }}
+                                    controlShouldRenderValue={false}
+                                    hideSelectedOptions={false}
+                                />
+                                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                    User will have access to Profit Sharing for all selected companies
+                                </div>
                             </div>
                         )}
 
@@ -808,7 +1054,7 @@ const SettingsTab = () => {
                             />
                             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 <div><strong>Admin:</strong> Full access to all tabs and features</div>
-                                <div><strong>User:</strong> Can only view Overview and their own Stakeholder data</div>
+                                <div><strong>User:</strong> Can only view Overview and their own awards (My Awards)</div>
                             </div>
                         </div>
                     </div>

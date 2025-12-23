@@ -33,6 +33,13 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
         }
     }, [isOpen, award?.id, award?.signedDocumentPdfUrl, award?.signedDocumentDocxUrl, award?.signedDocumentUrl, award?.documentPdfUrl, award?.documentUrl])
 
+    // Close signature modal when main modal closes to prevent React-Modal warnings
+    useEffect(() => {
+        if (!isOpen) {
+            setShowSignatureModal(false)
+        }
+    }, [isOpen])
+
     const loadPdf = async () => {
         if (!award || !stakeholderId) return
         
@@ -50,14 +57,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                 shouldConvertDocx = true
             }
             
-            console.log('[AwardDocumentModal] Loading document:', {
-                hasSignedPdf: !!award.signedDocumentPdfUrl,
-                hasSignedDocx: !!(award.signedDocumentDocxUrl || award.signedDocumentUrl),
-                hasPdf: !!award.documentPdfUrl,
-                hasDocx: !!award.documentUrl,
-                usingUrl: pdfUrlToUse ? pdfUrlToUse.substring(0, 100) : 'none',
-                willConvertDocx: shouldConvertDocx
-            })
             
             if (pdfUrlToUse) {
                 setPdfStoragePath(award.documentStoragePath || award.documentPdfPath)
@@ -91,7 +90,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                     }
                 } else {
                     // It's already a PDF - fetch it as blob to prevent auto-download
-                    console.log('[AwardDocumentModal] Fetching PDF as blob to prevent auto-download')
                     try {
                         // Remove any download parameters from Firebase Storage URL
                         const cleanUrl = pdfUrlToUse.split('?')[0] + '?alt=media'
@@ -107,7 +105,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                         }
                         
                         const pdfBlob = await response.blob()
-                        console.log('[AwardDocumentModal] PDF fetched as blob, size:', pdfBlob.size, 'bytes, type:', pdfBlob.type)
                         
                         // Validate PDF - if it's too small, it's likely corrupted
                         if (pdfBlob.size < 5000) {
@@ -116,7 +113,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                             // If we have a signed DOCX, use that instead
                             const signedDocxUrl = award.signedDocumentDocxUrl || award.signedDocumentUrl
                             if (signedDocxUrl) {
-                                console.log('[AwardDocumentModal] Falling back to signed DOCX and converting on-the-fly')
                                 const { convertDocxUrlToPdf } = await import('@/utils/pdfConverter')
                                 const convertedPdfBlob = await convertDocxUrlToPdf(signedDocxUrl)
                                 const pdfViewUrl = URL.createObjectURL(convertedPdfBlob)
@@ -140,7 +136,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                             // If we have a signed DOCX, use that instead
                             const signedDocxUrl = award.signedDocumentDocxUrl || award.signedDocumentUrl
                             if (signedDocxUrl) {
-                                console.log('[AwardDocumentModal] Falling back to signed DOCX and converting on-the-fly')
                                 const { convertDocxUrlToPdf } = await import('@/utils/pdfConverter')
                                 const convertedPdfBlob = await convertDocxUrlToPdf(signedDocxUrl)
                                 const pdfViewUrl = URL.createObjectURL(convertedPdfBlob)
@@ -159,9 +154,7 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                             ? pdfBlob 
                             : new Blob([pdfBlob], { type: 'application/pdf' })
                         
-                        console.log('[AwardDocumentModal] Typed blob MIME type:', typedBlob.type)
                         const pdfBlobUrl = URL.createObjectURL(typedBlob)
-                        console.log('[AwardDocumentModal] Created blob URL:', pdfBlobUrl.substring(0, 50) + '...')
                         setPdfUrl(pdfBlobUrl)
                         setPdfBlob(typedBlob) // Store blob for download
                     } catch (fetchError) {
@@ -170,7 +163,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                         // Final fallback: try to use signed DOCX if available
                         const signedDocxUrl = award.signedDocumentDocxUrl || award.signedDocumentUrl
                         if (signedDocxUrl) {
-                            console.log('[AwardDocumentModal] Final fallback: converting signed DOCX on-the-fly')
                             try {
                                 const { convertDocxUrlToPdf } = await import('@/utils/pdfConverter')
                                 const convertedPdfBlob = await convertDocxUrlToPdf(signedDocxUrl)
@@ -402,14 +394,12 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
         
         setSigning(true)
         try {
-            console.log('[AwardDocumentModal] Starting signature process', { awardId: award.id })
             
             // Import FirebaseDbService once at the beginning to avoid initialization issues
             const { FirebaseDbService } = await import('@/services/FirebaseDbService')
             
             // Use signature text directly (not image) for better PDF compatibility
             const signatureText = signatureData.name || ''
-            console.log('[AwardDocumentModal] Using signature text:', signatureText)
             
             // Get plan and company data for document regeneration
             let planData = null
@@ -437,7 +427,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             const stakeholderData = stakeholderResult.data
             
             // Regenerate document with signature text embedded (not image)
-            console.log('[AwardDocumentModal] Regenerating document with signature text using latest template')
             const signedDocumentResult = await generateAwardDocumentWithSignature(
                 award,
                 planData,
@@ -447,10 +436,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                 award.id,
                 signatureText // Pass text instead of image
             )
-            console.log('[AwardDocumentModal] Signed document generated:', {
-                hasPdf: !!signedDocumentResult.pdfUrl,
-                hasDocx: !!signedDocumentResult.docxUrl
-            })
             
             // Update award with signature metadata and signed document
             const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
@@ -477,7 +462,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             
             // Clean the updated award to remove any undefined values
             const cleanedAward = removeUndefined(updatedAward)
-            console.log('[Signature] Cleaned award object', { cleanedAward })
             
             const updatedAwards = existingAwards.map(a => 
                 a.id === award.id ? cleanedAward : a
@@ -485,16 +469,13 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             
             // Clean all awards before saving
             const cleanedAwards = updatedAwards.map(a => removeUndefined(a))
-            console.log('[AwardDocumentModal] Saving awards to Firestore')
             
             await updateDoc(stakeholderRef, {
                 profitAwards: cleanedAwards,
                 updatedAt: serverTimestamp(),
             })
-            console.log('[AwardDocumentModal] Awards saved to Firestore successfully')
             
             // Directly load the signed document - try PDF first, fallback to HTML preview
-            console.log('[AwardDocumentModal] Loading signed document directly')
             const signedDocxUrl = signedDocumentResult?.docxUrl
             const signedPdfUrl = signedDocumentResult?.pdfUrl
             
@@ -511,7 +492,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                     setPdfUrl(pdfBlobUrl)
                     setPdfBlob(pdfBlob)
                     setHtmlContent(null)
-                    console.log('[AwardDocumentModal] Signed document loaded successfully as PDF')
                 } catch (pdfError) {
                     console.warn('[AwardDocumentModal] Could not load signed PDF, trying DOCX:', pdfError)
                     // Fall through to DOCX conversion
@@ -527,7 +507,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                     setPdfUrl(pdfViewUrl)
                     setPdfBlob(convertedPdfBlob)
                     setHtmlContent(null)
-                    console.log('[AwardDocumentModal] Signed document converted to PDF successfully')
                 } catch (convertError) {
                     console.warn('[AwardDocumentModal] Could not convert signed DOCX to PDF, using HTML preview:', convertError)
                     // Fall back to HTML preview
@@ -535,7 +514,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                         const html = await convertDocxUrlToHtml(signedDocxUrl)
                         setHtmlContent(html)
                         setPdfUrl(null)
-                        console.log('[AwardDocumentModal] Signed document loaded successfully as HTML preview')
                     } catch (htmlError) {
                         console.error('[AwardDocumentModal] Could not convert signed DOCX to HTML either:', htmlError)
                         setPdfUrl(signedDocxUrl) // Last resort
@@ -555,7 +533,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
             
             // Update the award prop by calling onDocumentUpdated (for parent component state)
             if (onDocumentUpdated) {
-                console.log('[AwardDocumentModal] Calling onDocumentUpdated to refresh award data in parent')
                 await onDocumentUpdated()
             }
             
@@ -772,7 +749,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                     className="w-full h-full"
                                     style={{ minHeight: '400px', border: 'none' }}
                                     title="Award Document"
-                                    onLoad={() => console.log('[AwardDocumentModal] PDF embed loaded successfully')}
                                 />
                             ) : (
                                 // Use iframe for regular URLs
@@ -782,7 +758,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                     className="w-full h-full"
                                     style={{ minHeight: '400px', border: 'none' }}
                                     title="Award Document"
-                                    onLoad={() => console.log('[AwardDocumentModal] PDF iframe loaded successfully')}
                                 />
                             )}
                         </div>
@@ -792,14 +767,23 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                             </p>
                             <div className="flex items-center gap-2">
                                 {/* Sign Document Button - Only show for finalized awards without signature */}
-                                {award?.status === 'Finalized' && !award?.signatureMetadata && (
+                                {/* Check if document is signed by looking for signatureMetadata or any signed document URLs */}
+                                {award?.status === 'Finalized' && 
+                                 !award?.signatureMetadata && 
+                                 !award?.signedDocumentPdfUrl && 
+                                 !award?.signedDocumentDocxUrl && 
+                                 !award?.signedDocumentUrl && (
                                     <Button
                                         variant="solid"
                                         size="sm"
                                         icon={<HiOutlinePencil />}
-                                        onClick={() => setShowSignatureModal(true)}
+                                        onClick={() => {
+                                            if (!showSignatureModal) {
+                                                setShowSignatureModal(true)
+                                            }
+                                        }}
                                         loading={signing}
-                                        disabled={signing}
+                                        disabled={signing || showSignatureModal}
                                     >
                                         Sign Document
                                     </Button>

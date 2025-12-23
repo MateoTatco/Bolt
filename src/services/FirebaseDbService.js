@@ -1470,6 +1470,65 @@ export const FirebaseDbService = {
         },
     },
 
+    // USER INVITATIONS COLLECTION (for admin-created invites from Bolt UI)
+    userInvitations: {
+        // Create a new invitation
+        create: async (invitationData) => {
+            try {
+                await ensureAuthUser()
+                const invitesRef = collection(db, 'userInvitations')
+                const docRef = await addDoc(invitesRef, {
+                    ...invitationData,
+                    status: invitationData.status || 'pending',
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                })
+                return { success: true, data: { id: docRef.id, ...invitationData } }
+            } catch (error) {
+                console.error('User invitation create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get all invitations (optionally filtered by status)
+        getAll: async (options = {}) => {
+            const { status = null } = options
+            try {
+                const invitesRef = collection(db, 'userInvitations')
+                let q = invitesRef
+                if (status) {
+                    q = query(invitesRef, where('status', '==', status))
+                }
+                const snapshot = await getDocs(q)
+                const invites = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }))
+                return { success: true, data: invites }
+            } catch (error) {
+                console.error('User invitations getAll error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update an invitation (e.g., mark as completed/cancelled)
+        update: async (id, data) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const inviteRef = doc(db, 'userInvitations', stringId)
+                await updateDoc(inviteRef, {
+                    ...data,
+                    updatedAt: serverTimestamp(),
+                })
+                return { success: true, data: { id: stringId, ...data } }
+            } catch (error) {
+                console.error('User invitation update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
     // STAKEHOLDERS COLLECTION
     stakeholders: {
         // Get all stakeholders

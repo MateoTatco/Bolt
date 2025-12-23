@@ -99,7 +99,12 @@ const ProfitSharing = () => {
     const allSidebarItems = [
         { key: 'overview', label: 'Overview', icon: <HiOutlineHome />, adminOnly: false },
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
-        { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers />, adminOnly: false },
+        {
+            key: 'stakeholders',
+            label: isAdmin ? 'Stakeholders' : 'My Awards',
+            icon: <HiOutlineUsers />,
+            adminOnly: false,
+        },
         { key: 'valuations', label: 'Profit Entries', icon: <HiOutlineChartBar />, adminOnly: true },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },

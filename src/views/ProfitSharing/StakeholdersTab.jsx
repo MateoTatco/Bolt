@@ -118,7 +118,33 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                     )
                 }
                 
-                setStakeholders(formattedStakeholders)
+                // If we have user profiles, override display fields for linked users
+                let stakeholdersWithProfiles = formattedStakeholders
+                try {
+                    const usersResult = await FirebaseDbService.users.getAll()
+                    if (usersResult.success && Array.isArray(usersResult.data)) {
+                        const usersById = new Map(usersResult.data.map(u => [u.id, u]))
+                        stakeholdersWithProfiles = formattedStakeholders.map(s => {
+                            if (!s.linkedUserId) return s
+                            const profile = usersById.get(s.linkedUserId)
+                            if (!profile) return s
+                            const profileName =
+                                profile.firstName && profile.lastName
+                                    ? `${profile.firstName} ${profile.lastName}`
+                                    : profile.firstName || profile.userName || s.name || s.email
+                            const profilePhone = profile.phoneNumber || s.phone
+                            return {
+                                ...s,
+                                name: profileName || s.name,
+                                phone: profilePhone || s.phone,
+                            }
+                        })
+                    }
+                } catch (profileError) {
+                    console.warn('Error loading user profiles for stakeholders:', profileError)
+                }
+                
+                setStakeholders(stakeholdersWithProfiles)
             } else {
                 console.error('Error loading stakeholders:', response.error)
                 toast.push(
@@ -481,7 +507,9 @@ const StakeholdersTab = ({ isAdmin = true }) => {
         <div className="space-y-8">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Stakeholders</h2>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                    {isAdmin ? 'Stakeholders' : 'My Awards'}
+                </h2>
                 {isAdmin && (
                     <Button
                         variant="solid"
