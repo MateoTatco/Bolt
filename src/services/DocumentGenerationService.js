@@ -31,20 +31,7 @@ const loadTemplate = async (templateType) => {
         const templateRef = storageRef(storage, templatePath)
         const templateBytes = await getBytes(templateRef)
         
-        // Verify the template contains the SIGNATURE placeholder (for award templates)
-        if (templateType === 'AWARD') {
-            try {
-                const PizZip = (await import('pizzip')).default
-                const zip = new PizZip(templateBytes)
-                const docContent = zip.files['word/document.xml'].asText()
-                const hasSignaturePlaceholder = docContent.includes('{SIGNATURE}')
-                if (!hasSignaturePlaceholder) {
-                    console.warn(`[DocumentGeneration] WARNING: Template does not contain {SIGNATURE} placeholder!`)
-                }
-            } catch (checkError) {
-                console.warn(`[DocumentGeneration] Could not verify template placeholders:`, checkError)
-            }
-        }
+        // Note: Signature placeholder removed - using timestamps instead
         
         return templateBytes
     } catch (error) {
@@ -67,45 +54,10 @@ export const generateDocument = async (templateType, data) => {
         // Create PizZip instance from template
         const zip = new PizZip(templateBytes)
         
-        // Check if template contains SIGNATURE placeholder
-        if (templateType === 'AWARD') {
-            const docContent = zip.files['word/document.xml'].asText()
-            const hasSignaturePlaceholder = docContent.includes('{SIGNATURE}')
-            if (!hasSignaturePlaceholder) {
-                console.warn(`[DocumentGeneration] Template does not contain {SIGNATURE} placeholder`)
-            }
-        }
+        // Note: Signature placeholder removed - using timestamps instead
         
-        // Create Docxtemplater instance with image module support (if image data is present)
+        // Create Docxtemplater instance (no image module needed - signatures removed)
         const modules = []
-        // Only load image module if there's actual image data (data URL), not text signatures
-        // SIGNATURE is now text, so we check other fields for images
-        const hasSignatureImage = data.SIGNATURE && typeof data.SIGNATURE === 'string' && data.SIGNATURE.startsWith('data:')
-        const hasOtherImages = Object.keys(data).some(key => key.includes('IMAGE') && data[key] && typeof data[key] === 'string' && data[key].startsWith('data:'))
-        // Don't load ImageModule for text signatures - only for actual image data
-        if (hasOtherImages) {
-            modules.push(
-                new ImageModule({
-                    centered: false,
-                    fileType: 'docx',
-                    getImage: (tagValue) => {
-                        // If tagValue is a base64 data URL, convert it to buffer
-                        if (typeof tagValue === 'string' && tagValue.startsWith('data:')) {
-                            const base64Data = tagValue.split(',')[1]
-                            return Buffer.from(base64Data, 'base64')
-                        }
-                        return tagValue
-                    },
-                    getSize: (img, tagValue, tagName) => {
-                        // Default size for signature images - reduced to prevent page breaks
-                        if (tagName === 'SIGNATURE') {
-                            return [120, 32] // width, height in pixels (reduced from 150x40)
-                        }
-                        return [100, 100] // default size
-                    }
-                })
-            )
-        }
         
         const doc = new Docxtemplater(zip, {
             paragraphLoop: true,
@@ -289,13 +241,10 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
 export const generateAwardDocumentWithSignature = async (awardData, planData, stakeholderData, companyData, stakeholderId, awardId, signatureText) => {
     try {
         // Map award, plan, stakeholder, and company data to template placeholders
+        // Note: Signature functionality removed - using timestamps instead
         const templateData = mapAwardDataToTemplate(awardData, planData, stakeholderData, companyData)
         
-        // Add signature text to template data (using text instead of image for better PDF compatibility)
-        // The template should have {SIGNATURE} placeholder
-        templateData['SIGNATURE'] = signatureText || ''
-        
-        // Generate document with signature
+        // Generate document (signature placeholder removed)
         const documentBlob = await generateDocument('AWARD', templateData)
         
         // Upload signed document to storage
@@ -476,9 +425,13 @@ const mapAwardDataToTemplate = (awardData, planData, stakeholderData, companyDat
         'PAYMENT DATES': paymentDates,
         'PAYMENT TERMS': formatPaymentTerms(planData?.paymentTerms),
         'PROFIT DEFINITION': planData?.profitDescription || '',
-        'TRIGGER AMOUNT': formatCurrency(planData?.milestoneAmount || 0),
+        'TRIGGER AMOUNT': formatCurrency(planData?.triggerAmount || planData?.milestoneAmount || 0),
         'TOTAL PROFIT SHARES': planData?.totalShares?.toLocaleString() || '0',
-        'SIGNATURE': '', // Empty string for unsigned documents - will be replaced with signature image when document is signed
+        // Timestamp information (replaces signature)
+        'ISSUED BY': awardData?.issuedBy || '',
+        'ISSUED AT': awardData?.issuedAt ? formatDate(awardData.issuedAt) : '',
+        'ACCEPTED BY': awardData?.acceptedBy || '',
+        'ACCEPTED AT': awardData?.acceptedAt ? formatDate(awardData.acceptedAt) : '',
     }
 }
 

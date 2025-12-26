@@ -21,7 +21,7 @@ const ProfitSharing = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const user = useSessionUser((state) => state.user)
-    const { hasAccess, userRole, loading: loadingAccess } = useProfitSharingAccess()
+    const { hasAccess, userRole, loading: loadingAccess, isSupervisor } = useProfitSharingAccess()
 
     // Check if super admin
     const userEmail = user?.email?.toLowerCase() || ''
@@ -30,16 +30,18 @@ const ProfitSharing = () => {
     // Determine effective role
     const effectiveRole = isSuperAdmin ? 'admin' : userRole
     const isAdmin = effectiveRole === 'admin'
+    const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
     const canAccess = isSuperAdmin || hasAccess
 
     // Initialize tab from URL params or default to 'overview'
     const getInitialTab = () => {
         const params = new URLSearchParams(location.search)
         const tab = params.get('tab')
-        // User role can only access overview and stakeholders
+        // User role can access overview, stakeholders, and valuations (read-only)
+        // Supervisor can access overview, stakeholders, and valuations
         const allowedTabs = isAdmin 
             ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
-            : ['overview', 'stakeholders']
+            : ['overview', 'stakeholders', 'valuations']
         if (tab && allowedTabs.includes(tab)) {
             return tab
         }
@@ -62,7 +64,7 @@ const ProfitSharing = () => {
         const tab = params.get('tab')
         const allowedTabs = isAdmin 
             ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
-            : ['overview', 'stakeholders']
+            : ['overview', 'stakeholders', 'valuations']
         if (tab && allowedTabs.includes(tab)) {
             if (tab !== activeTab) {
                 setActiveTab(tab)
@@ -101,11 +103,11 @@ const ProfitSharing = () => {
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
         {
             key: 'stakeholders',
-            label: isAdmin ? 'Stakeholders' : 'My Awards',
+            label: isAdmin ? 'Stakeholders' : effectiveIsSupervisor ? 'Awards' : 'My Awards',
             icon: <HiOutlineUsers />,
             adminOnly: false,
         },
-        { key: 'valuations', label: 'Profit Entries', icon: <HiOutlineChartBar />, adminOnly: true },
+        { key: 'valuations', label: 'Profit Entries', icon: <HiOutlineChartBar />, adminOnly: false },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
@@ -199,7 +201,7 @@ const ProfitSharing = () => {
                     {activeTab === 'overview' && <OverviewTab />}
                     {activeTab === 'plans' && isAdmin && <PlansTab />}
                     {activeTab === 'stakeholders' && <StakeholdersTab isAdmin={isAdmin} />}
-                    {activeTab === 'valuations' && isAdmin && <ValuationsTab />}
+                    {activeTab === 'valuations' && <ValuationsTab />}
                     {activeTab === 'milestones' && isAdmin && <MilestonesTab />}
                     {activeTab === 'settings' && isAdmin && <SettingsTab />}
                 </div>

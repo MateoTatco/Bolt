@@ -9,6 +9,7 @@ import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -34,6 +35,8 @@ const formatNumber = (value) => {
 
 const ValuationsTab = () => {
     const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
+    const { userRole, canEdit, loading: loadingAccess } = useProfitSharingAccess()
+    const isAdmin = canEdit || userRole === 'admin'
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
     const [plans, setPlans] = useState([])
@@ -43,7 +46,7 @@ const ValuationsTab = () => {
     const [formData, setFormData] = useState({
         planId: '',
         valuationDate: null,
-        source: 'Manual',
+        profitType: 'estimated', // 'estimated' or 'actual'
         profitAmount: '',
         milestoneAmount: '',
         pricePerShare: '',
@@ -53,7 +56,17 @@ const ValuationsTab = () => {
     })
 
     useEffect(() => {
-        if (loadingCompany || !selectedCompanyId) return
+        if (loadingCompany) {
+            setLoading(true)
+            return
+        }
+        
+        if (!selectedCompanyId) {
+            setValuations([])
+            setPlans([])
+            setLoading(false)
+            return
+        }
         
         loadValuations()
         loadPlans()
@@ -130,6 +143,7 @@ const ValuationsTab = () => {
             setValuations(valuationsData)
         } catch (error) {
             console.error('Error loading valuations:', error)
+            setValuations([])
             toast.push(
                 React.createElement(
                     Notification,
@@ -170,17 +184,20 @@ const ValuationsTab = () => {
         setFormData(prev => {
             const next = { ...prev, [field]: value }
 
-            // When plan changes, pull milestone and total shares from plan
+            // When plan changes, pull trigger and total shares from plan
             if (field === 'planId') {
                 const selectedPlan = plans.find(p => p.id === value)
                 if (selectedPlan) {
-                    next.milestoneAmount = selectedPlan.milestoneAmount || selectedPlan.milestone || 0
+                    const planTrigger = selectedPlan.triggerAmount || selectedPlan.milestoneAmount || selectedPlan.milestone || 0
+                    next.triggerAmount = planTrigger
+                    next.milestoneAmount = planTrigger // Backward compatibility
                     next.totalShares = selectedPlan.totalShares || 0
                     // Store poolShareType for calculation
                     next.planPoolShareType = selectedPlan.poolShareType || 'total'
                     // Reset date when plan changes to force re-selection from that plan's schedule
                     next.valuationDate = null
                 } else {
+                    next.triggerAmount = ''
                     next.milestoneAmount = ''
                     next.totalShares = ''
                     next.planPoolShareType = 'total'
@@ -188,22 +205,22 @@ const ValuationsTab = () => {
                 }
             }
 
-            // Recalculate price per share whenever profit, totalShares, milestoneAmount, or planId changes
-            if (['profitAmount', 'totalShares', 'milestoneAmount', 'planId'].includes(field)) {
+            // Recalculate price per share whenever profit, totalShares, triggerAmount, or planId changes
+            if (['profitAmount', 'totalShares', 'triggerAmount', 'milestoneAmount', 'planId'].includes(field)) {
                 const profitRaw = next.profitAmount
                 const totalSharesRaw = next.totalShares
-                const milestoneRaw = next.milestoneAmount
+                const triggerRaw = next.triggerAmount || next.milestoneAmount || ''
                 const poolShareType = next.planPoolShareType || 'total'
 
                 const profit = profitRaw ? parseFloat(String(profitRaw).replace(/,/g, '')) : 0
                 const total = totalSharesRaw ? parseFloat(String(totalSharesRaw).replace(/,/g, '')) : 0
-                const milestone = milestoneRaw ? parseFloat(String(milestoneRaw).replace(/,/g, '')) : 0
+                const trigger = triggerRaw ? parseFloat(String(triggerRaw).replace(/,/g, '')) : 0
 
                 if (total > 0 && profit > 0) {
                     let perShare
                     if (poolShareType === 'above-trigger') {
-                        // Formula: (profitAmount - milestoneAmount) / totalShares
-                        const profitAboveTrigger = Math.max(0, profit - milestone)
+                        // Formula: (profitAmount - triggerAmount) / totalShares
+                        const profitAboveTrigger = Math.max(0, profit - trigger)
                         perShare = profitAboveTrigger / total
                     } else {
                         // Formula: profitAmount / totalShares (default)
@@ -223,9 +240,10 @@ const ValuationsTab = () => {
         setFormData({
             planId: '',
             valuationDate: null,
-            source: 'Manual',
+            profitType: 'estimated',
             profitAmount: '',
-            milestoneAmount: '',
+            triggerAmount: '',
+            milestoneAmount: '', // Backward compatibility
             pricePerShare: '',
             totalShares: '',
             planPoolShareType: 'total',
@@ -257,9 +275,10 @@ const ValuationsTab = () => {
         setFormData({
             planId: valuation.planId || '',
             valuationDate: valuation.valuationDate ? (valuation.valuationDate instanceof Date ? valuation.valuationDate : new Date(valuation.valuationDate)) : null,
-            source: valuation.source || 'Manual',
+            profitType: valuation.profitType || 'estimated', // Default to estimated if not set
             profitAmount: valuation.profitAmount ? String(valuation.profitAmount) : (valuation.fmv ? String(valuation.fmv) : ''),
-            milestoneAmount: valuation.milestoneAmount ? String(valuation.milestoneAmount) : '',
+            triggerAmount: valuation.triggerAmount || valuation.milestoneAmount ? String(valuation.triggerAmount || valuation.milestoneAmount) : '',
+            milestoneAmount: valuation.milestoneAmount ? String(valuation.milestoneAmount) : '', // Backward compatibility
             pricePerShare: derivedPricePerShare ? String(derivedPricePerShare.toFixed(2)) : '',
             totalShares: valuation.totalShares ? String(valuation.totalShares) : '',
             planPoolShareType: planPoolShareType,
@@ -281,12 +300,12 @@ const ValuationsTab = () => {
         }
         
         try {
-            if (!formData.planId || !formData.valuationDate || !formData.source || !formData.profitAmount) {
+            if (!formData.planId || !formData.valuationDate || !formData.profitType || !formData.profitAmount) {
                 toast.push(
                     React.createElement(
                         Notification,
                         { type: "warning", duration: 2000, title: "Validation" },
-                        "Please select a plan, profit date, source, and profit amount"
+                        "Please select a plan, profit date, profit type, and profit amount"
                     )
                 )
                 return
@@ -295,8 +314,8 @@ const ValuationsTab = () => {
             const profitValue = formData.profitAmount
                 ? parseFloat(formData.profitAmount.replace(/,/g, ''))
                 : 0
-            const milestoneValue = formData.milestoneAmount
-                ? parseFloat(String(formData.milestoneAmount).replace(/,/g, ''))
+            const triggerValue = formData.triggerAmount || formData.milestoneAmount
+                ? parseFloat(String(formData.triggerAmount || formData.milestoneAmount).replace(/,/g, ''))
                 : 0
             const totalSharesValue = formData.totalShares
                 ? parseFloat(String(formData.totalShares).replace(/,/g, ''))
@@ -309,8 +328,8 @@ const ValuationsTab = () => {
             let pricePerShareValue = null
             if (profitValue && totalSharesValue && totalSharesValue > 0) {
                 if (poolShareType === 'above-trigger') {
-                    // Formula: (profitAmount - milestoneAmount) / totalShares
-                    const profitAboveTrigger = Math.max(0, profitValue - milestoneValue)
+                    // Formula: (profitAmount - triggerAmount) / totalShares
+                    const profitAboveTrigger = Math.max(0, profitValue - triggerValue)
                     pricePerShareValue = profitAboveTrigger / totalSharesValue
                 } else {
                     // Formula: profitAmount / totalShares (default)
@@ -322,11 +341,12 @@ const ValuationsTab = () => {
                 companyId: selectedCompanyId,
                 planId: formData.planId,
                 valuationDate: formData.valuationDate instanceof Date ? formData.valuationDate : new Date(formData.valuationDate),
-                source: formData.source,
+                profitType: formData.profitType || 'estimated', // 'estimated' or 'actual'
                 // For backwards compatibility with existing UI, store profit as FMV too
                 fmv: profitValue || 0,
                 profitAmount: profitValue || 0,
-                milestoneAmount: milestoneValue || 0,
+                triggerAmount: triggerValue || 0,
+                milestoneAmount: triggerValue || 0, // Backward compatibility
                 pricePerShare: pricePerShareValue,
                 totalShares: totalSharesValue,
                 notes: formData.notes || '',
@@ -338,7 +358,7 @@ const ValuationsTab = () => {
                 const valuationRef = doc(db, 'valuations', editingValuation.id)
                 
                 // If setting this as Active, set all others to Historical
-                if (formData.source && !editingValuation.status) {
+                if (formData.profitType && !editingValuation.status) {
                     // Check if we should set status
                     const shouldSetActive = true // You can add logic here
                     if (shouldSetActive) {
@@ -495,10 +515,9 @@ const ValuationsTab = () => {
                 : null))
         : null
 
-    const sourceOptions = [
-        { value: 'Manual', label: 'Manual' },
-        { value: 'Third-party', label: 'Third-party' },
-        { value: 'Calculated', label: 'Calculated' },
+    const profitTypeOptions = [
+        { value: 'estimated', label: 'Estimated Profit' },
+        { value: 'actual', label: 'Actual Profit' },
     ]
 
     const selectedPlan = plans.find(p => p.id === formData.planId)
@@ -510,20 +529,54 @@ const ValuationsTab = () => {
           }))
         : []
 
+    // Show loading state
+    if (loadingCompany || loading || loadingAccess) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
+                </div>
+                <Card className="p-12">
+                    <div className="text-center">
+                        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
+                    </div>
+                </Card>
+            </div>
+        )
+    }
+
+    // Show message if no company selected
+    if (!selectedCompanyId) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
+                </div>
+                <Card className="p-12">
+                    <div className="text-center">
+                        <div className="text-gray-400 dark:text-gray-500 text-lg">Please select a company in Settings</div>
+                    </div>
+                </Card>
+            </div>
+        )
+    }
+
     return (
         <>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
-                    <Button 
-                        variant="solid" 
-                        size="sm"
-                        icon={<HiOutlinePlus />}
-                        onClick={handleOpenAdd}
-                    >
-                        Add profit
-                    </Button>
+                    {isAdmin && (
+                        <Button 
+                            variant="solid" 
+                            size="sm"
+                            icon={<HiOutlinePlus />}
+                            onClick={handleOpenAdd}
+                        >
+                            Add profit
+                        </Button>
+                    )}
                 </div>
 
                 {/* Current Value Card */}
@@ -692,7 +745,7 @@ const ValuationsTab = () => {
                                 <Table.Tr>
                                     <Table.Th>Updated Date</Table.Th>
                                     <Table.Th>Profit Date</Table.Th>
-                                    <Table.Th>Source</Table.Th>
+                                    <Table.Th>Type</Table.Th>
                                     <Table.Th>Status</Table.Th>
                                     <Table.Th>Profit</Table.Th>
                                     <Table.Th>Trigger</Table.Th>
@@ -720,8 +773,12 @@ const ValuationsTab = () => {
                                             </span>
                                         </Table.Td>
                                         <Table.Td>
-                                            <Tag className="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                                                {valuation.source || 'N/A'}
+                                            <Tag className={`px-2 py-1 text-xs font-medium ${
+                                                valuation.profitType === 'actual' 
+                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                                            }`}>
+                                                {valuation.profitType === 'actual' ? 'Actual Profit' : valuation.profitType === 'estimated' ? 'Estimated Profit' : 'N/A'}
                                             </Tag>
                                         </Table.Td>
                                         <Table.Td>
@@ -745,8 +802,8 @@ const ValuationsTab = () => {
                                         </Table.Td>
                                         <Table.Td>
                                             <span className="text-sm text-gray-900 dark:text-white">
-                                                {valuation.milestoneAmount
-                                                    ? formatCurrency(valuation.milestoneAmount)
+                                                {valuation.triggerAmount || valuation.milestoneAmount
+                                                    ? formatCurrency(valuation.triggerAmount || valuation.milestoneAmount)
                                                     : '—'}
                                             </span>
                                         </Table.Td>
@@ -779,22 +836,26 @@ const ValuationsTab = () => {
                                             </span>
                                         </Table.Td>
                                         <Table.Td>
-                                            <div className="flex items-center gap-2">
-                                                <Button
-                                                    variant="plain"
-                                                    size="sm"
-                                                    icon={<HiOutlinePencil />}
-                                                    onClick={() => handleOpenEdit(valuation)}
-                                                    className="text-gray-400 hover:text-primary"
-                                                />
-                                                <Button
-                                                    variant="plain"
-                                                    size="sm"
-                                                    icon={<HiOutlineTrash />}
-                                                    onClick={() => handleDelete(valuation.id)}
-                                                    className="text-gray-400 hover:text-red-500"
-                                                />
-                                            </div>
+                                            {isAdmin ? (
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="plain"
+                                                        size="sm"
+                                                        icon={<HiOutlinePencil />}
+                                                        onClick={() => handleOpenEdit(valuation)}
+                                                        className="text-gray-400 hover:text-primary"
+                                                    />
+                                                    <Button
+                                                        variant="plain"
+                                                        size="sm"
+                                                        icon={<HiOutlineTrash />}
+                                                        onClick={() => handleDelete(valuation.id)}
+                                                        className="text-gray-400 hover:text-red-500"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">View only</span>
+                                            )}
                                         </Table.Td>
                                     </Table.Tr>
                                 ))}
@@ -882,14 +943,19 @@ const ValuationsTab = () => {
 
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Source *
+                                Type of Profit *
                             </label>
                             <Select
-                                options={sourceOptions}
-                                value={sourceOptions.find(opt => opt.value === formData.source) || null}
-                                onChange={(opt) => handleInputChange('source', opt?.value || null)}
+                                options={profitTypeOptions}
+                                value={profitTypeOptions.find(opt => opt.value === formData.profitType) || null}
+                                onChange={(opt) => handleInputChange('profitType', opt?.value || 'estimated')}
                                 placeholder="Select..."
                             />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {formData.profitType === 'estimated' 
+                                    ? 'Estimated profits are projections and can be updated to actual profits later.'
+                                    : 'Actual profits are confirmed values from completed periods.'}
+                            </p>
                         </div>
 
                         <div className="space-y-2">
@@ -923,8 +989,8 @@ const ValuationsTab = () => {
                                 </span>
                                 <Input
                                     type="text"
-                                    value={formData.milestoneAmount
-                                        ? String(formData.milestoneAmount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+                                    value={formData.triggerAmount || formData.milestoneAmount
+                                        ? String(formData.triggerAmount || formData.milestoneAmount).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
                                         : ''}
                                     disabled
                                     placeholder="0"

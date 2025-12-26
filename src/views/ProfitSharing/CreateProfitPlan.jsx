@@ -28,8 +28,9 @@ const DEFAULT_FORM_DATA = {
     // Pool Size & Distribution
     profitDescription: '',
     poolShareType: 'above-trigger', // 'above-trigger' or 'total'
-    // Milestones & Payments
-    milestoneAmount: 0,
+    // Trigger & Payments
+    triggerAmount: 0,
+    milestoneAmount: 0, // Backward compatibility
     totalShares: 10000,
     paymentTerms: null,
     initialPayment: '',
@@ -172,7 +173,7 @@ const CreateProfitPlan = () => {
             formData.schedule &&
             formData.startDate &&
             formData.profitDescription &&
-            formData.milestoneAmount > 0 &&
+            formData.triggerAmount > 0 &&
             formData.totalShares > 0 &&
             Array.isArray(formData.paymentScheduleDates) &&
             formData.paymentScheduleDates.length > 0 &&
@@ -245,7 +246,7 @@ const CreateProfitPlan = () => {
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText /> },
         { key: 'stakeholders', label: 'Stakeholders', icon: <HiOutlineUsers /> },
         { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar /> },
-        { key: 'milestones', label: 'Milestones', icon: <HiOutlineFlag /> },
+        { key: 'milestones', label: 'Trigger', icon: <HiOutlineFlag /> },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog /> },
     ]
 
@@ -261,7 +262,7 @@ const CreateProfitPlan = () => {
                        formData.schedule || 
                        formData.startDate || 
                        formData.profitDescription ||
-                       formData.milestoneAmount > 0 ||
+                       formData.triggerAmount > 0 ||
                        formData.paymentTerms ||
                        formData.initialPayment ||
                        formData.installmentSchedule
@@ -426,7 +427,10 @@ const CreateProfitPlan = () => {
             }
             
             window.dispatchEvent(new Event('plansUpdated'))
-            navigate('/profit-sharing?tab=plans')
+            // Only navigate if status is 'finalized', otherwise stay on page
+            if (status === 'finalized') {
+                navigate('/profit-sharing?tab=plans')
+            }
         } catch (error) {
             console.error('Error saving plan:', error)
             toast.push(
@@ -618,6 +622,7 @@ const CreateProfitPlan = () => {
                                             Start date
                                         </label>
                                         <DatePicker
+                                            inputtable
                                             value={formData.startDate ? (formData.startDate instanceof Date ? formData.startDate : new Date(formData.startDate)) : null}
                                             onChange={(date) => handleInputChange('startDate', date)}
                                             placeholder="Select a date..."
@@ -655,6 +660,7 @@ const CreateProfitPlan = () => {
                                                 <div key={index} className="flex items-center gap-3">
                                                     <div className="flex-1">
                                                         <DatePicker
+                                                            inputtable
                                                             value={date ? (date instanceof Date ? date : new Date(date)) : null}
                                                             onChange={(newDate) => {
                                                                 const updated = [...formData.paymentScheduleDates]
@@ -778,10 +784,12 @@ const CreateProfitPlan = () => {
                                             </span>
                                             <Input
                                                 type="text"
-                                                value={formData.milestoneAmount ? formatCurrencyInput(String(formData.milestoneAmount)) : ''}
+                                                value={formData.triggerAmount ? formatCurrencyInput(String(formData.triggerAmount)) : ''}
                                                 onChange={(e) => {
                                                     const value = e.target.value.replace(/[^0-9.]/g, '')
                                                     const numValue = value ? parseFloat(value.replace(/,/g, '')) : 0
+                                                    handleInputChange('triggerAmount', numValue)
+                                                    // Also update milestoneAmount for backward compatibility
                                                     handleInputChange('milestoneAmount', numValue)
                                                 }}
                                                 placeholder="0"
@@ -974,7 +982,10 @@ const CreateProfitPlan = () => {
                                 </Button>
                                 <Button
                                     variant="twoTone"
-                                    onClick={() => savePlan('draft')}
+                                    onClick={async () => {
+                                        await savePlan('draft')
+                                        // Don't navigate - keep page open
+                                    }}
                                 >
                                     Save
                                 </Button>
@@ -982,7 +993,20 @@ const CreateProfitPlan = () => {
                                     variant="solid"
                                     size="lg"
                                     disabled={!isFormComplete()}
+                                    onClick={async () => {
+                                        await savePlan('draft')
+                                        // Navigate after save
+                                        navigate('/profit-sharing?tab=plans')
+                                    }}
+                                >
+                                    Save and Close
+                                </Button>
+                                <Button
+                                    variant="solid"
+                                    size="lg"
+                                    disabled={!isFormComplete()}
                                     onClick={() => savePlan('finalized')}
+                                    className="bg-green-600 hover:bg-green-700"
                                 >
                                     Finalize
                                 </Button>

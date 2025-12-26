@@ -7,12 +7,8 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const [formData, setFormData] = useState({
         fullName: '',
         linkedUserId: null,
-        title: '',
         email: '',
-        phone: '',
-        employmentStatus: null,
-        payType: null,
-        payAmount: '',
+        managerId: null,
     })
     const [showInfoBanner, setShowInfoBanner] = useState(true)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -20,18 +16,6 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const [allUsers, setAllUsers] = useState([])
     const [loadingUsers, setLoadingUsers] = useState(true)
 
-    const employmentStatusOptions = [
-        { value: 'full-time', label: 'Full time' },
-        { value: 'part-time', label: 'Part Time' },
-        { value: 'contract', label: 'Contract' },
-        { value: 'intern', label: 'Intern' },
-        { value: 'seasonal', label: 'Seasonal' },
-    ]
-
-    const payTypeOptions = [
-        { value: 'salary', label: 'Salary' },
-        { value: 'hourly', label: 'Hourly' },
-    ]
 
     // Load users on mount
     useEffect(() => {
@@ -58,12 +42,8 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
             setFormData({
                 fullName: '',
                 linkedUserId: null,
-                title: '',
                 email: '',
-                phone: '',
-                employmentStatus: null,
-                payType: null,
-                payAmount: '',
+                managerId: null,
             })
             setHasUnsavedChanges(false)
             setShowCancelDialog(false)
@@ -72,17 +52,30 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
 
     // Track unsaved changes
     useEffect(() => {
-        const hasChanges = formData.fullName || formData.linkedUserId || formData.title || formData.email || 
-                          formData.phone || formData.employmentStatus || formData.payType || formData.payAmount
+        const hasChanges = formData.fullName || formData.linkedUserId || formData.email || formData.managerId
         setHasUnsavedChanges(hasChanges)
     }, [formData])
 
-    // User select options
-    const userSelectOptions = allUsers.map(u => ({
-        value: u.id,
-        label: u.name || (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.email) || u.email,
-        email: u.email
-    }))
+    // User select options - Always show "First Name Last Name" format when available
+    const userSelectOptions = allUsers.map(u => {
+        let displayName = ''
+        if (u.firstName && u.lastName) {
+            displayName = `${u.firstName} ${u.lastName}`
+        } else if (u.firstName) {
+            displayName = u.firstName
+        } else if (u.name) {
+            displayName = u.name
+        } else if (u.userName) {
+            displayName = u.userName
+        } else {
+            displayName = u.email || 'Unknown'
+        }
+        return {
+            value: u.id,
+            label: displayName,
+            email: u.email
+        }
+    })
 
     const handleUserSelect = (option) => {
         if (option) {
@@ -101,46 +94,24 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         }
     }
 
-    const formatCurrencyInput = (value) => {
-        // Remove all non-numeric characters except decimal point
-        const numericValue = value.replace(/[^0-9.]/g, '')
-        if (!numericValue) return ''
-        const num = parseFloat(numericValue)
-        if (isNaN(num)) return ''
-        return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-    }
-
     const handleInputChange = (field, value) => {
-        if (field === 'payAmount') {
-            setFormData(prev => ({ ...prev, [field]: formatCurrencyInput(value) }))
-        } else if (field === 'phone') {
-            // Only allow numbers (no + needed since we have +1 prefix)
-            const sanitized = value.replace(/[^0-9]/g, '')
-            setFormData(prev => ({ ...prev, [field]: sanitized }))
-        } else {
-            setFormData(prev => ({ ...prev, [field]: value }))
-        }
+        setFormData(prev => ({ ...prev, [field]: value }))
     }
 
     const resetForm = () => {
         setFormData({
             fullName: '',
             linkedUserId: null,
-            title: '',
             email: '',
-            phone: '',
-            employmentStatus: null,
-            payType: null,
-            payAmount: '',
+            managerId: null,
         })
         setHasUnsavedChanges(false)
     }
 
     const handleSave = async () => {
-        if (formData.fullName && formData.title && formData.email) {
+        if (formData.fullName && formData.email) {
             const success = await onSave({
                 ...formData,
-                payAmount: formData.payAmount ? parseFloat(formData.payAmount.replace(/,/g, '')) : 0,
             })
             // Only reset form if save was successful
             if (success) {
@@ -150,10 +121,9 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     }
 
     const handleSaveAndAddAnother = async () => {
-        if (formData.fullName && formData.title && formData.email) {
+        if (formData.fullName && formData.email) {
             const success = await onSaveAndAddAnother({
                 ...formData,
-                payAmount: formData.payAmount ? parseFloat(formData.payAmount.replace(/,/g, '')) : 0,
             })
             // Reset form but keep modal open (only if save was successful)
             if (success) {
@@ -176,7 +146,7 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         onClose()
     }
 
-    const isFormValid = formData.fullName && formData.title && formData.email
+    const isFormValid = formData.fullName && formData.email
 
     return (
         <Dialog
@@ -247,17 +217,6 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
 
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Title
-                        </label>
-                        <Input
-                            value={formData.title}
-                            onChange={(e) => handleInputChange('title', e.target.value)}
-                            placeholder="Their role in the company"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Email address
                         </label>
                         <Input
@@ -270,62 +229,20 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
 
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Phone
-                        </label>
-                        <div className="flex items-center">
-                            <div className="flex items-center gap-1 px-3 h-10 bg-gray-100 dark:bg-gray-700 rounded-l-md border border-r-0 border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                <span>+1</span>
-                            </div>
-                            <Input
-                                type="tel"
-                                value={formData.phone}
-                                onChange={(e) => handleInputChange('phone', e.target.value)}
-                                placeholder="Phone number"
-                                className="rounded-l-none flex-1"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Employment status
+                            Manager
                         </label>
                         <Select
-                            options={employmentStatusOptions}
-                            value={employmentStatusOptions.find(opt => opt.value === formData.employmentStatus) || null}
-                            onChange={(opt) => handleInputChange('employmentStatus', opt?.value || null)}
-                            placeholder="Select..."
+                            options={userSelectOptions}
+                            value={userSelectOptions.find(opt => opt.value === formData.managerId) || null}
+                            onChange={(opt) => handleInputChange('managerId', opt?.value || null)}
+                            placeholder="Select a manager from Bolt users..."
+                            isSearchable
+                            isLoading={loadingUsers}
+                            isClearable
                         />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Pay type
-                        </label>
-                        <Select
-                            options={payTypeOptions}
-                            value={payTypeOptions.find(opt => opt.value === formData.payType) || null}
-                            onChange={(opt) => handleInputChange('payType', opt?.value || null)}
-                            placeholder="Select..."
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Pay amount
-                        </label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                $
-                            </span>
-                            <Input
-                                type="text"
-                                value={formData.payAmount}
-                                onChange={(e) => handleInputChange('payAmount', e.target.value)}
-                                placeholder="Pay amount"
-                                className="pl-8"
-                            />
-                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Select the manager/supervisor for this stakeholder. Managers will be able to see their direct reports.
+                        </p>
                     </div>
                     </div>
                 </div>

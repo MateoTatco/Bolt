@@ -114,7 +114,10 @@ const BasePicker = (props) => {
 
     const focus = useFocus(context)
     const click = useClick(context)
-    const dismiss = useDismiss(context)
+    const dismiss = useDismiss(context, {
+        outsidePress: true,
+        outsidePressEvent: 'mousedown',
+    })
     const role = useRole(context)
 
     const { getReferenceProps, getFloatingProps } = useInteractions([

@@ -9,6 +9,7 @@ import { db } from '@/configs/firebase.config'
 import { collection, getDocs, query, orderBy } from 'firebase/firestore'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { useSessionUser } from '@/store/authStore'
+import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -36,6 +37,9 @@ const StakeholdersTab = ({ isAdmin = true }) => {
     const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
+    const { userRole, isSupervisor } = useProfitSharingAccess()
+    const effectiveIsAdmin = isAdmin || userRole === 'admin'
+    const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
     const [showAddModal, setShowAddModal] = useState(false)
     const [activeFilter, setActiveFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
@@ -111,11 +115,27 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 )
                 
                 // For regular users, only show their own stakeholder record
-                if (!isAdmin) {
+                // For supervisors, show their own record + their direct reports (people who have them as manager)
+                if (!effectiveIsAdmin) {
                     const currentUserId = user?.id || user?.uid
-                    formattedStakeholders = formattedStakeholders.filter(
-                        stakeholder => stakeholder.linkedUserId === currentUserId
-                    )
+                    if (effectiveIsSupervisor) {
+                        // Supervisors can see themselves + their direct reports
+                        // Filter to show: stakeholders where linkedUserId matches current user OR managerId matches current user
+                        formattedStakeholders = formattedStakeholders.filter(
+                            stakeholder => {
+                                const isSelf = stakeholder.linkedUserId === currentUserId
+                                const isDirectReport = stakeholder.managerId === currentUserId
+                                return isSelf || isDirectReport
+                            }
+                        )
+                        // Debug log (can be removed later)
+                        console.log('[StakeholdersTab] Supervisor view - showing', formattedStakeholders.length, 'stakeholders (self + direct reports)')
+                    } else {
+                        // Regular users only see themselves
+                        formattedStakeholders = formattedStakeholders.filter(
+                            stakeholder => stakeholder.linkedUserId === currentUserId
+                        )
+                    }
                 }
                 
                 // If we have user profiles, override display fields for linked users
@@ -128,10 +148,19 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                             if (!s.linkedUserId) return s
                             const profile = usersById.get(s.linkedUserId)
                             if (!profile) return s
-                            const profileName =
-                                profile.firstName && profile.lastName
-                                    ? `${profile.firstName} ${profile.lastName}`
-                                    : profile.firstName || profile.userName || s.name || s.email
+                            // Always use "First Name Last Name" format when both are available
+                            let profileName = ''
+                            if (profile.firstName && profile.lastName) {
+                                profileName = `${profile.firstName} ${profile.lastName}`
+                            } else if (profile.firstName) {
+                                profileName = profile.firstName
+                            } else if (profile.userName) {
+                                profileName = profile.userName
+                            } else if (profile.name) {
+                                profileName = profile.name
+                            } else {
+                                profileName = s.name || s.email || ''
+                            }
                             const profilePhone = profile.phoneNumber || s.phone
                             return {
                                 ...s,
@@ -298,21 +327,57 @@ const StakeholdersTab = ({ isAdmin = true }) => {
         planNames: getStakeholderPlans(stakeholder)
     }))
 
-    const filterTabs = [
-        { key: 'all', label: 'All', count: stakeholdersWithStatus.length },
-        { key: 'active', label: 'Active', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Active').length },
-        { key: 'pending', label: 'Pending', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Pending').length },
-        { key: 'draft', label: 'Draft', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Draft').length },
-        { key: 'terminated', label: 'Terminated', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Terminated').length },
-    ]
+    // Determine filter tabs based on user role
+    const getFilterTabs = () => {
+        if (effectiveIsAdmin) {
+            // Admin sees status-based tabs (excluding Terminated)
+            return [
+                { key: 'all', label: 'All', count: stakeholdersWithStatus.length },
+                { key: 'active', label: 'Active', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Active').length },
+                { key: 'pending', label: 'Pending', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Pending').length },
+                { key: 'draft', label: 'Draft', count: stakeholdersWithStatus.filter(s => s.calculatedStatus === 'Draft').length },
+            ]
+        } else {
+            // Non-admin users (supervisors and regular users) see "All", "My Awards", "My Team"
+            const currentUserId = user?.id || user?.uid
+            const myAwards = stakeholdersWithStatus.filter(s => s.linkedUserId === currentUserId)
+            const myTeam = effectiveIsSupervisor 
+                ? stakeholdersWithStatus.filter(s => s.managerId === currentUserId)
+                : []
+            
+            return [
+                { key: 'all', label: 'All', count: stakeholdersWithStatus.length },
+                { key: 'my-awards', label: 'My Awards', count: myAwards.length },
+                ...(effectiveIsSupervisor ? [{ key: 'my-team', label: 'My Team', count: myTeam.length }] : []),
+            ]
+        }
+    }
+
+    const filterTabs = getFilterTabs()
 
     const filteredStakeholders = stakeholdersWithStatus.filter(stakeholder => {
-        // Case-insensitive comparison for filter
-        const matchesFilter = activeFilter === 'all' || 
-            stakeholder.calculatedStatus?.toLowerCase() === activeFilter.toLowerCase()
+        const currentUserId = user?.id || user?.uid
+        
+        // Filter logic based on user role
+        let matchesFilter = false
+        if (effectiveIsAdmin) {
+            // Admin: filter by status
+            matchesFilter = activeFilter === 'all' || 
+                stakeholder.calculatedStatus?.toLowerCase() === activeFilter.toLowerCase()
+        } else {
+            // Non-admin: filter by "All", "My Awards", or "My Team"
+            if (activeFilter === 'all') {
+                matchesFilter = true
+            } else if (activeFilter === 'my-awards') {
+                matchesFilter = stakeholder.linkedUserId === currentUserId
+            } else if (activeFilter === 'my-team') {
+                matchesFilter = stakeholder.managerId === currentUserId
+            }
+        }
+        
         const matchesSearch = !searchQuery || 
             stakeholder.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            stakeholder.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (stakeholder.title && stakeholder.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
             stakeholder.email.toLowerCase().includes(searchQuery.toLowerCase())
         
         return matchesFilter && matchesSearch
@@ -335,12 +400,8 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
                 linkedUserId: stakeholderData.linkedUserId || null,
-                title: stakeholderData.title,
                 email: stakeholderData.email,
-                phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
-                employmentStatus: stakeholderData.employmentStatus,
-                payType: stakeholderData.payType,
-                payAmount: stakeholderData.payAmount || 0,
+                managerId: stakeholderData.managerId || null,
                 mareStock: null,
                 marePlans: [],
                 status: null,
@@ -400,12 +461,8 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 companyId: selectedCompanyId,
                 name: stakeholderData.fullName,
                 linkedUserId: stakeholderData.linkedUserId || null,
-                title: stakeholderData.title,
                 email: stakeholderData.email,
-                phone: stakeholderData.phone ? `+1${stakeholderData.phone}` : '',
-                employmentStatus: stakeholderData.employmentStatus,
-                payType: stakeholderData.payType,
-                payAmount: stakeholderData.payAmount || 0,
+                managerId: stakeholderData.managerId || null,
                 mareStock: null,
                 marePlans: [],
                 status: null,
@@ -508,9 +565,9 @@ const StakeholdersTab = ({ isAdmin = true }) => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                    {isAdmin ? 'Stakeholders' : 'My Awards'}
+                    {effectiveIsAdmin ? 'Stakeholders' : 'Awards'}
                 </h2>
-                {isAdmin && (
+                {effectiveIsAdmin && (
                     <Button
                         variant="solid"
                         onClick={() => setShowAddModal(true)}
@@ -720,7 +777,7 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                                                     onClick={() => navigate(`/profit-sharing/stakeholders/${stakeholder.id}`)}
                                                     className="text-gray-400 hover:text-primary"
                                                 />
-                                                {isAdmin && (
+                                                {effectiveIsAdmin && (
                                                     <Button
                                                         variant="plain"
                                                         size="sm"

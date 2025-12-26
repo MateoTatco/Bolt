@@ -55,10 +55,14 @@ const Header = (props) => {
                     )}
                     disabled={!hasPrevious}
                     aria-label={previousLabel}
-                    onClick={onPrevious}
-                    onMouseDown={(event) =>
-                        preventFocus && event.preventDefault()
-                    }
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onPrevious()
+                    }}
+                    onMouseDown={(event) => {
+                        if (preventFocus) event.preventDefault()
+                        event.stopPropagation()
+                    }}
                 >
                     <HiChevronLeft />
                 </button>
@@ -71,10 +75,14 @@ const Header = (props) => {
                     )}
                     disabled={!hasNext}
                     aria-label={nextLabel}
-                    onClick={onNext}
-                    onMouseDown={(event) =>
-                        preventFocus && event.preventDefault()
-                    }
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onNext()
+                    }}
+                    onMouseDown={(event) => {
+                        if (preventFocus) event.preventDefault()
+                        event.stopPropagation()
+                    }}
                 >
                     <HiChevronRight />
                 </button>

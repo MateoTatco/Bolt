@@ -86,9 +86,10 @@ const MilestonesTab = () => {
         }
     }
 
-    // Get milestone status for a plan
+    // Get trigger tracking status for a plan (whether trigger amount has been met)
     const getMilestoneStatus = (plan) => {
-        if (!plan.milestoneAmount || plan.milestoneAmount <= 0) {
+        const triggerAmount = plan.triggerAmount || plan.milestoneAmount || 0
+        if (!triggerAmount || triggerAmount <= 0) {
             return { status: 'no-milestone', progress: 0, latestProfit: 0 }
         }
 
@@ -104,7 +105,7 @@ const MilestonesTab = () => {
         const latestValuation = planValuations[0]
         const latestProfit = latestValuation?.profitAmount || latestValuation?.fmv || 0
 
-        if (latestProfit >= plan.milestoneAmount) {
+        if (latestProfit >= triggerAmount) {
             return {
                 status: 'met',
                 progress: 100,
@@ -112,7 +113,7 @@ const MilestonesTab = () => {
                 metDate: latestValuation?.valuationDate,
             }
         } else {
-            const progress = (latestProfit / plan.milestoneAmount) * 100
+            const progress = triggerAmount > 0 ? (latestProfit / triggerAmount) * 100 : 0
             return {
                 status: 'pending',
                 progress: Math.min(progress, 100),
@@ -121,9 +122,12 @@ const MilestonesTab = () => {
         }
     }
 
-    // Get all milestones (plans with milestone amounts)
+    // Get all plans with trigger amounts to track
     const milestones = plans
-        .filter(plan => plan.milestoneAmount && plan.milestoneAmount > 0)
+        .filter(plan => {
+            const triggerAmount = plan.triggerAmount || plan.milestoneAmount || 0
+            return triggerAmount > 0
+        })
         .map(plan => {
             const status = getMilestoneStatus(plan)
             return {
@@ -132,13 +136,15 @@ const MilestonesTab = () => {
             }
         })
         .sort((a, b) => {
-            // Sort by status (met first), then by milestone amount
+            // Sort by status (met first), then by trigger amount
             if (a.status === 'met' && b.status !== 'met') return 1
             if (a.status !== 'met' && b.status === 'met') return -1
-            return (b.milestoneAmount || 0) - (a.milestoneAmount || 0)
+            const triggerA = a.triggerAmount || a.milestoneAmount || 0
+            const triggerB = b.triggerAmount || b.milestoneAmount || 0
+            return triggerB - triggerA
         })
 
-    // Filter milestones by selected plan
+    // Filter plans by selected plan
     const filteredMilestones = filterPlan
         ? milestones.filter(m => m.id === filterPlan)
         : milestones
@@ -219,7 +225,7 @@ const MilestonesTab = () => {
                                     </Table.Td>
                                     <Table.Td>
                                         <span className="text-sm text-gray-900 dark:text-white">
-                                            {formatCurrency(milestone.milestoneAmount)}
+                                            {formatCurrency(milestone.triggerAmount || milestone.milestoneAmount || 0)}
                                         </span>
                                     </Table.Td>
                                     <Table.Td>

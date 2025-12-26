@@ -123,10 +123,11 @@ const StakeholderDetail = () => {
     const navigate = useNavigate()
     const { stakeholderId } = useParams()
     const user = useSessionUser((state) => state.user)
-    const { userRole, canEdit, loading: loadingAccess } = useProfitSharingAccess()
+    const { userRole, canEdit, loading: loadingAccess, isSupervisor } = useProfitSharingAccess()
     const { selectedCompanyId } = useSelectedCompany()
     const isAdmin = canEdit || userRole === 'admin'
-    const isRegularUser = !isAdmin
+    const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
+    const isRegularUser = !isAdmin && !effectiveIsSupervisor
     const [activeTab, setActiveTab] = useState('profit')
     const [stakeholder, setStakeholder] = useState(null)
     const [linkedUserProfile, setLinkedUserProfile] = useState(null)
@@ -140,18 +141,15 @@ const StakeholderDetail = () => {
         awardDate: new Date(), // Default to current date
         awardStartDate: null,
         awardEndDate: null,
-        milestoneAmount: 0,
+        triggerAmount: 0,
         sharesIssued: '',
     })
     const [editingAwardId, setEditingAwardId] = useState(null)
     const [detailsFormData, setDetailsFormData] = useState({
         name: '',
-        title: '',
         email: '',
         phone: '',
-        employmentStatus: null,
-        payType: null,
-        payAmount: '',
+        managerId: null,
     })
     const [reinsRole, setReinsRole] = useState('User')
     const [availableUsers, setAvailableUsers] = useState([])
@@ -180,18 +178,26 @@ const StakeholderDetail = () => {
                 if (response.success) {
                     const data = response.data
                     
-                    // Check if regular user is trying to access someone else's record
-                    // Only check if user is NOT an admin (admins can access all records)
+                    // Check access permissions
+                    // Admins can access all records
+                    // Supervisors can access their own records + their direct reports (where managerId matches)
+                    // Regular users can only access their own records
                     const currentIsAdmin = canEdit || userRole === 'admin'
+                    const currentIsSupervisor = effectiveIsSupervisor
                     if (!currentIsAdmin) {
                         const currentUserId = user?.id || user?.uid
-                        if (data.linkedUserId !== currentUserId) {
-                            // Regular user trying to access someone else's record - redirect
+                        const isOwnRecord = data.linkedUserId === currentUserId
+                        const isDirectReport = currentIsSupervisor && data.managerId === currentUserId
+                        
+                        if (!isOwnRecord && !isDirectReport) {
+                            // User trying to access someone else's record without permission - redirect
                             toast.push(
                                 React.createElement(
                                     Notification,
                                     { type: "warning", duration: 2000, title: "Access Denied" },
-                                    "You can only view your own stakeholder information."
+                                    currentIsSupervisor 
+                                        ? "You can only view your own stakeholder information or your direct reports."
+                                        : "You can only view your own stakeholder information."
                                 )
                             )
                             navigate('/profit-sharing?tab=stakeholders')
@@ -203,12 +209,9 @@ const StakeholderDetail = () => {
                     setStakeholder({
                         id: data.id,
                         name: data.name || '',
-                        title: data.title || '',
                         email: data.email || '',
                         phone: data.phone || '',
-                        employmentStatus: data.employmentStatus || '',
-                        payType: data.payType || '',
-                        payAmount: data.payAmount || 0,
+                        managerId: data.managerId || null,
                         stockAwards: data.stockAwards || [],
                         profitAwards: data.profitAwards || [],
                         totalStockUnits: data.mareStock || 0,
@@ -263,32 +266,27 @@ const StakeholderDetail = () => {
 
     useEffect(() => {
         if (stakeholder) {
-            // Normalize employment status and pay type for the form
-            const normalizeEmploymentStatus = (status) => {
-                if (!status) return null
-                const statusMap = {
-                    'Full time': 'full-time',
-                    'Part Time': 'part-time',
-                    'Contract': 'contract',
-                    'Intern': 'intern',
-                    'Seasonal': 'seasonal',
-                }
-                return statusMap[status] || status.toLowerCase().replace(' ', '-')
-            }
-
-            const normalizePayType = (payType) => {
-                if (!payType) return null
-                return payType.toLowerCase()
-            }
-
             // Extract phone number (remove +1 prefix if present)
             const phoneNumber = stakeholder.phone ? stakeholder.phone.replace(/^\+1/, '') : ''
 
             // Use Bolt profile data if available (for linked users), otherwise fall back to stakeholder data
-            // Match the logic from StakeholdersTab: use firstName primarily, fallback to userName, name, or email
-            const displayName = linkedUserProfile 
-                ? (linkedUserProfile.firstName || linkedUserProfile.userName || linkedUserProfile.name || stakeholder.name || stakeholder.email || '')
-                : (stakeholder.name || stakeholder.email || '')
+            // IMPORTANT: Full name is connected to user profile - always use "First Name Last Name" format when available
+            let displayName = ''
+            if (linkedUserProfile) {
+                if (linkedUserProfile.firstName && linkedUserProfile.lastName) {
+                    displayName = `${linkedUserProfile.firstName} ${linkedUserProfile.lastName}`
+                } else if (linkedUserProfile.firstName) {
+                    displayName = linkedUserProfile.firstName
+                } else if (linkedUserProfile.userName) {
+                    displayName = linkedUserProfile.userName
+                } else if (linkedUserProfile.name) {
+                    displayName = linkedUserProfile.name
+                } else {
+                    displayName = stakeholder.name || stakeholder.email || ''
+                }
+            } else {
+                displayName = stakeholder.name || stakeholder.email || ''
+            }
             
             const displayPhone = linkedUserProfile?.phoneNumber 
                 ? linkedUserProfile.phoneNumber.replace(/^\+1/, '')
@@ -296,12 +294,9 @@ const StakeholderDetail = () => {
 
             setDetailsFormData({
                 name: displayName,
-                title: stakeholder.title || '',
                 email: linkedUserProfile?.email || stakeholder.email || '',
                 phone: displayPhone,
-                employmentStatus: normalizeEmploymentStatus(stakeholder.employmentStatus),
-                payType: normalizePayType(stakeholder.payType),
-                payAmount: stakeholder.payAmount ? String(stakeholder.payAmount) : '',
+                managerId: stakeholder.managerId || null,
             })
             setReinsRole(stakeholder.reinsRole || 'User')
         }
@@ -425,7 +420,7 @@ const StakeholderDetail = () => {
     }
 
     const handleAwardInputChange = (field, value) => {
-        if (field === 'milestoneAmount') {
+        if (field === 'triggerAmount') {
             const sanitized = value.replace(/[^0-9.]/g, '')
             const numValue = sanitized ? parseFloat(sanitized.replace(/,/g, '')) : 0
             setAwardFormData(prev => ({ ...prev, [field]: numValue }))
@@ -442,7 +437,7 @@ const StakeholderDetail = () => {
             awardFormData.planId &&
             awardFormData.awardStartDate &&
             awardFormData.awardEndDate &&
-            awardFormData.milestoneAmount > 0 &&
+            awardFormData.triggerAmount > 0 &&
             awardFormData.sharesIssued && parseInt(awardFormData.sharesIssued, 10) > 0
         )
     }
@@ -452,34 +447,12 @@ const StakeholderDetail = () => {
             if (!stakeholderId) return
 
             const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
-            const payAmountNum = detailsFormData.payAmount ? parseFloat(detailsFormData.payAmount.replace(/,/g, '')) : 0
-
-            // Denormalize employment status and pay type for storage
-            const denormalizeEmploymentStatus = (status) => {
-                if (!status) return null
-                const statusMap = {
-                    'full-time': 'Full time',
-                    'part-time': 'Part Time',
-                    'contract': 'Contract',
-                    'intern': 'Intern',
-                    'seasonal': 'Seasonal',
-                }
-                return statusMap[status] || status
-            }
-
-            const denormalizePayType = (payType) => {
-                if (!payType) return null
-                return payType === 'salary' ? 'Salary' : payType === 'hourly' ? 'Hourly' : payType
-            }
 
             await updateDoc(stakeholderRef, {
                 name: detailsFormData.name,
-                title: detailsFormData.title,
                 email: detailsFormData.email,
                 phone: detailsFormData.phone ? `+1${detailsFormData.phone}` : '',
-                employmentStatus: denormalizeEmploymentStatus(detailsFormData.employmentStatus),
-                payType: denormalizePayType(detailsFormData.payType),
-                payAmount: payAmountNum,
+                managerId: detailsFormData.managerId || null,
                 updatedAt: serverTimestamp(),
             })
 
@@ -498,18 +471,16 @@ const StakeholderDetail = () => {
                 setStakeholder({
                     id: data.id,
                     name: data.name || '',
-                    title: data.title || '',
                     email: data.email || '',
                     phone: data.phone || '',
-                    employmentStatus: data.employmentStatus || '',
-                    payType: data.payType || '',
-                    payAmount: data.payAmount || 0,
+                    managerId: data.managerId || null,
                     stockAwards: data.stockAwards || [],
                     profitAwards: data.profitAwards || [],
                     totalStockUnits: data.mareStock || 0,
                     estimatedFMV: 0,
                     totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                     reinsRole: data.reinsRole || 'User',
+                    linkedUserId: data.linkedUserId,
                 })
             }
         } catch (error) {
@@ -615,6 +586,18 @@ const StakeholderDetail = () => {
     }
 
     const handleDeleteAward = async (awardId) => {
+        // Only admins can delete awards
+        if (!isAdmin) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "warning", duration: 2000, title: "Access Denied" },
+                    "You do not have permission to delete awards."
+                )
+            )
+            return
+        }
+        
         if (!window.confirm('Are you sure you want to delete this award?')) {
             return
         }
@@ -652,18 +635,16 @@ const StakeholderDetail = () => {
                 setStakeholder({
                     id: data.id,
                     name: data.name || '',
-                    title: data.title || '',
                     email: data.email || '',
                     phone: data.phone || '',
-                    employmentStatus: data.employmentStatus || '',
-                    payType: data.payType || '',
-                    payAmount: data.payAmount || 0,
+                    managerId: data.managerId || null,
                     stockAwards: data.stockAwards || [],
                     profitAwards: data.profitAwards || [],
                     totalStockUnits: data.mareStock || 0,
                     estimatedFMV: 0,
                     totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                     reinsRole: data.reinsRole || 'User',
+                    linkedUserId: data.linkedUserId,
                 })
             }
 
@@ -681,8 +662,217 @@ const StakeholderDetail = () => {
         }
     }
 
+    const handleIssueAward = async (awardId) => {
+        if (!isAdmin) return
+        
+        try {
+            if (!stakeholderId) return
+
+            const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
+            const currentData = await FirebaseDbService.stakeholders.getById(stakeholderId)
+            
+            if (!currentData.success) {
+                throw new Error('Failed to load stakeholder data')
+            }
+
+            const existingAwards = currentData.data.profitAwards || []
+            const awardIndex = existingAwards.findIndex(a => a.id === awardId)
+            
+            if (awardIndex === -1) {
+                throw new Error('Award not found')
+            }
+
+            const award = existingAwards[awardIndex]
+            const currentStatus = award.status?.toLowerCase() || 'draft'
+            
+            // Only allow issuing draft awards
+            if (currentStatus !== 'draft' && currentStatus !== 'Draft') {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 2000, title: "Invalid Status" },
+                        "Only draft awards can be issued"
+                    )
+                )
+                return
+            }
+
+            // Get admin name
+            const adminName = user?.firstName || user?.userName || user?.name || user?.email || 'Admin'
+
+            const updatedAward = {
+                ...award,
+                status: 'issued',
+                issuedBy: adminName,
+                issuedAt: new Date().toISOString(),
+            }
+
+            const updatedAwards = existingAwards.map((a, idx) => 
+                idx === awardIndex ? updatedAward : a
+            )
+
+            await updateDoc(stakeholderRef, {
+                profitAwards: updatedAwards,
+                updatedAt: serverTimestamp(),
+            })
+
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "success", duration: 2000, title: "Success" },
+                    "Award issued successfully"
+                )
+            )
+
+            // Notify the stakeholder user if they have a linked account
+            if (currentData.data?.linkedUserId) {
+                try {
+                    await createNotification({
+                        userId: currentData.data.linkedUserId,
+                        type: NOTIFICATION_TYPES.PROFIT_SHARING,
+                        title: 'New Award to Accept',
+                        message: `A new profit sharing award has been issued for you. Please review and accept it.`,
+                        entityType: 'profit_sharing',
+                        entityId: stakeholderId,
+                        relatedUserId: user?.id || user?.uid || null,
+                        metadata: {
+                            stakeholderId,
+                            awardId,
+                        },
+                    })
+                } catch (notifyError) {
+                    console.error('Error creating notification:', notifyError)
+                }
+            }
+
+            // Reload stakeholder data
+            const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
+            if (response.success) {
+                const data = response.data
+                setStakeholder({
+                    id: data.id,
+                    name: data.name || '',
+                    email: data.email || '',
+                    phone: data.phone || '',
+                    managerId: data.managerId || null,
+                    stockAwards: data.stockAwards || [],
+                    profitAwards: data.profitAwards || [],
+                    totalStockUnits: data.mareStock || 0,
+                    estimatedFMV: 0,
+                    totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
+                    reinsRole: data.reinsRole || 'User',
+                    linkedUserId: data.linkedUserId,
+                })
+            }
+
+            window.dispatchEvent(new Event('stakeholdersUpdated'))
+        } catch (error) {
+            console.error('Error issuing award:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to issue award"
+                )
+            )
+        }
+    }
+
+    const handleAcceptAward = async (awardId) => {
+        try {
+            if (!stakeholderId) return
+
+            const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
+            const currentData = await FirebaseDbService.stakeholders.getById(stakeholderId)
+            
+            if (!currentData.success) {
+                throw new Error('Failed to load stakeholder data')
+            }
+
+            const existingAwards = currentData.data.profitAwards || []
+            const awardIndex = existingAwards.findIndex(a => a.id === awardId)
+            
+            if (awardIndex === -1) {
+                throw new Error('Award not found')
+            }
+
+            const award = existingAwards[awardIndex]
+            const currentStatus = award.status?.toLowerCase() || 'draft'
+            
+            // Only allow accepting issued awards
+            if (currentStatus !== 'issued' && currentStatus !== 'Issued') {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 2000, title: "Invalid Status" },
+                        "Only issued awards can be accepted"
+                    )
+                )
+                return
+            }
+
+            // Get user name
+            const userName = user?.firstName || user?.userName || user?.name || user?.email || 'User'
+
+            const updatedAward = {
+                ...award,
+                status: 'finalized',
+                acceptedBy: userName,
+                acceptedAt: new Date().toISOString(),
+            }
+
+            const updatedAwards = existingAwards.map((a, idx) => 
+                idx === awardIndex ? updatedAward : a
+            )
+
+            await updateDoc(stakeholderRef, {
+                profitAwards: updatedAwards,
+                updatedAt: serverTimestamp(),
+            })
+
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "success", duration: 2000, title: "Success" },
+                    "Award accepted successfully"
+                )
+            )
+
+            // Reload stakeholder data
+            const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
+            if (response.success) {
+                const data = response.data
+                setStakeholder({
+                    id: data.id,
+                    name: data.name || '',
+                    email: data.email || '',
+                    phone: data.phone || '',
+                    managerId: data.managerId || null,
+                    stockAwards: data.stockAwards || [],
+                    profitAwards: data.profitAwards || [],
+                    totalStockUnits: data.mareStock || 0,
+                    estimatedFMV: 0,
+                    totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
+                    reinsRole: data.reinsRole || 'User',
+                    linkedUserId: data.linkedUserId,
+                })
+            }
+
+            window.dispatchEvent(new Event('stakeholdersUpdated'))
+        } catch (error) {
+            console.error('Error accepting award:', error)
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: "danger", duration: 2000, title: "Error" },
+                    "Failed to accept award"
+                )
+            )
+        }
+    }
+
     const handleEditAward = async (award) => {
-        // Regular users cannot edit awards
+        // Only admins can edit awards (supervisors can view but not edit)
         if (!isAdmin) {
             toast.push(
                 React.createElement(
@@ -718,7 +908,7 @@ const StakeholderDetail = () => {
             awardDate: awardDate,
             awardStartDate: parseDate(award.awardStartDate),
             awardEndDate: parseDate(award.awardEndDate),
-            milestoneAmount: award.milestoneAmount || 0,
+            triggerAmount: award.triggerAmount || award.milestoneAmount || 0, // Backward compatibility
             sharesIssued: award.sharesIssued ? String(award.sharesIssued) : '',
         })
         
@@ -782,7 +972,7 @@ const StakeholderDetail = () => {
                 id: Date.now().toString(),
                 planId: awardFormData.planId || null,
                 planName: selectedPlan?.label || 'Unknown Plan',
-                planMilestoneAmount: awardFormData.milestoneAmount || 0,
+                planTriggerAmount: awardFormData.triggerAmount || 0,
                 awardDate: awardDateValue.toISOString(),
                 awardStartDate: awardFormData.awardStartDate instanceof Date 
                     ? awardFormData.awardStartDate.toISOString() 
@@ -790,10 +980,11 @@ const StakeholderDetail = () => {
                 awardEndDate: awardFormData.awardEndDate instanceof Date 
                     ? awardFormData.awardEndDate.toISOString() 
                     : (awardFormData.awardEndDate || null),
-                milestoneAmount: awardFormData.milestoneAmount || 0,
+                triggerAmount: awardFormData.triggerAmount || 0,
+                milestoneAmount: awardFormData.triggerAmount || 0, // Backward compatibility
                 sharesIssued: awardFormData.sharesIssued ? parseInt(awardFormData.sharesIssued, 10) : 0,
                 paymentSchedule: selectedPlan?.schedule || 'Annually',
-                status: status === 'finalized' ? 'Finalized' : 'Draft',
+                status: status || 'draft', // 'draft', 'issued', or 'finalized'
             })
 
             const existingAwards = currentData.data.profitAwards || []
@@ -940,22 +1131,21 @@ const StakeholderDetail = () => {
                 setStakeholder({
                     id: data.id,
                     name: data.name || '',
-                    title: data.title || '',
                     email: data.email || '',
                     phone: data.phone || '',
-                    employmentStatus: data.employmentStatus || '',
-                    payType: data.payType || '',
-                    payAmount: data.payAmount || 0,
+                    managerId: data.managerId || null,
                     stockAwards: data.stockAwards || [],
                     profitAwards: data.profitAwards || [],
                     totalStockUnits: data.mareStock || 0,
                     estimatedFMV: 0,
                     totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                     reinsRole: data.reinsRole || 'User',
+                    linkedUserId: data.linkedUserId,
                 })
             }
 
-            // If this award was finalized, notify the linked Bolt user (if any)
+            // Note: Awards are now issued first, then accepted. Notifications happen in handleIssueAward
+            // This section is kept for backward compatibility but won't trigger for new flow
             if (status === 'finalized' && currentData.data?.linkedUserId) {
                 try {
                     const linkedUserId = currentData.data.linkedUserId
@@ -1001,7 +1191,7 @@ const StakeholderDetail = () => {
                 awardDate: new Date(),
                 awardStartDate: null,
                 awardEndDate: null,
-                milestoneAmount: 0,
+                triggerAmount: 0,
                 sharesIssued: '',
             })
         } catch (error) {
@@ -1036,18 +1226,20 @@ const StakeholderDetail = () => {
     const allSidebarItems = [
         { key: 'overview', label: 'Overview', icon: <HiOutlineHome />, adminOnly: true },
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
-        { key: 'stakeholders', label: isAdmin ? 'Stakeholders' : 'My Awards', icon: <HiOutlineUsers />, adminOnly: false },
+        { key: 'stakeholders', label: isAdmin ? 'Stakeholders' : effectiveIsSupervisor ? 'Awards' : 'My Awards', icon: <HiOutlineUsers />, adminOnly: false },
         { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar />, adminOnly: true },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
     
-    // Filter sidebar items based on role - regular users should not see other tabs
-    const sidebarItems = isAdmin 
+    // Filter sidebar items based on role
+    // Admins see all tabs
+    // Supervisors and regular users only see the stakeholders tab (but supervisors can view detail pages of their direct reports)
+    const sidebarItems = isAdmin
         ? allSidebarItems 
         : allSidebarItems.filter(item => item.key === 'stakeholders').map(item => ({
             ...item,
-            label: 'My Awards' // Ensure label is "My Awards" for non-admins
+            label: effectiveIsSupervisor ? 'Awards' : 'My Awards'
         }))
 
     return (
@@ -1146,6 +1338,137 @@ const StakeholderDetail = () => {
 
             {activeTab === 'profit' && (
                 <div className="space-y-6">
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Next Period Estimated Profit */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
+                                {(() => {
+                                    // Find the next estimated profit entry (future date, profitType = 'estimated')
+                                    const now = new Date()
+                                    const futureEstimates = valuations
+                                        .filter(v => {
+                                            if (v.profitType !== 'estimated') return false
+                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                            return valDate > now
+                                        })
+                                        .sort((a, b) => {
+                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                            return aDate - bDate // Earliest first
+                                        })
+                                    
+                                    const nextEstimate = futureEstimates[0]
+                                    if (!nextEstimate) {
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">No estimated profit entries</div>
+                                            </>
+                                        )
+                                    }
+                                    
+                                    const estimateDate = nextEstimate.valuationDate instanceof Date 
+                                        ? nextEstimate.valuationDate 
+                                        : new Date(nextEstimate.valuationDate)
+                                    
+                                    return (
+                                        <>
+                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(nextEstimate.profitAmount || 0)}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                            </div>
+                                        </>
+                                    )
+                                })()}
+                            </div>
+                        </Card>
+
+                        {/* Last Quarter Actual Profit */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Quarter Actual Profit</div>
+                                {(() => {
+                                    // Find actual profit entries from the last quarter (last 3 months)
+                                    const now = new Date()
+                                    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
+                                    
+                                    const lastQuarterActuals = valuations
+                                        .filter(v => {
+                                            if (v.profitType !== 'actual') return false
+                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                            return valDate >= threeMonthsAgo && valDate <= now
+                                        })
+                                        .sort((a, b) => {
+                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                            return bDate - aDate // Most recent first
+                                        })
+                                    
+                                    const lastActual = lastQuarterActuals[0]
+                                    if (!lastActual) {
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">No actual profit in last quarter</div>
+                                            </>
+                                        )
+                                    }
+                                    
+                                    const actualDate = lastActual.valuationDate instanceof Date 
+                                        ? lastActual.valuationDate 
+                                        : new Date(lastActual.valuationDate)
+                                    
+                                    return (
+                                        <>
+                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(lastActual.profitAmount || 0)}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                {actualDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                            </div>
+                                        </>
+                                    )
+                                })()}
+                            </div>
+                        </Card>
+
+                        {/* Annual Total Actual Profit */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Annual Total (Actuals Only)</div>
+                                {(() => {
+                                    // Calculate total of all actual profit entries for the current year
+                                    const now = new Date()
+                                    const yearStart = new Date(now.getFullYear(), 0, 1)
+                                    
+                                    const annualActuals = valuations
+                                        .filter(v => {
+                                            if (v.profitType !== 'actual') return false
+                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                            return valDate >= yearStart && valDate <= now
+                                        })
+                                    
+                                    const annualTotal = annualActuals.reduce((sum, v) => sum + (v.profitAmount || 0), 0)
+                                    
+                                    return (
+                                        <>
+                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(annualTotal)}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                Year to date ({now.getFullYear()})
+                                            </div>
+                                        </>
+                                    )
+                                })()}
+                            </div>
+                        </Card>
+                    </div>
+
                     {/* Next Estimated Profit Payment Card */}
                     <Card className="p-6">
                         <div className="space-y-4">
@@ -1399,33 +1722,55 @@ const StakeholderDetail = () => {
                                                     </Table.Td>
                                                     <Table.Td>
                                                         <div className="flex flex-col gap-2">
-                                                            <Tag className={`px-2 py-1 text-xs font-medium ${
-                                                                award.status === 'Draft' || award.status === 'Pending'
-                                                                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                                                                    : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                            }`}>
-                                                                <span className="flex items-center gap-2">
-                                                                    <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                                    {award.status || 'Draft'}
-                                                                </span>
-                                                            </Tag>
-                                                            {/* Signature Status */}
-                                                            {award.status === 'Finalized' && (
-                                                                award.signatureMetadata ? (
-                                                                    <Tag className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                                                        <HiOutlineCheckCircle className="mr-1" />
-                                                                        Signed
-                                                                    </Tag>
-                                                                ) : (
-                                                                    <Tag className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs">
-                                                                        Signature Pending
-                                                                    </Tag>
-                                                                )
+                                                            {/* Issue button for draft awards - in Status column */}
+                                                            {isAdmin && (award.status?.toLowerCase() === 'draft' || award.status === 'Draft' || !award.status) ? (
+                                                                <Button
+                                                                    variant="twoTone"
+                                                                    size="sm"
+                                                                    onClick={() => handleIssueAward(award.id)}
+                                                                    className="w-full"
+                                                                >
+                                                                    Issue
+                                                                </Button>
+                                                            ) : (
+                                                                <Tag className={`px-2 py-1 text-xs font-medium ${
+                                                                    award.status === 'draft' || award.status === 'Draft' || award.status === 'Pending'
+                                                                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                                                        : award.status === 'issued' || award.status === 'Issued'
+                                                                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                                                                        : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                                                }`}>
+                                                                    <span className="flex items-center gap-2">
+                                                                        <span className={`w-2 h-2 rounded-full ${
+                                                                            award.status === 'draft' || award.status === 'Draft' || award.status === 'Pending' ? 'bg-gray-500' :
+                                                                            award.status === 'issued' || award.status === 'Issued' ? 'bg-blue-500' :
+                                                                            'bg-green-500'
+                                                                        }`}></span>
+                                                                        {(() => {
+                                                                            const status = award.status?.toLowerCase() || 'draft'
+                                                                            if (status === 'draft') return 'Draft'
+                                                                            if (status === 'issued') return 'Issued'
+                                                                            if (status === 'finalized') return 'Finalized'
+                                                                            return award.status || 'Draft'
+                                                                        })()}
+                                                                    </span>
+                                                                </Tag>
+                                                            )}
+                                                            {/* Timestamp Status - Show issued/accepted info */}
+                                                            {award.issuedAt && (
+                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 text-xs mt-1">
+                                                                    Issued {award.issuedBy ? `by ${award.issuedBy}` : ''} {award.issuedAt ? new Date(award.issuedAt).toLocaleDateString() : ''}
+                                                                </Tag>
+                                                            )}
+                                                            {award.acceptedAt && (
+                                                                <Tag className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs mt-1">
+                                                                    Accepted {award.acceptedBy ? `by ${award.acceptedBy}` : ''} {award.acceptedAt ? new Date(award.acceptedAt).toLocaleDateString() : ''}
+                                                                </Tag>
                                                             )}
                                                         </div>
                                                     </Table.Td>
                                                     <Table.Td>
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2 flex-wrap">
                                                             {award.documentUrl && (
                                                                 <Button
                                                                     variant="plain"
@@ -1440,8 +1785,26 @@ const StakeholderDetail = () => {
                                                                     title="View document"
                                                                 />
                                                             )}
+                                                            {/* Accept button - User only, for issued awards */}
+                                                            {!isAdmin && (award.status?.toLowerCase() === 'issued' || award.status === 'Issued') && (
+                                                                <Button
+                                                                    variant="solid"
+                                                                    size="sm"
+                                                                    onClick={() => handleAcceptAward(award.id)}
+                                                                >
+                                                                    Accept Award
+                                                                </Button>
+                                                            )}
                                                             {isAdmin && (
                                                                 <>
+                                                                    <Button
+                                                                        variant="plain"
+                                                                        size="sm"
+                                                                        icon={<HiOutlinePencil />}
+                                                                        onClick={() => handleEditAward(award)}
+                                                                        className="text-gray-400 hover:text-primary"
+                                                                        disabled={award.status?.toLowerCase() === 'finalized'}
+                                                                    />
                                                                     <Button
                                                                         variant="plain"
                                                                         size="sm"
@@ -1449,19 +1812,9 @@ const StakeholderDetail = () => {
                                                                         onClick={() => handleDeleteAward(award.id)}
                                                                         className="text-gray-400 hover:text-red-500"
                                                                     />
-                                                                    <Button
-                                                                        variant="plain"
-                                                                        size="sm"
-                                                                        icon={<HiOutlinePencil />}
-                                                                        onClick={() => handleEditAward(award)}
-                                                                        className="text-gray-400 hover:text-primary"
-                                                                    />
                                                                 </>
                                                             )}
                                                         </div>
-                                                        {!isAdmin && (
-                                                            <span className="text-xs text-gray-400">View only</span>
-                                                        )}
                                                     </Table.Td>
                                                 </Table.Tr>
                                                 {isExpanded && payouts.length > 0 && (
@@ -1565,17 +1918,6 @@ const StakeholderDetail = () => {
                                 </div>
                                 
                                 <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
-                                    <Input
-                                        value={detailsFormData.title}
-                                        onChange={(e) => setDetailsFormData(prev => ({ ...prev, title: e.target.value }))}
-                                        placeholder="Their role in the company"
-                                        disabled={!isAdmin}
-                                        className={!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}
-                                    />
-                                </div>
-                                
-                                <div className="space-y-2">
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
                                     <Input
                                         type="email"
@@ -1595,7 +1937,7 @@ const StakeholderDetail = () => {
                                         </div>
                                         <Input
                                             type="tel"
-                                            value={detailsFormData.phone.replace(/^\+1/, '')}
+                                            value={detailsFormData.phone ? detailsFormData.phone.replace(/^\+1/, '') : ''}
                                             onChange={(e) => {
                                                 const sanitized = e.target.value.replace(/[^0-9]/g, '')
                                                 setDetailsFormData(prev => ({ ...prev, phone: sanitized }))
@@ -1608,66 +1950,53 @@ const StakeholderDetail = () => {
                                 </div>
                                 
                                 <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment status</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Manager</label>
                                     <Select
-                                        options={[
-                                            { value: 'full-time', label: 'Full-time' },
-                                            { value: 'part-time', label: 'Part Time' },
-                                            { value: 'contract', label: 'Contract' },
-                                            { value: 'intern', label: 'Intern' },
-                                            { value: 'seasonal', label: 'Seasonal' },
-                                        ]}
-                                        value={detailsFormData.employmentStatus ? {
-                                            value: detailsFormData.employmentStatus,
-                                            label: detailsFormData.employmentStatus === 'full-time' ? 'Full-time' :
-                                                   detailsFormData.employmentStatus === 'part-time' ? 'Part Time' :
-                                                   detailsFormData.employmentStatus === 'contract' ? 'Contract' :
-                                                   detailsFormData.employmentStatus === 'intern' ? 'Intern' :
-                                                   detailsFormData.employmentStatus === 'seasonal' ? 'Seasonal' : detailsFormData.employmentStatus
+                                        options={availableUsers.map(u => {
+                                            let displayName = ''
+                                            if (u.firstName && u.lastName) {
+                                                displayName = `${u.firstName} ${u.lastName}`
+                                            } else if (u.firstName) {
+                                                displayName = u.firstName
+                                            } else if (u.name) {
+                                                displayName = u.name
+                                            } else if (u.userName) {
+                                                displayName = u.userName
+                                            } else {
+                                                displayName = u.email || 'Unknown'
+                                            }
+                                            return {
+                                                value: u.id,
+                                                label: displayName,
+                                            }
+                                        })}
+                                        value={availableUsers.find(u => u.id === detailsFormData.managerId) ? {
+                                            value: detailsFormData.managerId,
+                                            label: (() => {
+                                                const manager = availableUsers.find(u => u.id === detailsFormData.managerId)
+                                                if (!manager) return 'Unknown'
+                                                if (manager.firstName && manager.lastName) {
+                                                    return `${manager.firstName} ${manager.lastName}`
+                                                } else if (manager.firstName) {
+                                                    return manager.firstName
+                                                } else if (manager.name) {
+                                                    return manager.name
+                                                } else if (manager.userName) {
+                                                    return manager.userName
+                                                } else {
+                                                    return manager.email || 'Unknown'
+                                                }
+                                            })()
                                         } : null}
-                                        onChange={(opt) => setDetailsFormData(prev => ({ ...prev, employmentStatus: opt?.value || null }))}
-                                        placeholder="Select..."
+                                        onChange={(opt) => setDetailsFormData(prev => ({ ...prev, managerId: opt?.value || null }))}
+                                        placeholder="Select a manager from Bolt users..."
+                                        isSearchable
+                                        isClearable
                                         isDisabled={!isAdmin}
                                     />
-                                </div>
-                                
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pay type</label>
-                                    <Select
-                                        options={[
-                                            { value: 'salary', label: 'Salary' },
-                                            { value: 'hourly', label: 'Hourly' },
-                                        ]}
-                                        value={detailsFormData.payType ? {
-                                            value: detailsFormData.payType,
-                                            label: detailsFormData.payType === 'salary' ? 'Salary' : 'Hourly'
-                                        } : null}
-                                        onChange={(opt) => setDetailsFormData(prev => ({ ...prev, payType: opt?.value || null }))}
-                                        placeholder="Select..."
-                                        isDisabled={!isAdmin}
-                                    />
-                                </div>
-                                
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        {detailsFormData.payType === 'salary' ? 'Salary' : detailsFormData.payType === 'hourly' ? 'Hourly rate' : 'Amount'}
-                                    </label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                            $
-                                        </span>
-                                        <Input
-                                            type="text"
-                                            value={detailsFormData.payAmount ? formatCurrencyInput(String(detailsFormData.payAmount)) : ''}
-                                            onChange={(e) => {
-                                                const value = e.target.value.replace(/[^0-9.]/g, '')
-                                                setDetailsFormData(prev => ({ ...prev, payAmount: value }))
-                                            }}
-                                            placeholder="0"
-                                            className={`pl-8 ${!isAdmin ? 'bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : ''}`}
-                                            disabled={!isAdmin}
-                                        />
-                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        Select the manager/supervisor for this stakeholder. Managers will be able to see their direct reports.
+                                    </p>
                                 </div>
                                 </div>
                             </div>
@@ -1736,7 +2065,7 @@ const StakeholderDetail = () => {
                         awardDate: new Date(),
                         awardStartDate: null,
                         awardEndDate: null,
-                        milestoneAmount: 0,
+                        triggerAmount: 0,
                         sharesIssued: '',
                     })
                 }}
@@ -1773,19 +2102,21 @@ const StakeholderDetail = () => {
                                     />
                                 </div>
                                 
-                                {/* Finalize Award button - only show if plan is draft and user is admin */}
-                                {isAdmin && selectedPlan && selectedPlan.status === 'draft' && editingAward.status !== 'Finalized' && (
+                                {/* Issue Award button - only show if award is draft and user is admin */}
+                                {isAdmin && editingAward && (editingAward.status?.toLowerCase() === 'draft' || editingAward.status === 'Draft' || !editingAward.status) && (
                                     <Button
                                         variant="solid"
                                         icon={<HiOutlineCheckCircle />}
-                                        onClick={() => {
-                                            const planId = editingAward.planId
-                                            if (planId) {
-                                                navigate(`/profit-sharing/create-profit-plan?id=${planId}`)
-                                            }
+                                        onClick={async () => {
+                                            // Save the award first, then issue it
+                                            await handleSaveAward('draft')
+                                            // Small delay to ensure save completes
+                                            setTimeout(() => {
+                                                handleIssueAward(editingAward.id)
+                                            }, 500)
                                         }}
                                     >
-                                        Finalize Award
+                                        Issue Award
                                     </Button>
                                 )}
                             </div>
@@ -1882,7 +2213,7 @@ const StakeholderDetail = () => {
                                         value={profitPlans.find(opt => opt.value === awardFormData.planId) || null}
                                         onChange={async (opt) => {
                                             handleAwardInputChange('planId', opt?.value || null)
-                                            // Load plan details when plan is selected (including milestone)
+                                            // Load plan details when plan is selected (including trigger)
                                             if (opt?.value) {
                                                 try {
                                                     const planRef = doc(db, 'profitSharingPlans', opt.value)
@@ -1890,24 +2221,24 @@ const StakeholderDetail = () => {
                                                     if (planSnap.exists()) {
                                                         const planData = planSnap.data()
                                                         setSelectedPlan(planData || null)
-                                                        // Automatically pull milestone from plan
-                                                        const planMilestone = planData?.milestoneAmount || planData?.milestone || 0
-                                                        if (planMilestone) {
+                                                        // Automatically pull trigger from plan
+                                                        const planTrigger = planData?.triggerAmount || planData?.milestoneAmount || planData?.milestone || 0
+                                                        if (planTrigger) {
                                                             setAwardFormData(prev => ({
                                                                 ...prev,
-                                                                milestoneAmount: planMilestone,
+                                                                triggerAmount: planTrigger,
                                                             }))
                                                         } else {
                                                             setAwardFormData(prev => ({
                                                                 ...prev,
-                                                                milestoneAmount: 0,
+                                                                triggerAmount: 0,
                                                             }))
                                                         }
                                                     } else {
                                                         setSelectedPlan(null)
                                                         setAwardFormData(prev => ({
                                                             ...prev,
-                                                            milestoneAmount: 0,
+                                                            triggerAmount: 0,
                                                         }))
                                                     }
                                                 } catch (error) {
@@ -1915,14 +2246,14 @@ const StakeholderDetail = () => {
                                                     setSelectedPlan(null)
                                                     setAwardFormData(prev => ({
                                                         ...prev,
-                                                        milestoneAmount: 0,
+                                                        triggerAmount: 0,
                                                     }))
                                                 }
                                             } else {
                                                 setSelectedPlan(null)
                                                 setAwardFormData(prev => ({
                                                     ...prev,
-                                                    milestoneAmount: 0,
+                                                    triggerAmount: 0,
                                                 }))
                                             }
                                         }}
@@ -1937,6 +2268,7 @@ const StakeholderDetail = () => {
                                                 Award date
                                             </label>
                                             <DatePicker
+                                                inputtable
                                                 value={(() => {
                                                     if (!awardFormData.awardDate) return new Date()
                                                     if (awardFormData.awardDate instanceof Date) {
@@ -1959,8 +2291,11 @@ const StakeholderDetail = () => {
                                                     Award start date
                                                 </label>
                                                 <DatePicker
+                                                    inputtable
                                                     value={awardFormData.awardStartDate ? (awardFormData.awardStartDate instanceof Date ? awardFormData.awardStartDate : new Date(awardFormData.awardStartDate)) : null}
-                                                    onChange={(date) => handleAwardInputChange('awardStartDate', date)}
+                                                    onChange={(date) => {
+                                                        handleAwardInputChange('awardStartDate', date)
+                                                    }}
                                                     placeholder="Select a date..."
                                                     inputFormat="MM/DD/YYYY"
                                                 />
@@ -1970,8 +2305,11 @@ const StakeholderDetail = () => {
                                                     Award end date
                                                 </label>
                                                 <DatePicker
+                                                    inputtable
                                                     value={awardFormData.awardEndDate ? (awardFormData.awardEndDate instanceof Date ? awardFormData.awardEndDate : new Date(awardFormData.awardEndDate)) : null}
-                                                    onChange={(date) => handleAwardInputChange('awardEndDate', date)}
+                                                    onChange={(date) => {
+                                                        handleAwardInputChange('awardEndDate', date)
+                                                    }}
                                                     placeholder="Select a date..."
                                                     inputFormat="MM/DD/YYYY"
                                                 />
@@ -2000,7 +2338,7 @@ const StakeholderDetail = () => {
                                             </span>
                                             <Input
                                                 type="text"
-                                                value={awardFormData.milestoneAmount ? formatCurrencyInput(String(awardFormData.milestoneAmount)) : ''}
+                                                value={awardFormData.triggerAmount ? formatCurrencyInput(String(awardFormData.triggerAmount)) : ''}
                                                 disabled
                                                 placeholder="0"
                                                 className="pl-8 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
@@ -2119,16 +2457,33 @@ const StakeholderDetail = () => {
                                     variant="twoTone"
                                     icon={<HiOutlinePencil />}
                                     onClick={() => handleSaveAward('draft')}
+                                    disabled={!isAwardFormComplete()}
                                 >
-                                    Save draft
+                                    Save Draft
                                 </Button>
                                 <Button
                                     variant="solid"
                                     icon={<HiOutlineCheckCircle />}
-                                    onClick={() => handleSaveAward('finalized')}
+                                    onClick={async () => {
+                                        // Save as draft first, then issue
+                                        await handleSaveAward('draft')
+                                        // Small delay to ensure save completes
+                                        setTimeout(async () => {
+                                            const currentData = await FirebaseDbService.stakeholders.getById(stakeholderId)
+                                            if (currentData.success) {
+                                                const awards = currentData.data.profitAwards || []
+                                                const awardToIssue = editingAwardId 
+                                                    ? awards.find(a => a.id === editingAwardId)
+                                                    : awards[awards.length - 1] // Get the last one (just saved)
+                                                if (awardToIssue) {
+                                                    await handleIssueAward(awardToIssue.id)
+                                                }
+                                            }
+                                        }, 500)
+                                    }}
                                     disabled={!isAwardFormComplete()}
                                 >
-                                    Finalize
+                                    Issue
                                 </Button>
                             </div>
                         </div>

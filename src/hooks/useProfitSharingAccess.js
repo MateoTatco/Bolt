@@ -8,7 +8,7 @@ const SUPER_ADMIN_EMAILS = ['admin-01@tatco.construction', 'brett@tatco.construc
 export const useProfitSharingAccess = () => {
     const user = useSessionUser((state) => state.user)
     const [accessRecords, setAccessRecords] = useState([])
-    const [userRole, setUserRole] = useState(null) // 'admin', 'user', or null (no access)
+    const [userRole, setUserRole] = useState(null) // 'admin', 'supervisor', 'user', or null (no access)
     const [loading, setLoading] = useState(true)
     const [hasAccess, setHasAccess] = useState(false)
 
@@ -47,9 +47,16 @@ export const useProfitSharingAccess = () => {
             
             if (result.success && result.data.length > 0) {
                 setAccessRecords(result.data)
-                // Get highest role (admin > user)
+                // Get highest role (admin > supervisor > user)
                 const hasAdminAccess = result.data.some(r => r.role === 'admin')
-                setUserRole(hasAdminAccess ? 'admin' : 'user')
+                const hasSupervisorAccess = result.data.some(r => r.role === 'supervisor')
+                if (hasAdminAccess) {
+                    setUserRole('admin')
+                } else if (hasSupervisorAccess) {
+                    setUserRole('supervisor')
+                } else {
+                    setUserRole('user')
+                }
                 setHasAccess(true)
             } else {
                 setAccessRecords([])
@@ -72,8 +79,11 @@ export const useProfitSharingAccess = () => {
     // Helper to check if user can edit (admin only)
     const canEdit = userRole === 'admin'
     
-    // Helper to check if user can only view
+    // Helper to check if user can only view (user role)
     const isViewOnly = userRole === 'user'
+    
+    // Helper to check if user is supervisor (can see direct reports)
+    const isSupervisor = userRole === 'supervisor'
 
     return {
         hasAccess,
@@ -82,6 +92,7 @@ export const useProfitSharingAccess = () => {
         loading,
         canEdit,
         isViewOnly,
+        isSupervisor,
         refreshAccess
     }
 }

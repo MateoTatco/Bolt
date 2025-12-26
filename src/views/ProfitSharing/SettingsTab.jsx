@@ -187,6 +187,7 @@ const getInitials = (name) => {
 
 const roleOptions = [
     { value: 'admin', label: 'Admin - Full access to all features' },
+    { value: 'supervisor', label: 'Supervisor - Can view direct reports' },
     { value: 'user', label: 'User - View only access' },
 ]
 
@@ -568,7 +569,19 @@ const SettingsTab = () => {
                 }
             } else {
                 // Create new access records for each selected company
-                const userName = selectedUser?.name || selectedUser?.firstName ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : selectedUser?.email || 'Unknown'
+                // Always use "First Name Last Name" format when both are available
+                let userName = ''
+                if (selectedUser?.firstName && selectedUser?.lastName) {
+                    userName = `${selectedUser.firstName} ${selectedUser.lastName}`
+                } else if (selectedUser?.firstName) {
+                    userName = selectedUser.firstName
+                } else if (selectedUser?.name) {
+                    userName = selectedUser.name
+                } else if (selectedUser?.userName) {
+                    userName = selectedUser.userName
+                } else {
+                    userName = selectedUser?.email || 'Unknown'
+                }
                 const userEmail = selectedUser?.email || ''
                 
                 // Check for existing access per company
@@ -700,10 +713,25 @@ const SettingsTab = () => {
         !accessRecords.some(a => a.userId === u.id)
     )
 
-    const userSelectOptions = availableUsers.map(u => ({
-        value: u.id,
-        label: u.name || (u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.email) || u.email
-    }))
+    // Always use "First Name Last Name" format when both are available
+    const userSelectOptions = availableUsers.map(u => {
+        let displayName = ''
+        if (u.firstName && u.lastName) {
+            displayName = `${u.firstName} ${u.lastName}`
+        } else if (u.firstName) {
+            displayName = u.firstName
+        } else if (u.name) {
+            displayName = u.name
+        } else if (u.userName) {
+            displayName = u.userName
+        } else {
+            displayName = u.email || 'Unknown'
+        }
+        return {
+            value: u.id,
+            label: displayName
+        }
+    })
 
     // Combine built-in admins with database records
     const allAccessRecords = [...SUPER_ADMINS, ...accessRecords]
@@ -735,11 +763,20 @@ const SettingsTab = () => {
         {
             header: 'Role',
             accessorKey: 'role',
-            cell: ({ row }) => (
-                <Tag className={row.original.role === 'admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}>
-                    {row.original.role === 'admin' ? 'Admin' : 'User'}
-                </Tag>
-            )
+            cell: ({ row }) => {
+                const role = row.original.role
+                const tagClass = role === 'admin' 
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : role === 'supervisor'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                const roleLabel = role === 'admin' ? 'Admin' : role === 'supervisor' ? 'Supervisor' : 'User'
+                return (
+                    <Tag className={tagClass}>
+                        {roleLabel}
+                    </Tag>
+                )
+            }
         },
         {
             header: 'Actions',
@@ -897,7 +934,7 @@ const SettingsTab = () => {
                 <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Company Management</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Manage companies for profit sharing. Select a company to filter all data across Overview, Plans, Stakeholders, Valuations, and Milestones tabs.
+                        Manage companies for profit sharing. Select a company to filter all data across Overview, Plans, Stakeholders, Valuations, and Trigger Tracking tabs.
                     </p>
                 </div>
 
@@ -1054,7 +1091,8 @@ const SettingsTab = () => {
                             />
                             <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 <div><strong>Admin:</strong> Full access to all tabs and features</div>
-                                <div><strong>User:</strong> Can only view Overview and their own awards (My Awards)</div>
+                                <div><strong>Supervisor:</strong> Can view Overview, Valuations, and their direct reports' awards</div>
+                                <div><strong>User:</strong> Can only view Overview, Valuations, and their own awards (My Awards)</div>
                             </div>
                         </div>
                     </div>

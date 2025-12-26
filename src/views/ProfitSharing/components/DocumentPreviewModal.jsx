@@ -156,11 +156,13 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
                                         </p>
                                     </div>
                                     <div 
-                                        className="p-6 bg-white dark:bg-gray-900 overflow-auto max-h-[600px]"
+                                        className="p-6 bg-white dark:bg-gray-900 overflow-y-auto"
                                         style={{ 
                                             fontFamily: 'Times New Roman, serif',
                                             fontSize: '12pt',
-                                            lineHeight: '1.5'
+                                            lineHeight: '1.5',
+                                            maxHeight: 'calc(100vh - 300px)',
+                                            minHeight: '400px'
                                         }}
                                         dangerouslySetInnerHTML={{ __html: previewData.htmlContent }}
                                     />
