@@ -61,7 +61,15 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
     }
 
     const handleDownload = () => {
-        if (previewData?.docxUrl) {
+        // Prefer PDF if available, otherwise fall back to DOCX
+        if (previewData?.pdfUrl) {
+            const link = document.createElement('a')
+            link.href = previewData.pdfUrl
+            link.download = `${documentName || 'document'}.pdf`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+        } else if (previewData?.docxUrl) {
             const link = document.createElement('a')
             link.href = previewData.docxUrl
             link.download = `${documentName || 'document'}.docx`
@@ -96,9 +104,19 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
             isOpen={isOpen}
             onClose={handleClose}
             width={1000}
+            style={{
+                content: {
+                    maxHeight: '100vh',
+                    height: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    padding: 0
+                }
+            }}
         >
-            <div className="p-6">
-                <div className="mb-6">
+            <div className="p-6 flex flex-col" style={{ maxHeight: '95vh', height: '85vh' }}>
+                <div className="mb-4 flex-shrink-0">
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                         Document Preview
                     </h2>
@@ -145,29 +163,28 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
                 )}
 
                 {previewData && (
-                    <div className="space-y-4">
+                    <div className="space-y-4 flex-1 flex flex-col min-h-0 overflow-hidden mb-4">
                         {previewData.htmlContent ? (
                             <>
                                 {/* HTML Preview */}
-                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                                    <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+                                    <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                             Document Preview
                                         </p>
                                     </div>
                                     <div 
-                                        className="p-6 bg-white dark:bg-gray-900 overflow-y-auto"
+                                        className="p-6 bg-white dark:bg-gray-900 overflow-y-auto overflow-x-hidden flex-1 min-h-0"
                                         style={{ 
                                             fontFamily: 'Times New Roman, serif',
                                             fontSize: '12pt',
                                             lineHeight: '1.5',
-                                            maxHeight: 'calc(100vh - 300px)',
-                                            minHeight: '400px'
+                                            maxHeight: 'calc(85vh - 280px)'
                                         }}
                                         dangerouslySetInnerHTML={{ __html: previewData.htmlContent }}
                                     />
                                 </div>
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between flex-shrink-0 pt-2">
                                     <p className="text-sm text-gray-500 dark:text-gray-400">
                                         Preview rendered from Word document. Download the .docx file for the original formatting.
                                     </p>
@@ -204,14 +221,14 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
                 )}
 
                 {/* Footer */}
-                <div className="flex justify-end gap-3 mt-6">
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 mt-auto">
                     {previewData && (
                         <Button
                             variant="plain"
                             icon={<HiOutlineDownload />}
                             onClick={handleDownload}
                         >
-                            Download .docx
+                            {previewData.pdfUrl ? 'Download PDF' : 'Download .docx'}
                         </Button>
                     )}
                     <Button

@@ -269,24 +269,9 @@ const StakeholderDetail = () => {
             // Extract phone number (remove +1 prefix if present)
             const phoneNumber = stakeholder.phone ? stakeholder.phone.replace(/^\+1/, '') : ''
 
-            // Use Bolt profile data if available (for linked users), otherwise fall back to stakeholder data
-            // IMPORTANT: Full name is connected to user profile - always use "First Name Last Name" format when available
-            let displayName = ''
-            if (linkedUserProfile) {
-                if (linkedUserProfile.firstName && linkedUserProfile.lastName) {
-                    displayName = `${linkedUserProfile.firstName} ${linkedUserProfile.lastName}`
-                } else if (linkedUserProfile.firstName) {
-                    displayName = linkedUserProfile.firstName
-                } else if (linkedUserProfile.userName) {
-                    displayName = linkedUserProfile.userName
-                } else if (linkedUserProfile.name) {
-                    displayName = linkedUserProfile.name
-                } else {
-                    displayName = stakeholder.name || stakeholder.email || ''
-                }
-            } else {
-                displayName = stakeholder.name || stakeholder.email || ''
-            }
+            // Use stakeholder name directly - don't override with profile name
+            // The name set in Add Stakeholder modal should be the one used everywhere
+            const displayName = stakeholder.name || stakeholder.email || ''
             
             const displayPhone = linkedUserProfile?.phoneNumber 
                 ? linkedUserProfile.phoneNumber.replace(/^\+1/, '')

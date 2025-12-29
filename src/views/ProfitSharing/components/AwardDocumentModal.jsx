@@ -709,7 +709,8 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                 </p>
                             </div>
                             <div 
-                                className="bg-white dark:bg-gray-900 overflow-auto flex-1 min-h-0"
+                                className="bg-white dark:bg-gray-900 overflow-y-auto overflow-x-hidden flex-1 min-h-0"
+                                style={{ maxHeight: '100%' }}
                                 dangerouslySetInnerHTML={{ __html: htmlContent }}
                             />
                         </div>
@@ -717,7 +718,25 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                             <p className="text-sm text-gray-600 dark:text-gray-400">
                                 Preview rendered from Word document. Install jspdf and html2canvas for PDF download.
                             </p>
-                            {award.documentDocxUrl && (
+                            {(award.documentPdfUrl || award.documentUrl) ? (
+                                <Button
+                                    variant="plain"
+                                    size="sm"
+                                    icon={<HiOutlineDownload />}
+                                    onClick={() => {
+                                        const pdfUrl = award.documentPdfUrl || award.documentUrl
+                                        const link = document.createElement('a')
+                                        link.href = pdfUrl
+                                        link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
+                                        link.target = '_blank'
+                                        document.body.appendChild(link)
+                                        link.click()
+                                        document.body.removeChild(link)
+                                    }}
+                                >
+                                    Download PDF
+                                </Button>
+                            ) : award.documentDocxUrl && (
                                 <Button
                                     variant="plain"
                                     size="sm"

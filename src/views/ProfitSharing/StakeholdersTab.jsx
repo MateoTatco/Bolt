@@ -138,42 +138,9 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                     }
                 }
                 
-                // If we have user profiles, override display fields for linked users
-                let stakeholdersWithProfiles = formattedStakeholders
-                try {
-                    const usersResult = await FirebaseDbService.users.getAll()
-                    if (usersResult.success && Array.isArray(usersResult.data)) {
-                        const usersById = new Map(usersResult.data.map(u => [u.id, u]))
-                        stakeholdersWithProfiles = formattedStakeholders.map(s => {
-                            if (!s.linkedUserId) return s
-                            const profile = usersById.get(s.linkedUserId)
-                            if (!profile) return s
-                            // Always use "First Name Last Name" format when both are available
-                            let profileName = ''
-                            if (profile.firstName && profile.lastName) {
-                                profileName = `${profile.firstName} ${profile.lastName}`
-                            } else if (profile.firstName) {
-                                profileName = profile.firstName
-                            } else if (profile.userName) {
-                                profileName = profile.userName
-                            } else if (profile.name) {
-                                profileName = profile.name
-                            } else {
-                                profileName = s.name || s.email || ''
-                            }
-                            const profilePhone = profile.phoneNumber || s.phone
-                            return {
-                                ...s,
-                                name: profileName || s.name,
-                                phone: profilePhone || s.phone,
-                            }
-                        })
-                    }
-                } catch (profileError) {
-                    console.warn('Error loading user profiles for stakeholders:', profileError)
-                }
-                
-                setStakeholders(stakeholdersWithProfiles)
+                // Use stakeholder name directly - don't override with profile name
+                // The name set in Add Stakeholder modal should be the one used everywhere
+                setStakeholders(formattedStakeholders)
             } else {
                 console.error('Error loading stakeholders:', response.error)
                 toast.push(

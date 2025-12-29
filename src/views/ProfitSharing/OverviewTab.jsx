@@ -39,7 +39,7 @@ const OverviewTab = () => {
     const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
-    const { userRole, accessRecords } = useProfitSharingAccess()
+    const { userRole, accessRecords, isSupervisor } = useProfitSharingAccess()
     const isAdmin = userRole === 'admin'
     const [stakeholders, setStakeholders] = useState([])
     const [loadingStakeholders, setLoadingStakeholders] = useState(true)
@@ -171,7 +171,7 @@ const OverviewTab = () => {
             const response = await FirebaseDbService.stakeholders.getAll()
             if (response.success) {
                 // Filter by companyId and convert Firestore timestamps
-                const formattedStakeholders = response.data
+                let formattedStakeholders = response.data
                     .filter(stakeholder => stakeholder.companyId === selectedCompanyId)
                     .map(stakeholder => ({
                         ...stakeholder,
@@ -179,6 +179,16 @@ const OverviewTab = () => {
                         createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
                         updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
                     }))
+                
+                // For supervisors, filter to show only their direct reports (people who have them as manager)
+                const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
+                if (effectiveIsSupervisor && !isAdmin) {
+                    const currentUserId = user?.id || user?.uid
+                    formattedStakeholders = formattedStakeholders.filter(
+                        stakeholder => stakeholder.managerId === currentUserId
+                    )
+                }
+                
                 setStakeholders(formattedStakeholders)
             } else {
                 console.error('Error loading stakeholders:', response.error)

@@ -32,17 +32,38 @@ export const useSelectedCompany = () => {
                 }
 
                 // Priority: Firestore > localStorage
-                const companyId = firestoreCompanyId || localCompanyId
+                let companyId = firestoreCompanyId || localCompanyId
                 
                 if (companyId) {
                     setSelectedCompanyIdState(companyId)
                 } else {
-                    // If no company is selected, try to find or create "Tatco OKC"
-                    const companiesResult = await FirebaseDbService.companies.getAll()
-                    if (companiesResult.success && companiesResult.data.length > 0) {
-                        const tatcoOKC = companiesResult.data.find(c => c.name === 'Tatco OKC')
-                        if (tatcoOKC) {
-                            await setSelectedCompany(tatcoOKC.id)
+                    // If no company is selected, try to auto-select from user's profit sharing access records
+                    if (currentUser) {
+                        try {
+                            const accessResult = await FirebaseDbService.profitSharingAccess.getByUserId(currentUser.uid)
+                            if (accessResult.success && accessResult.data.length > 0) {
+                                // Get the first company from their access records
+                                const firstAccessRecord = accessResult.data[0]
+                                if (firstAccessRecord.companyId) {
+                                    companyId = firstAccessRecord.companyId
+                                    await setSelectedCompany(companyId)
+                                    setSelectedCompanyIdState(companyId)
+                                }
+                            }
+                        } catch (accessError) {
+                            console.warn('Error loading access records for auto-select:', accessError)
+                        }
+                    }
+                    
+                    // If still no company, try to find "Tatco OKC" as fallback
+                    if (!companyId) {
+                        const companiesResult = await FirebaseDbService.companies.getAll()
+                        if (companiesResult.success && companiesResult.data.length > 0) {
+                            const tatcoOKC = companiesResult.data.find(c => c.name === 'Tatco OKC')
+                            if (tatcoOKC) {
+                                await setSelectedCompany(tatcoOKC.id)
+                                setSelectedCompanyIdState(tatcoOKC.id)
+                            }
                         }
                     }
                 }

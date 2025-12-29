@@ -987,7 +987,7 @@ const CreateProfitPlan = () => {
                                         // Don't navigate - keep page open
                                     }}
                                 >
-                                    Save
+                                    Save and Close
                                 </Button>
                                 <Button
                                     variant="solid"
