@@ -363,6 +363,21 @@ const mapPlanDataToTemplate = (planData, companyData) => {
 }
 
 /**
+ * Format signature name with script font styling
+ * Note: For proper script font in Word documents, the template should be modified
+ * to apply script font formatting to the {ISSUED BY} and {ACCEPTED BY} placeholders.
+ * This function currently returns the name as-is, but can be extended to use Word XML formatting.
+ * @param {string} name - Name to format
+ * @returns {string} Formatted name (currently returns as-is, template should handle font styling)
+ */
+const formatSignatureName = (name) => {
+    if (!name) return ''
+    // TODO: Apply script font using Word XML formatting if docxtemplater supports it
+    // For now, the template should be modified in Word to apply script font to these placeholders
+    return name
+}
+
+/**
  * Map award data to template placeholders
  * Based on actual template placeholders from Profit Award Agreement Template
  */
@@ -428,9 +443,10 @@ const mapAwardDataToTemplate = (awardData, planData, stakeholderData, companyDat
         'TRIGGER AMOUNT': formatCurrency(planData?.triggerAmount || planData?.milestoneAmount || 0),
         'TOTAL PROFIT SHARES': planData?.totalShares?.toLocaleString() || '0',
         // Timestamp information (replaces signature)
-        'ISSUED BY': awardData?.issuedBy || '',
+        // Apply script font to signature names using Word XML formatting
+        'ISSUED BY': formatSignatureName(awardData?.issuedBy || ''),
         'ISSUED AT': awardData?.issuedAt ? formatDate(awardData.issuedAt) : '',
-        'ACCEPTED BY': awardData?.acceptedBy || '',
+        'ACCEPTED BY': formatSignatureName(awardData?.acceptedBy || ''),
         'ACCEPTED AT': awardData?.acceptedAt ? formatDate(awardData.acceptedAt) : '',
     }
 }

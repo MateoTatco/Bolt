@@ -107,7 +107,7 @@ const ProfitSharing = () => {
             icon: <HiOutlineUsers />,
             adminOnly: false,
         },
-        { key: 'valuations', label: 'Profit Entries', icon: <HiOutlineChartBar />, adminOnly: false },
+        { key: 'valuations', label: 'Company Profits', icon: <HiOutlineChartBar />, adminOnly: false },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]

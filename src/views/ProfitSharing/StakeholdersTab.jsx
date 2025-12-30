@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import React from 'react'
-import { Card, Button, Table, Input, Tag, Avatar, Checkbox, Notification, toast } from '@/components/ui'
+import { Card, Button, Table, Input, Tag, Avatar, Notification, toast } from '@/components/ui'
 import { HiOutlinePlus, HiOutlineSearch, HiOutlinePencil, HiOutlineTrash } from 'react-icons/hi'
 import AddStakeholderModal from './components/AddStakeholderModal'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
@@ -44,7 +44,6 @@ const StakeholdersTab = ({ isAdmin = true }) => {
     const [activeFilter, setActiveFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [stakeholders, setStakeholders] = useState([])
-    const [selectedStakeholders, setSelectedStakeholders] = useState([])
     const [loading, setLoading] = useState(true)
     const [activeValuation, setActiveValuation] = useState(null)
     const [plans, setPlans] = useState([])
@@ -511,21 +510,6 @@ const StakeholdersTab = ({ isAdmin = true }) => {
         }
     }
 
-    const handleSelectAll = (checked) => {
-        if (checked) {
-            setSelectedStakeholders(filteredStakeholders.map(s => s.id))
-        } else {
-            setSelectedStakeholders([])
-        }
-    }
-
-    const handleSelectStakeholder = (id, checked) => {
-        if (checked) {
-            setSelectedStakeholders([...selectedStakeholders, id])
-        } else {
-            setSelectedStakeholders(selectedStakeholders.filter(sid => sid !== id))
-        }
-    }
 
     return (
         <div className="space-y-8">
@@ -544,78 +528,80 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 )}
             </div>
 
-            {/* Summary Metrics */}
-            <div className="space-y-6">
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    {/* Company Valuation Card */}
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Latest Profit</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(companyValuation)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">From latest profit entry</div>
-                        </div>
-                    </Card>
+            {/* Summary Metrics - Only show for admins */}
+            {effectiveIsAdmin && (
+                <div className="space-y-6">
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        {/* Company Valuation Card */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Latest Profit</div>
+                                <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(companyValuation)}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">From latest profit entry</div>
+                            </div>
+                        </Card>
 
-                    {/* Outstanding Awards Card */}
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Outstanding Awards</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(outstandingAwards)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit awards granted</div>
-                        </div>
-                    </Card>
+                        {/* Outstanding Awards Card */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Outstanding Awards</div>
+                                <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(outstandingAwards)}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">Total profit awards granted</div>
+                            </div>
+                        </Card>
 
-                    {/* Profit Share Pool Card */}
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Profit Share Pool</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(stockPool)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Total profit shares across all plans</div>
-                        </div>
-                    </Card>
+                        {/* Profit Share Pool Card */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Profit Share Pool</div>
+                                <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(stockPool)}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">Total profit shares across all plans</div>
+                            </div>
+                        </Card>
 
-                    {/* Estimated Upcoming Payment Card */}
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Upcoming Payment</div>
-                            <div className="text-lg font-semibold text-gray-900 dark:text-white">No upcoming payments scheduled.</div>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="space-y-3">
-                    <div className="relative w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        {/* Used portion */}
-                        <div 
-                            className="absolute left-0 top-0 h-full bg-primary rounded-full transition-all duration-300"
-                            style={{ width: `${usedPercentage}%` }}
-                        />
-                        {/* Remaining portion */}
-                        <div 
-                            className="absolute left-0 top-0 h-full bg-blue-200 dark:bg-blue-400/30 rounded-full transition-all duration-300"
-                            style={{ width: `${remainingPercentage}%`, left: `${usedPercentage}%` }}
-                        />
+                        {/* Estimated Upcoming Payment Card */}
+                        <Card className="p-6">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Upcoming Payment</div>
+                                <div className="text-lg font-semibold text-gray-900 dark:text-white">No upcoming payments scheduled.</div>
+                            </div>
+                        </Card>
                     </div>
-                    
-                    {/* Legends */}
-                    <div className="flex items-center gap-6 text-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-primary"></div>
-                            <span className="text-gray-600 dark:text-gray-400">
-                                Used: {formatNumber(usedStockUnits)} profit shares
-                            </span>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-3">
+                        <div className="relative w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            {/* Used portion */}
+                            <div 
+                                className="absolute left-0 top-0 h-full bg-primary rounded-full transition-all duration-300"
+                                style={{ width: `${usedPercentage}%` }}
+                            />
+                            {/* Remaining portion */}
+                            <div 
+                                className="absolute left-0 top-0 h-full bg-blue-200 dark:bg-blue-400/30 rounded-full transition-all duration-300"
+                                style={{ width: `${remainingPercentage}%`, left: `${usedPercentage}%` }}
+                            />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-blue-200 dark:bg-blue-400/30"></div>
-                            <span className="text-gray-600 dark:text-gray-400">
-                                Remaining: {formatNumber(remainingStockUnits)} profit shares
-                            </span>
+                        
+                        {/* Legends */}
+                        <div className="flex items-center gap-6 text-sm">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-primary"></div>
+                                <span className="text-gray-600 dark:text-gray-400">
+                                    Used: {formatNumber(usedStockUnits)} profit shares
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-200 dark:bg-blue-400/30"></div>
+                                <span className="text-gray-600 dark:text-gray-400">
+                                    Remaining: {formatNumber(remainingStockUnits)} profit shares
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* Stakeholders Section */}
             <div className="space-y-6">
@@ -655,13 +641,6 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                     <Table>
                         <Table.THead>
                             <Table.Tr>
-                                <Table.Th>
-                                    <Checkbox
-                                        checked={selectedStakeholders.length === filteredStakeholders.length && filteredStakeholders.length > 0}
-                                        indeterminate={selectedStakeholders.length > 0 && selectedStakeholders.length < filteredStakeholders.length}
-                                        onChange={(_, e) => handleSelectAll(e.target.checked)}
-                                    />
-                                </Table.Th>
                                 <Table.Th>Stakeholders</Table.Th>
                                 <Table.Th>Plans</Table.Th>
                                 <Table.Th>Status</Table.Th>
@@ -671,25 +650,19 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                         <Table.TBody>
                             {loading ? (
                                 <Table.Tr>
-                                    <Table.Td colSpan={6} className="text-center py-12">
+                                    <Table.Td colSpan={4} className="text-center py-12">
                                         <div className="text-gray-400 dark:text-gray-500">Loading stakeholders...</div>
                                     </Table.Td>
                                 </Table.Tr>
                             ) : filteredStakeholders.length === 0 ? (
                                 <Table.Tr>
-                                    <Table.Td colSpan={6} className="text-center py-12">
+                                    <Table.Td colSpan={4} className="text-center py-12">
                                         <div className="text-gray-400 dark:text-gray-500">No stakeholders found</div>
                                     </Table.Td>
                                 </Table.Tr>
                             ) : (
                                 filteredStakeholders.map((stakeholder) => (
                                     <Table.Tr key={stakeholder.id}>
-                                        <Table.Td>
-                                            <Checkbox
-                                                checked={selectedStakeholders.includes(stakeholder.id)}
-                                                onChange={(_, e) => handleSelectStakeholder(stakeholder.id, e.target.checked)}
-                                            />
-                                        </Table.Td>
                                         <Table.Td>
                                             <div className="flex items-center gap-3">
                                                 <Avatar

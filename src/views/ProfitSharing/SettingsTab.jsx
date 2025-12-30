@@ -465,13 +465,43 @@ const SettingsTab = () => {
         setShowAddUserDialog(true)
     }
 
-    const handleEditAccess = (access) => {
+    const handleEditAccess = async (access) => {
         setEditingAccess(access)
-        setUserFormData({
-            userId: access.userId,
-            role: access.role,
-            companyIds: access.companyId ? [access.companyId] : [] // Single company for editing existing
-        })
+        
+        // Load all access records for this user to get all companies they have access to
+        try {
+            const allAccessResult = await FirebaseDbService.profitSharingAccess.getByUserId(access.userId)
+            if (allAccessResult.success && allAccessResult.data.length > 0) {
+                // Get all company IDs this user has access to
+                const userCompanyIds = allAccessResult.data
+                    .map(record => record.companyId)
+                    .filter(Boolean)
+                
+                // Use the role from the current access record being edited
+                // (assuming all records have the same role, but we'll use the one being edited)
+                setUserFormData({
+                    userId: access.userId,
+                    role: access.role,
+                    companyIds: userCompanyIds // All companies the user has access to
+                })
+            } else {
+                // Fallback to single company if we can't load all records
+                setUserFormData({
+                    userId: access.userId,
+                    role: access.role,
+                    companyIds: access.companyId ? [access.companyId] : []
+                })
+            }
+        } catch (error) {
+            console.error('Error loading all access records for user:', error)
+            // Fallback to single company
+            setUserFormData({
+                userId: access.userId,
+                role: access.role,
+                companyIds: access.companyId ? [access.companyId] : []
+            })
+        }
+        
         setShowAddUserDialog(true)
     }
 
@@ -485,8 +515,8 @@ const SettingsTab = () => {
             return
         }
 
-        // Validate company selection for new users
-        if (!editingAccess && (!userFormData.companyIds || userFormData.companyIds.length === 0)) {
+        // Validate company selection for both new and editing users
+        if (!userFormData.companyIds || userFormData.companyIds.length === 0) {
             toast.push(
                 <Notification type="warning" duration={2000} title="Validation">
                     Please select at least one company
@@ -500,12 +530,68 @@ const SettingsTab = () => {
             const selectedUser = allUsers.find(u => u.id === userFormData.userId)
             
             if (editingAccess) {
-                // Update existing (single company)
+                // Update existing access records for all companies
+                // Get all existing access records for this user
+                const allUserAccessResult = await FirebaseDbService.profitSharingAccess.getByUserId(editingAccess.userId)
+                const existingAccessRecords = allUserAccessResult.success ? allUserAccessResult.data : []
+                const existingCompanyIds = existingAccessRecords.map(r => r.companyId).filter(Boolean)
+                const newCompanyIds = userFormData.companyIds
                 const oldRole = editingAccess.role
-                const result = await FirebaseDbService.profitSharingAccess.update(editingAccess.id, {
-                    role: userFormData.role
-                })
-                if (result.success) {
+                
+                // Companies to remove (in existing but not in new)
+                const companiesToRemove = existingCompanyIds.filter(id => !newCompanyIds.includes(id))
+                
+                // Companies to add (in new but not in existing)
+                const companiesToAdd = newCompanyIds.filter(id => !existingCompanyIds.includes(id))
+                
+                // Companies to update (in both, need to update role)
+                const companiesToUpdate = newCompanyIds.filter(id => existingCompanyIds.includes(id))
+                
+                try {
+                    // Delete access records for removed companies
+                    for (const companyId of companiesToRemove) {
+                        const recordToDelete = existingAccessRecords.find(r => r.companyId === companyId)
+                        if (recordToDelete) {
+                            await FirebaseDbService.profitSharingAccess.delete(recordToDelete.id)
+                        }
+                    }
+                    
+                    // Update role for existing companies
+                    for (const companyId of companiesToUpdate) {
+                        const recordToUpdate = existingAccessRecords.find(r => r.companyId === companyId)
+                        if (recordToUpdate) {
+                            await FirebaseDbService.profitSharingAccess.update(recordToUpdate.id, {
+                                role: userFormData.role
+                            })
+                        }
+                    }
+                    
+                    // Create new access records for added companies
+                    const selectedUser = allUsers.find(u => u.id === userFormData.userId)
+                    let userName = ''
+                    if (selectedUser?.firstName && selectedUser?.lastName) {
+                        userName = `${selectedUser.firstName} ${selectedUser.lastName}`
+                    } else if (selectedUser?.firstName) {
+                        userName = selectedUser.firstName
+                    } else if (selectedUser?.name) {
+                        userName = selectedUser.name
+                    } else if (selectedUser?.userName) {
+                        userName = selectedUser.userName
+                    } else {
+                        userName = selectedUser?.email || 'Unknown'
+                    }
+                    const userEmail = selectedUser?.email || ''
+                    
+                    for (const companyId of companiesToAdd) {
+                        await FirebaseDbService.profitSharingAccess.create({
+                            userId: editingAccess.userId,
+                            companyId: companyId,
+                            role: userFormData.role,
+                            userName: userName,
+                            userEmail: userEmail
+                        })
+                    }
+                    
                     // Notify admins if role changed
                     if (oldRole !== userFormData.role) {
                         try {
@@ -564,8 +650,9 @@ const SettingsTab = () => {
                     )
                     await loadAccessRecords()
                     setShowAddUserDialog(false)
-                } else {
-                    throw new Error(result.error || 'Failed to update access')
+                } catch (updateError) {
+                    console.error('Error updating access records:', updateError)
+                    throw new Error(updateError.message || 'Failed to update access')
                 }
             } else {
                 // Create new access records for each selected company
@@ -1032,53 +1119,50 @@ const SettingsTab = () => {
                         )}
 
                         {editingAccess && (
-                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4">
                                 <div className="font-medium">{editingAccess.userName}</div>
                                 <div className="text-sm text-gray-500">{editingAccess.userEmail}</div>
-                                <div className="text-xs text-gray-400 mt-1">Company: {companies.find(c => c.id === editingAccess.companyId)?.name || 'Unknown'}</div>
                             </div>
                         )}
 
-                        {!editingAccess && (
-                            <div>
-                                <label className="block text-sm font-medium mb-2">
-                                    Select Companies *
-                                </label>
-                                <Select
-                                    options={companies.map(c => ({ value: c.id, label: c.name }))}
-                                    value={companies.filter(c => userFormData.companyIds.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
-                                    onChange={(selected) => {
-                                        const selectedIds = Array.isArray(selected) 
-                                            ? selected.map(opt => opt.value)
-                                            : selected 
-                                                ? [selected.value]
-                                                : []
-                                        setUserFormData(prev => ({ ...prev, companyIds: selectedIds }))
-                                    }}
-                                    placeholder="Select one or more companies..."
-                                    isMulti
-                                    isSearchable
-                                    menuPortalTarget={document.body}
-                                    menuPosition="fixed"
-                                    styles={{
-                                        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-                                        menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                                    }}
-                                    components={{
-                                        ValueContainer: CustomValueContainer,
-                                        MultiValue: CustomMultiValue,
-                                        MenuList: CustomMenuList,
-                                        Option: CustomOption,
-                                        Placeholder: CustomPlaceholder,
-                                    }}
-                                    controlShouldRenderValue={false}
-                                    hideSelectedOptions={false}
-                                />
-                                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                    User will have access to Profit Sharing for all selected companies
-                                </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">
+                                {editingAccess ? 'Select Companies *' : 'Select Companies *'}
+                            </label>
+                            <Select
+                                options={companies.map(c => ({ value: c.id, label: c.name }))}
+                                value={companies.filter(c => userFormData.companyIds.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
+                                onChange={(selected) => {
+                                    const selectedIds = Array.isArray(selected) 
+                                        ? selected.map(opt => opt.value)
+                                        : selected 
+                                            ? [selected.value]
+                                            : []
+                                    setUserFormData(prev => ({ ...prev, companyIds: selectedIds }))
+                                }}
+                                placeholder="Select one or more companies..."
+                                isMulti
+                                isSearchable
+                                menuPortalTarget={document.body}
+                                menuPosition="fixed"
+                                styles={{
+                                    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                    menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                }}
+                                components={{
+                                    ValueContainer: CustomValueContainer,
+                                    MultiValue: CustomMultiValue,
+                                    MenuList: CustomMenuList,
+                                    Option: CustomOption,
+                                    Placeholder: CustomPlaceholder,
+                                }}
+                                controlShouldRenderValue={false}
+                                hideSelectedOptions={false}
+                            />
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                User will have access to Profit Sharing for all selected companies
                             </div>
-                        )}
+                        </div>
 
                         <div>
                             <label className="block text-sm font-medium mb-2">

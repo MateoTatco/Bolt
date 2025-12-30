@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Card, Button, Table, Tag, Drawer, Select, DatePicker, Input, Dialog } from '@/components/ui'
 import { HiOutlineArrowLeft, HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineInformationCircle, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlineCheckCircle, HiOutlineEye, HiOutlineDownload, HiOutlineChevronDown, HiOutlineChevronUp } from 'react-icons/hi'
@@ -158,10 +158,18 @@ const StakeholderDetail = () => {
     const [selectedPlan, setSelectedPlan] = useState(null)
     const [valuations, setValuations] = useState([])
     const [expandedAwardId, setExpandedAwardId] = useState(null)
+    const justSavedRef = useRef(false) // Flag to prevent loadStakeholder from running right after save
+    const savedNameRef = useRef(null) // Store the name we just saved to prevent overwriting
+    const lastSavedNameRef = useRef(null) // Store the last saved name to compare against stale data
 
     useEffect(() => {
         // Wait for access to load before checking permissions
         if (loadingAccess) {
+            return
+        }
+        
+        // Skip loading if we just saved (to prevent overwriting the saved data)
+        if (justSavedRef.current) {
             return
         }
         
@@ -206,9 +214,34 @@ const StakeholderDetail = () => {
                     }
                     
                     // Format the stakeholder data to match expected structure
-                    setStakeholder({
+                    // CRITICAL: Don't overwrite stakeholder state if we just saved a different name
+                    // This prevents stale database data from reverting user's changes
+                    let nameToUse = data.name || ''
+                    
+                    // Priority 1: If we have a saved name ref, use it (we just saved)
+                    if (savedNameRef.current && data.name !== savedNameRef.current) {
+                        nameToUse = savedNameRef.current
+                    }
+                    // Priority 2: If current stakeholder name matches last saved, but database is different, keep current
+                    else if (lastSavedNameRef.current && stakeholder?.name === lastSavedNameRef.current && data.name !== lastSavedNameRef.current) {
+                        nameToUse = stakeholder.name
+                    }
+                    // Priority 3: If current stakeholder name is different from database, and we don't have a saved ref,
+                    // check if the current name is newer (was set more recently) - if so, keep it
+                    else if (stakeholder?.name && stakeholder.name !== data.name && !savedNameRef.current && !lastSavedNameRef.current) {
+                        // This is tricky - we don't know which is newer
+                        // But if the current name is in the form data, it's likely what the user wants
+                        // For now, use database name
+                        nameToUse = data.name || ''
+                    }
+                    // Priority 4: Default - use database name
+                    else {
+                        nameToUse = data.name || ''
+                    }
+                    
+                    const stakeholderToSet = {
                         id: data.id,
-                        name: data.name || '',
+                        name: nameToUse,
                         email: data.email || '',
                         phone: data.phone || '',
                         managerId: data.managerId || null,
@@ -218,7 +251,47 @@ const StakeholderDetail = () => {
                         estimatedFMV: 0, // Calculate this if needed
                         totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
                         linkedUserId: data.linkedUserId,
-                    })
+                    }
+                    
+                    // CRITICAL: Always use saved name if it exists and differs from database
+                    // This prevents the page title from reverting when loadStakeholder runs after a save
+                    const savedName = savedNameRef.current || lastSavedNameRef.current
+                    const hasSavedName = savedName !== null && savedName !== ''
+                    const databaseNameIsDifferent = hasSavedName && data.name !== savedName
+                    
+                    // If we have a saved name and database is different, ALWAYS use the saved name
+                    // This handles cases where Firebase hasn't propagated the update yet
+                    if (databaseNameIsDifferent) {
+                        // Always update stakeholder with saved name to ensure title stays correct
+                        const stakeholderWithSavedName = {
+                            ...stakeholderToSet,
+                            name: savedName, // Use saved name instead of database name
+                        }
+                        setStakeholder(stakeholderWithSavedName)
+                        
+                        // Still load the linked user profile though
+                        if (data.linkedUserId) {
+                            try {
+                                const userResult = await FirebaseDbService.users.getById(data.linkedUserId)
+                                if (userResult.success && userResult.data) {
+                                    setLinkedUserProfile(userResult.data)
+                                } else {
+                                    setLinkedUserProfile(null)
+                                }
+                            } catch (profileError) {
+                                console.warn('Error loading linked user profile for stakeholder detail:', profileError)
+                                setLinkedUserProfile(null)
+                            }
+                        } else {
+                            setLinkedUserProfile(null)
+                        }
+                        return // Exit early, don't update stakeholder state with stale data
+                    }
+                    
+                    // Only update stakeholder if the name actually changed (prevent unnecessary re-renders)
+                    if (!stakeholder || stakeholder.name !== nameToUse) {
+                        setStakeholder(stakeholderToSet)
+                    }
 
                     // Load linked user profile for display overrides
                     if (data.linkedUserId) {
@@ -266,6 +339,7 @@ const StakeholderDetail = () => {
 
     useEffect(() => {
         if (stakeholder) {
+            
             // Extract phone number (remove +1 prefix if present)
             const phoneNumber = stakeholder.phone ? stakeholder.phone.replace(/^\+1/, '') : ''
 
@@ -273,16 +347,27 @@ const StakeholderDetail = () => {
             // The name set in Add Stakeholder modal should be the one used everywhere
             const displayName = stakeholder.name || stakeholder.email || ''
             
+            // CRITICAL FIX: If form data name matches last saved name, but stakeholder name is different (stale),
+            // keep the form data name instead of overwriting with stale stakeholder name
+            let nameToUse = displayName
+            if (lastSavedNameRef.current && 
+                detailsFormData.name && 
+                detailsFormData.name === lastSavedNameRef.current && 
+                stakeholder.name !== lastSavedNameRef.current) {
+                nameToUse = detailsFormData.name
+            }
+            
             const displayPhone = linkedUserProfile?.phoneNumber 
                 ? linkedUserProfile.phoneNumber.replace(/^\+1/, '')
                 : phoneNumber
 
-            setDetailsFormData({
-                name: displayName,
+            const newFormData = {
+                name: nameToUse,
                 email: linkedUserProfile?.email || stakeholder.email || '',
                 phone: displayPhone,
                 managerId: stakeholder.managerId || null,
-            })
+            }
+            setDetailsFormData(newFormData)
             setReinsRole(stakeholder.reinsRole || 'User')
         }
     }, [stakeholder, linkedUserProfile])
@@ -433,13 +518,55 @@ const StakeholderDetail = () => {
 
             const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
 
+            // Ensure name is saved - trim whitespace and validate
+            const nameToSave = (detailsFormData.name || '').trim()
+            
+            // Set flag and store saved name BEFORE saving to prevent loadStakeholder from overwriting
+            justSavedRef.current = true
+            savedNameRef.current = nameToSave // Store the name we're saving (temporary, cleared after 10s)
+            lastSavedNameRef.current = nameToSave // Store permanently until next save
+            
+            if (!nameToSave) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "danger", duration: 2000, title: "Error" },
+                        "Full name is required"
+                    )
+                )
+                return
+            }
+
             await updateDoc(stakeholderRef, {
-                name: detailsFormData.name,
+                name: nameToSave, // Save the name from form data
                 email: detailsFormData.email,
                 phone: detailsFormData.phone ? `+1${detailsFormData.phone}` : '',
                 managerId: detailsFormData.managerId || null,
                 updatedAt: serverTimestamp(),
             })
+
+            // Optimistically update both stakeholder state and form data immediately
+            // This prevents the form from reverting before the reload completes
+            if (stakeholder) {
+                const updatedStakeholder = {
+                    ...stakeholder,
+                    name: nameToSave, // Update name immediately
+                    email: detailsFormData.email,
+                    phone: detailsFormData.phone ? `+1${detailsFormData.phone}` : stakeholder.phone,
+                    managerId: detailsFormData.managerId || null,
+                }
+                setStakeholder(updatedStakeholder)
+                
+                // Also update form data immediately to prevent useEffect from overwriting
+                const newFormData = {
+                    ...detailsFormData,
+                    name: nameToSave,
+                    email: detailsFormData.email,
+                    phone: detailsFormData.phone || detailsFormData.phone,
+                    managerId: detailsFormData.managerId || null,
+                }
+                setDetailsFormData(newFormData)
+            }
 
             toast.push(
                 React.createElement(
@@ -449,27 +576,23 @@ const StakeholderDetail = () => {
                 )
             )
 
-            // Reload stakeholder data
-            const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
-            if (response.success) {
-                const data = response.data
-                setStakeholder({
-                    id: data.id,
-                    name: data.name || '',
-                    email: data.email || '',
-                    phone: data.phone || '',
-                    managerId: data.managerId || null,
-                    stockAwards: data.stockAwards || [],
-                    profitAwards: data.profitAwards || [],
-                    totalStockUnits: data.mareStock || 0,
-                    estimatedFMV: 0,
-                    totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
-                    reinsRole: data.reinsRole || 'User',
-                    linkedUserId: data.linkedUserId,
-                })
-            }
+            // Don't reload from database immediately - the optimistic update is sufficient
+            // The database will be reloaded on next page load or when loadStakeholder runs naturally
+            // This prevents race conditions where stale data overwrites the saved value
+            
+            // Reset the flag after a delay to allow any pending useEffect calls to complete
+            // Keep the savedNameRef for longer to prevent stale data from overwriting
+            setTimeout(() => {
+                justSavedRef.current = false
+            }, 3000)
+            
+            // Clear savedNameRef after a longer delay (10 seconds should be enough for Firestore to propagate)
+            // But keep lastSavedNameRef permanently until next save
+            setTimeout(() => {
+                savedNameRef.current = null
+            }, 10000)
         } catch (error) {
-            console.error('Error saving details:', error)
+            console.error('[StakeholderDetail] Error saving details:', error)
             toast.push(
                 React.createElement(
                     Notification,
@@ -503,8 +626,13 @@ const StakeholderDetail = () => {
             const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
             if (response.success) {
                 const data = response.data
+                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
+                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
+                    ? lastSavedNameRef.current 
+                    : (stakeholder?.name || data.name || '')
                 setStakeholder({
                     ...stakeholder,
+                    name: nameToUse, // Preserve saved name
                     reinsRole: data.reinsRole || 'User',
                 })
             }
@@ -617,9 +745,13 @@ const StakeholderDetail = () => {
             const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
             if (response.success) {
                 const data = response.data
+                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
+                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
+                    ? lastSavedNameRef.current 
+                    : (data.name || '')
                 setStakeholder({
                     id: data.id,
-                    name: data.name || '',
+                    name: nameToUse,
                     email: data.email || '',
                     phone: data.phone || '',
                     managerId: data.managerId || null,
@@ -734,9 +866,13 @@ const StakeholderDetail = () => {
             const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
             if (response.success) {
                 const data = response.data
+                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
+                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
+                    ? lastSavedNameRef.current 
+                    : (data.name || '')
                 setStakeholder({
                     id: data.id,
-                    name: data.name || '',
+                    name: nameToUse,
                     email: data.email || '',
                     phone: data.phone || '',
                     managerId: data.managerId || null,
@@ -827,9 +963,13 @@ const StakeholderDetail = () => {
             const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
             if (response.success) {
                 const data = response.data
+                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
+                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
+                    ? lastSavedNameRef.current 
+                    : (data.name || '')
                 setStakeholder({
                     id: data.id,
-                    name: data.name || '',
+                    name: nameToUse,
                     email: data.email || '',
                     phone: data.phone || '',
                     managerId: data.managerId || null,
@@ -1113,9 +1253,13 @@ const StakeholderDetail = () => {
             const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
             if (response.success) {
                 const data = response.data
+                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
+                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
+                    ? lastSavedNameRef.current 
+                    : (data.name || '')
                 setStakeholder({
                     id: data.id,
-                    name: data.name || '',
+                    name: nameToUse,
                     email: data.email || '',
                     phone: data.phone || '',
                     managerId: data.managerId || null,
@@ -1287,9 +1431,12 @@ const StakeholderDetail = () => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                    {isAdmin
-                        ? stakeholder.name
-                        : 'My Awards'}
+                    {(() => {
+                        // Use saved name if it exists (prevents title from reverting)
+                        const savedName = savedNameRef.current || lastSavedNameRef.current
+                        const displayName = savedName || stakeholder?.name || ''
+                        return isAdmin ? displayName : 'My Awards'
+                    })()}
                 </h2>
                 {activeTab === 'profit' && isAdmin && (
                     <Button

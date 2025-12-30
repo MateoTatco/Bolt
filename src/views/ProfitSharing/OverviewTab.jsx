@@ -775,91 +775,12 @@ const OverviewTab = () => {
     return (
         <div className="space-y-8">
             <div className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Awards Overview</h2>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Awards</h2>
             </div>
 
-            {/* Personal Summary */}
-            <div className="space-y-6">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">My Summary</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Awards</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(myTotalAwards)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Across all companies</div>
-                        </div>
-                    </Card>
-
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Shares</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(myTotalShares)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Profit shares issued to me</div>
-                        </div>
-                    </Card>
-
-                    <Card className="p-6">
-                        <div className="space-y-2">
-                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Companies</div>
-                            <div className="text-3xl font-bold text-gray-900 dark:text-white">{formatNumber(new Set(myStakeholderData.map(sh => sh.companyId)).size)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">With active awards</div>
-                        </div>
-                    </Card>
-                </div>
-            </div>
-
-            {/* Plan Agreements Section */}
-            {plans.length > 0 && (
-                <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Plan Agreements</h3>
-                    <Card className="p-0">
-                        <Table>
-                            <Table.THead>
-                                <Table.Tr>
-                                    <Table.Th>Plan Name</Table.Th>
-                                    <Table.Th>Company</Table.Th>
-                                    <Table.Th>Status</Table.Th>
-                                    <Table.Th>Actions</Table.Th>
-                                </Table.Tr>
-                            </Table.THead>
-                            <Table.TBody>
-                                {plans.map((plan) => (
-                                    <Table.Tr key={plan.id}>
-                                        <Table.Td className="font-medium">{plan.name || 'Unnamed Plan'}</Table.Td>
-                                        <Table.Td>{companies.find(c => c.id === plan.companyId)?.name || 'Unknown'}</Table.Td>
-                                        <Table.Td>
-                                            <Tag className={plan.status === 'finalized' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'}>
-                                                {plan.status || 'Draft'}
-                                            </Tag>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            {plan.planDocumentUrl && (
-                                                <Button
-                                                    variant="plain"
-                                                    size="sm"
-                                                    icon={<HiOutlineEye />}
-                                                    onClick={() => {
-                                                        setSelectedPlanDocumentUrl(plan.planDocumentUrl)
-                                                        setShowPlanDocumentModal(true)
-                                                    }}
-                                                >
-                                                    View Agreement
-                                                </Button>
-                                            )}
-                                        </Table.Td>
-                                    </Table.Tr>
-                                ))}
-                            </Table.TBody>
-                        </Table>
-                    </Card>
-                </div>
-            )}
-
-            {/* My Awards Section */}
+            {/* My Awards Section - Show first */}
             {allMyAwards.length > 0 && (
                 <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">My Awards</h3>
                     <Card className="p-0">
                         <Table>
                             <Table.THead>
@@ -910,6 +831,53 @@ const OverviewTab = () => {
                 </div>
             )}
 
+            {/* Plan Agreements Section - Show below awards */}
+            {plans.length > 0 && (
+                <div className="space-y-6">
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Plan Agreements</h3>
+                    <Card className="p-0">
+                        <Table>
+                            <Table.THead>
+                                <Table.Tr>
+                                    <Table.Th>Plan Name</Table.Th>
+                                    <Table.Th>Company</Table.Th>
+                                    <Table.Th>Status</Table.Th>
+                                    <Table.Th>Actions</Table.Th>
+                                </Table.Tr>
+                            </Table.THead>
+                            <Table.TBody>
+                                {plans.map((plan) => (
+                                    <Table.Tr key={plan.id}>
+                                        <Table.Td className="font-medium">{plan.name || 'Unnamed Plan'}</Table.Td>
+                                        <Table.Td>{companies.find(c => c.id === plan.companyId)?.name || 'Unknown'}</Table.Td>
+                                        <Table.Td>
+                                            <Tag className={plan.status === 'finalized' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'}>
+                                                {plan.status || 'Draft'}
+                                            </Tag>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            {plan.planDocumentUrl && (
+                                                <Button
+                                                    variant="plain"
+                                                    size="sm"
+                                                    icon={<HiOutlineEye />}
+                                                    onClick={() => {
+                                                        setSelectedPlanDocumentUrl(plan.planDocumentUrl)
+                                                        setShowPlanDocumentModal(true)
+                                                    }}
+                                                >
+                                                    View Agreement
+                                                </Button>
+                                            )}
+                                        </Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.TBody>
+                        </Table>
+                    </Card>
+                </div>
+            )}
+
             {loadingMyData && (
                 <Card className="p-8">
                     <div className="text-center text-gray-500 dark:text-gray-400">Loading your awards...</div>
@@ -936,21 +904,19 @@ const OverviewTab = () => {
             />
 
             {/* Award Document Modal */}
-            {selectedAward && selectedStakeholderId && (
-                <AwardDocumentModal
-                    isOpen={showAwardDocumentModal}
-                    onClose={() => {
-                        setShowAwardDocumentModal(false)
-                        setSelectedAward(null)
-                        setSelectedStakeholderId(null)
-                    }}
-                    award={selectedAward}
-                    stakeholderId={selectedStakeholderId}
-                    onDocumentUpdated={() => {
-                        loadMyStakeholderData()
-                    }}
-                />
-            )}
+            <AwardDocumentModal
+                isOpen={showAwardDocumentModal && !!selectedAward && !!selectedStakeholderId}
+                onClose={() => {
+                    setShowAwardDocumentModal(false)
+                    setSelectedAward(null)
+                    setSelectedStakeholderId(null)
+                }}
+                award={selectedAward}
+                stakeholderId={selectedStakeholderId}
+                onDocumentUpdated={() => {
+                    loadMyStakeholderData()
+                }}
+            />
         </div>
     )
 }

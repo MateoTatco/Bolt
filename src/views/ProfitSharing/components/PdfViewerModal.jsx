@@ -341,29 +341,6 @@ const PdfViewerModal = ({ isOpen, onClose, isAdmin, planDocumentUrl = null }) =>
                                 dangerouslySetInnerHTML={{ __html: htmlContent }}
                             />
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg flex-shrink-0">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Preview rendered from Word document. Install jspdf and html2canvas for PDF download.
-                            </p>
-                            {planDocumentUrl && (
-                                <Button
-                                    variant="plain"
-                                    size="sm"
-                                    icon={<HiOutlineDownload />}
-                                    onClick={() => {
-                                        const link = document.createElement('a')
-                                        link.href = planDocumentUrl
-                                        link.download = 'plan-document.docx'
-                                        link.target = '_blank'
-                                        document.body.appendChild(link)
-                                        link.click()
-                                        document.body.removeChild(link)
-                                    }}
-                                >
-                                    Download .docx
-                                </Button>
-                            )}
-                        </div>
                     </div>
                 ) : pdfUrl ? (
                     // Show PDF in iframe (preview only, no auto-download)
@@ -375,24 +352,6 @@ const PdfViewerModal = ({ isOpen, onClose, isAdmin, planDocumentUrl = null }) =>
                                 style={{ minHeight: '400px' }}
                                 title="PDF Agreement"
                             />
-                        </div>
-                        <div className="flex items-center justify-end p-3 bg-gray-50 dark:bg-gray-800 rounded-lg flex-shrink-0">
-                            <Button
-                                variant="plain"
-                                size="sm"
-                                icon={<HiOutlineDownload />}
-                                onClick={() => {
-                                    const link = document.createElement('a')
-                                    link.href = pdfUrl
-                                    link.download = 'plan-document.pdf'
-                                    link.target = '_blank'
-                                    document.body.appendChild(link)
-                                    link.click()
-                                    document.body.removeChild(link)
-                                }}
-                            >
-                                Download PDF
-                            </Button>
                         </div>
                     </div>
                 ) : (
@@ -409,7 +368,34 @@ const PdfViewerModal = ({ isOpen, onClose, isAdmin, planDocumentUrl = null }) =>
                 </div>
 
                 {/* Footer */}
-                <div className="flex justify-end mt-6 flex-shrink-0">
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 mt-auto">
+                    {(pdfUrl || (htmlContent && planDocumentUrl)) && (
+                        <Button
+                            variant="plain"
+                            icon={<HiOutlineDownload />}
+                            onClick={() => {
+                                if (pdfUrl) {
+                                    const link = document.createElement('a')
+                                    link.href = pdfUrl
+                                    link.download = 'plan-document.pdf'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                } else if (planDocumentUrl) {
+                                    const link = document.createElement('a')
+                                    link.href = planDocumentUrl
+                                    link.download = 'plan-document.docx'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                }
+                            }}
+                        >
+                            {pdfUrl ? 'Download PDF' : 'Download .docx'}
+                        </Button>
+                    )}
                     <Button
                         variant="solid"
                         onClick={handleClose}

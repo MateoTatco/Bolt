@@ -614,6 +614,24 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
         }
     }
 
+    // Early return if award is null (shouldn't happen when isOpen is true, but safety check)
+    if (!award && isOpen) {
+        return (
+            <Dialog
+                isOpen={isOpen}
+                onClose={onClose}
+                width={1200}
+            >
+                <div className="p-6">
+                    <p className="text-gray-600 dark:text-gray-400">No award data available.</p>
+                    <Button variant="solid" onClick={onClose} className="mt-4">
+                        Close
+                    </Button>
+                </div>
+            </Dialog>
+        )
+    }
+
     return (
         <Dialog
             isOpen={isOpen}
@@ -714,47 +732,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                 dangerouslySetInnerHTML={{ __html: htmlContent }}
                             />
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg flex-shrink-0">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Preview rendered from Word document. Install jspdf and html2canvas for PDF download.
-                            </p>
-                            {(award.documentPdfUrl || award.documentUrl) ? (
-                                <Button
-                                    variant="plain"
-                                    size="sm"
-                                    icon={<HiOutlineDownload />}
-                                    onClick={() => {
-                                        const pdfUrl = award.documentPdfUrl || award.documentUrl
-                                        const link = document.createElement('a')
-                                        link.href = pdfUrl
-                                        link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
-                                        link.target = '_blank'
-                                        document.body.appendChild(link)
-                                        link.click()
-                                        document.body.removeChild(link)
-                                    }}
-                                >
-                                    Download PDF
-                                </Button>
-                            ) : award.documentDocxUrl && (
-                                <Button
-                                    variant="plain"
-                                    size="sm"
-                                    icon={<HiOutlineDownload />}
-                                    onClick={() => {
-                                        const link = document.createElement('a')
-                                        link.href = award.documentDocxUrl
-                                        link.download = (award.documentFileName || 'award-document').replace('.pdf', '.docx')
-                                        link.target = '_blank'
-                                        document.body.appendChild(link)
-                                        link.click()
-                                        document.body.removeChild(link)
-                                    }}
-                                >
-                                    Download .docx
-                                </Button>
-                            )}
-                        </div>
                     </div>
                 ) : pdfUrl && !pdfUrl.includes('.docx') ? (
                     // Show PDF in embed/iframe (only for actual PDF files)
@@ -779,65 +756,6 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                     title="Award Document"
                                 />
                             )}
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg flex-shrink-0">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                PDF document preview. Download the PDF file below.
-                            </p>
-                            <div className="flex items-center gap-2">
-                                {/* Sign Document Button - Only show for finalized awards without signature */}
-                                {/* Check if document is signed by looking for signatureMetadata or any signed document URLs */}
-                                {award?.status === 'Finalized' && 
-                                 !award?.signatureMetadata && 
-                                 !award?.signedDocumentPdfUrl && 
-                                 !award?.signedDocumentDocxUrl && 
-                                 !award?.signedDocumentUrl && (
-                                    <Button
-                                        variant="solid"
-                                        size="sm"
-                                        icon={<HiOutlinePencil />}
-                                        onClick={() => {
-                                            if (!showSignatureModal) {
-                                                setShowSignatureModal(true)
-                                            }
-                                        }}
-                                        loading={signing}
-                                        disabled={signing || showSignatureModal}
-                                    >
-                                        Sign Document
-                                    </Button>
-                                )}
-                                <Button
-                                    variant="plain"
-                                    size="sm"
-                                    icon={<HiOutlineDownload />}
-                                    onClick={() => {
-                                        // Use PDF blob if available (converted from DOCX), otherwise use PDF URL
-                                        if (pdfBlob) {
-                                            const blobUrl = URL.createObjectURL(pdfBlob)
-                                            const link = document.createElement('a')
-                                            link.href = blobUrl
-                                            link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf')
-                                            document.body.appendChild(link)
-                                            link.click()
-                                            document.body.removeChild(link)
-                                            URL.revokeObjectURL(blobUrl)
-                                        } else {
-                                            // Prefer signed document URL if available
-                                            const downloadUrl = award.signedDocumentPdfUrl || award.signedDocumentUrl || award.documentPdfUrl || pdfUrl
-                                            const link = document.createElement('a')
-                                            link.href = downloadUrl
-                                            link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf')
-                                            link.target = '_blank'
-                                            document.body.appendChild(link)
-                                            link.click()
-                                            document.body.removeChild(link)
-                                        }
-                                    }}
-                                >
-                                    Download PDF
-                                </Button>
-                            </div>
                         </div>
                     </div>
                 ) : pdfUrl ? (
@@ -877,7 +795,78 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                 </div>
 
                 {/* Footer */}
-                <div className="flex justify-end mt-6 flex-shrink-0">
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 mt-auto">
+                    {/* Sign Document Button - Only show for finalized awards without signature */}
+                    {award && award?.status === 'Finalized' && 
+                     !award?.signatureMetadata && 
+                     !award?.signedDocumentPdfUrl && 
+                     !award?.signedDocumentDocxUrl && 
+                     !award?.signedDocumentUrl && 
+                     pdfUrl && (
+                        <Button
+                            variant="solid"
+                            icon={<HiOutlinePencil />}
+                            onClick={() => {
+                                if (!showSignatureModal) {
+                                    setShowSignatureModal(true)
+                                }
+                            }}
+                            loading={signing}
+                            disabled={signing || showSignatureModal}
+                        >
+                            Sign Document
+                        </Button>
+                    )}
+                    {/* Download Button */}
+                    {award && (pdfUrl || award.documentPdfUrl || award.documentUrl || award.documentDocxUrl) && (
+                        <Button
+                            variant="plain"
+                            icon={<HiOutlineDownload />}
+                            onClick={() => {
+                                // Prefer signed document URL if available
+                                if (award.signedDocumentPdfUrl || award.signedDocumentUrl) {
+                                    const downloadUrl = award.signedDocumentPdfUrl || award.signedDocumentUrl
+                                    const link = document.createElement('a')
+                                    link.href = downloadUrl
+                                    link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                } else if (award.documentPdfUrl || award.documentUrl) {
+                                    // Use PDF URL
+                                    const downloadUrl = award.documentPdfUrl || award.documentUrl
+                                    const link = document.createElement('a')
+                                    link.href = downloadUrl
+                                    link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                } else if (award.documentDocxUrl) {
+                                    // Fallback to DOCX
+                                    const link = document.createElement('a')
+                                    link.href = award.documentDocxUrl
+                                    link.download = (award.documentFileName || 'award-document').replace('.pdf', '.docx') || 'award-document.docx'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                } else if (pdfUrl) {
+                                    // Use preview PDF URL
+                                    const link = document.createElement('a')
+                                    link.href = pdfUrl
+                                    link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
+                                    link.target = '_blank'
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                }
+                            }}
+                        >
+                            {award.documentPdfUrl || award.documentUrl || pdfUrl ? 'Download PDF' : 'Download .docx'}
+                        </Button>
+                    )}
                     <Button
                         variant="solid"
                         onClick={onClose}

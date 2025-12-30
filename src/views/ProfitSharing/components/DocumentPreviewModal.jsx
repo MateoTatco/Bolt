@@ -106,16 +106,15 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
             width={1000}
             style={{
                 content: {
-                    maxHeight: '100vh',
-                    height: 'auto',
+                    maxHeight: '90vh',
+                    height: '90vh',
                     display: 'flex',
                     flexDirection: 'column',
-                    overflow: 'hidden',
                     padding: 0
                 }
             }}
         >
-            <div className="p-6 flex flex-col" style={{ maxHeight: '95vh', height: '85vh' }}>
+            <div className="p-6 flex flex-col h-full">
                 <div className="mb-4 flex-shrink-0">
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                         Document Preview
@@ -163,7 +162,7 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
                 )}
 
                 {previewData && (
-                    <div className="space-y-4 flex-1 flex flex-col min-h-0 overflow-hidden mb-4">
+                    <div className="space-y-4 flex-1 flex flex-col min-h-0 overflow-hidden">
                         {previewData.htmlContent ? (
                             <>
                                 {/* HTML Preview */}
@@ -178,16 +177,10 @@ const DocumentPreviewModal = ({ isOpen, onClose, templateType, templateData, doc
                                         style={{ 
                                             fontFamily: 'Times New Roman, serif',
                                             fontSize: '12pt',
-                                            lineHeight: '1.5',
-                                            maxHeight: 'calc(85vh - 280px)'
+                                            lineHeight: '1.5'
                                         }}
                                         dangerouslySetInnerHTML={{ __html: previewData.htmlContent }}
                                     />
-                                </div>
-                                <div className="flex items-center justify-between flex-shrink-0 pt-2">
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        Preview rendered from Word document. Download the .docx file for the original formatting.
-                                    </p>
                                 </div>
                             </>
                         ) : (

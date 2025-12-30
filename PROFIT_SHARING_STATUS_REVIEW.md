@@ -1,404 +1,170 @@
-# Profit Sharing Feature - Status Review
+# Profit Sharing Module - Status Review
 
-## Overview
-This document compares the conversation requirements from `additionalChangesProfit.md` with the current implementation status in the codebase.
+Based on review of `newProfitSharingYear.md` conversation and current codebase implementation.
 
----
+## ✅ COMPLETED TASKS
 
-## ✅ COMPLETED FEATURES
+### 1. **Removed "My Summary" Section** ✅
+- **Status**: ✅ DONE
+- **Location**: `src/views/ProfitSharing/OverviewTab.jsx`
+- **Details**: The "My Summary" KPI section (Total Awards, Total Shares, Companies) has been removed for non-admin users. The page now shows "My Awards" first, followed by "Plan Agreements".
 
-### 1. Stakeholder Form Changes ✅
-**Status:** COMPLETE
+### 2. **Combined Overview and My Awards** ✅
+- **Status**: ✅ DONE
+- **Location**: `src/views/ProfitSharing/OverviewTab.jsx`
+- **Details**: For non-admin users, the Overview tab now shows:
+  - "My Awards" section at the top (with table of awards)
+  - "Plan Agreements" section below awards
+  - No separation between overview and awards - unified view
 
-**What was requested:**
-- Replace first name/last name with single "Full Name" field
-- Remove: Title, Employment Status, Pay Type, Pay Amount
-- Add Manager field (dropdown from user list)
-- Remove username field
+### 3. **Renamed "Profit Entries" to "Company Profits"** ✅
+- **Status**: ✅ DONE**
+- **Location**: `src/views/ProfitSharing/ValuationsTab.jsx`
+- **Details**: All instances of "Profit Entries" have been renamed to "Company Profits" in:
+  - Page heading (line 580, 596, 621)
+  - Sidebar label (in `ProfitSharing.jsx`)
 
-**Implementation found:**
-- ✅ `AddStakeholderModal.jsx` uses `fullName` field (line 8, 42, 209)
-- ✅ Manager field implemented with user dropdown (lines 230-246)
-- ✅ No title, employmentStatus, payType, payAmount fields in form
-- ✅ Email field present (lines 218-228)
-- ✅ User selection populates fullName automatically (lines 80-95)
+### 4. **Added Company Dropdown in ValuationsTab** ✅
+- **Status**: ✅ DONE
+- **Location**: `src/views/ProfitSharing/ValuationsTab.jsx`
+- **Details**: 
+  - Company dropdown added for users with access to multiple companies
+  - Dropdown shows "Select profit sharing plan" placeholder
+  - Filters valuations and plans based on selected company
+  - Only shows when user has access to multiple companies
 
-**Files:**
-- `src/views/ProfitSharing/components/AddStakeholderModal.jsx`
-- `src/views/ProfitSharing/StakeholderDetail.jsx` (edit form)
+### 5. **Document Preview Modal Scrolling** ✅
+- **Status**: ✅ DONE (Fixed in recent session)
+- **Location**: `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
+- **Details**: 
+  - Modal height set to `90vh`
+  - Content area uses flexbox for proper scrolling
+  - Footer buttons are inline (Download and Close)
+  - Removed description text above buttons
 
----
+### 6. **Button Layout in Modals** ✅
+- **Status**: ✅ DONE (Fixed in recent session)
+- **Location**: 
+  - `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
+  - `src/views/ProfitSharing/components/PdfViewerModal.jsx`
+  - `src/views/ProfitSharing/components/AwardDocumentModal.jsx`
+- **Details**: 
+  - All modals now have Download and Close buttons inline in footer
+  - Removed description text above buttons
+  - Larger document preview area
 
-### 2. Award Status Flow (Draft → Issued → Finalized) ✅
-**Status:** COMPLETE
+### 7. **Removed Console Logs** ✅
+- **Status**: ✅ DONE (Fixed in recent session)
+- **Location**: `src/views/ProfitSharing/ValuationsTab.jsx`
+- **Details**: All `console.log` statements removed, only `console.error` remains
 
-**What was requested:**
-- Three status system: Draft → Issued → Finalized
-- Admin clicks "Issue" → adds timestamp, moves to "Issued"
-- User clicks "Accept" → adds timestamp, moves to "Finalized"
-- Remove signature pages, use timestamps instead
+### 8. **Fixed React-Modal Error** ✅
+- **Status**: ✅ DONE (Fixed in recent session)
+- **Location**: `src/views/ProfitSharing/OverviewTab.jsx`
+- **Details**: Changed `AwardDocumentModal` from conditional rendering to always render with `isOpen` prop control
 
-**Implementation found:**
-- ✅ `handleIssueAward` function implemented (StakeholderDetail.jsx:665-779)
-- ✅ `handleAcceptAward` function implemented (StakeholderDetail.jsx:781-851)
-- ✅ Status transitions: draft → issued → finalized
-- ✅ Timestamps stored: `issuedBy`, `issuedAt`, `acceptedBy`, `acceptedAt`
-- ✅ Issue button shown for draft awards (line 1726)
-- ✅ Accept button shown for issued awards (line 1789)
-- ✅ Signature functionality removed from DocumentGenerationService.js (line 57, 244)
-
-**Files:**
-- `src/views/ProfitSharing/StakeholderDetail.jsx`
-- `src/services/DocumentGenerationService.js`
-
----
-
-### 3. Profit Type Field (Estimated/Actual) ✅
-**Status:** COMPLETE
-
-**What was requested:**
-- Replace "Source" field with "Type of Profit"
-- Options: "Estimated Profit" or "Actual Profit"
-- Allow editing to change from estimated to actual
-
-**Implementation found:**
-- ✅ `profitType` field in formData (ValuationsTab.jsx:49)
-- ✅ Profit type options defined (lines 518-521)
-- ✅ Form field for profit type (lines 944-959)
-- ✅ Display in table with color coding (lines 776-783)
-- ✅ Source field removed (no "source" found in grep search)
-
-**Files:**
-- `src/views/ProfitSharing/ValuationsTab.jsx`
+### 9. **Fixed Null Award Error** ✅
+- **Status**: ✅ DONE (Fixed in recent session)
+- **Location**: `src/views/ProfitSharing/components/AwardDocumentModal.jsx`
+- **Details**: Added null checks and guard clause for when `award` is null
 
 ---
 
-### 4. Stakeholder Detail KPIs ✅
-**Status:** COMPLETE
+## ⚠️ PENDING TASKS
 
-**What was requested:**
-1. Next Period Estimated Profit (or "[Date] Estimated Profit")
-2. Last Quarter Actual Profit (or "[Date] Actual Profit")
-3. Annual Total Actual Profit
+### 1. **Document Preview Modal Scrolling (View Draft)** ⚠️
+- **Status**: ⚠️ STILL AN ISSUE (mentioned in conversation)
+- **Location**: `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
+- **Issue**: User mentioned scrolling issues still present on "view draft" modal
+- **Action Needed**: Review the modal implementation again - may need additional adjustments for the draft view specifically
+- **Priority**: Medium
 
-**Implementation found:**
-- ✅ Next Period Estimated Profit KPI (StakeholderDetail.jsx:1344-1380)
-- ✅ Last Quarter Actual Profit KPI (lines 1382-1410)
-- ✅ Annual Total Actual Profit KPI (lines 1440-1468)
-- ✅ All KPIs filter by `profitType` correctly
-- ✅ Date-based formatting implemented
+### 2. **Signature Font Styling** ⚠️
+- **Status**: ⚠️ PARTIALLY IMPLEMENTED
+- **Location**: `src/services/DocumentGenerationService.js`
+- **Issue**: Names in documents (e.g., "Brett Tatum") should appear in script font to look like signatures
+- **Current State**: 
+  - `formatSignatureName` function exists but has TODO comment
+  - Function currently returns name as-is
+  - Template modification needed for proper script font
+- **Action Needed**: 
+  - Implement proper Word XML formatting for script font
+  - OR modify document templates to apply script font to signature placeholders
+- **Priority**: Medium
 
-**Files:**
-- `src/views/ProfitSharing/StakeholderDetail.jsx`
-
----
-
-### 5. Supervisor Role Implementation ✅
-**Status:** COMPLETE
-
-**What was requested:**
-- Add "supervisor" role to permission system
-- Supervisors can see their direct reports
-- Manager field links to userId
-
-**Implementation found:**
-- ✅ Supervisor role in `useProfitSharingAccess.js` (lines 52, 56, 86)
-- ✅ Role hierarchy: admin > supervisor > user (lines 51-59)
-- ✅ `isSupervisor` helper function (line 86)
-- ✅ Manager field stores userId (AddStakeholderModal.jsx:11, 236)
-
-**Files:**
-- `src/hooks/useProfitSharingAccess.js`
-- `src/context/ProfitSharingAccessContext.jsx`
-- `src/views/ProfitSharing/components/AddStakeholderModal.jsx`
-
----
-
-### 6. Users Can View Valuations Tab ✅
-**Status:** COMPLETE
-
-**What was requested:**
-- Users (stakeholders) should be able to view Valuations tab
-- Read-only access (cannot add/edit/delete)
-- Company-specific data
-- Show profit graph/chart
-
-**Implementation found:**
-- ✅ Valuations tab accessible to non-admins (ProfitSharing.jsx:44, 110)
-- ✅ `isAdmin` check in ValuationsTab for edit controls (line 39)
-- ✅ Read-only mode for non-admins (canEdit check throughout)
-
-**Files:**
-- `src/views/ProfitSharing.jsx`
-- `src/views/ProfitSharing/ValuationsTab.jsx`
-
----
-
-## ❌ PENDING FEATURES
-
-### 1. Document Preview Scrolling Issue ❌
-**Status:** PENDING
-
-**What was requested:**
-- Fix scrolling in document preview modal
-- Cannot see bottom of preview page
-
-**Current State:**
-- DocumentPreviewModal.jsx has `overflow-y-auto` (line 159) but may need height constraints
-- PdfViewerModal.jsx has overflow handling (lines 323-341) but may need improvement
-- AwardDocumentModal.jsx has overflow-auto (line 712) but may need fixes
-
-**Files to Update:**
-- `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
-- `src/views/ProfitSharing/components/PdfViewerModal.jsx`
-- `src/views/ProfitSharing/components/AwardDocumentModal.jsx`
-
-**Action Required:**
-- Ensure preview containers have proper max-height and scrolling
-- Test on different screen sizes
-
----
-
-### 2. Save Button Behavior ❌
-**Status:** PENDING
-
-**What was requested:**
-- Option 1: Keep modal open after save
-- Option 2: Change button text to "Save and Close" to indicate it will close
-
-**Current State:**
-- Save buttons likely close modals immediately
-- Need to check behavior in:
-  - CreateProfitPlan.jsx
-  - StakeholderDetail.jsx (award save)
-
-**Files to Update:**
-- `src/views/ProfitSharing/CreateProfitPlan.jsx`
-- `src/views/ProfitSharing/StakeholderDetail.jsx` (award save functionality)
-
-**Action Required:**
-- Change button text to "Save and Close" OR
-- Modify save handlers to keep modal open
-
----
-
-### 3. Date Picker Typing Support ❌
-**Status:** PENDING
-
-**What was requested:**
-- Allow typing dates directly in addition to calendar selection
-
-**Current State:**
-- DatePicker component has `inputtable` prop (DatePicker.jsx:35)
-- Need to verify if it's enabled in Profit Sharing forms
-
-**Files to Check/Update:**
-- `src/components/ui/DatePicker/DatePicker.jsx` (verify inputtable prop usage)
-- All DatePicker usages in Profit Sharing:
-  - `src/views/ProfitSharing/ValuationsTab.jsx`
+### 3. **Stakeholder Full Name Override** ⚠️
+- **Status**: ⚠️ STILL AN ISSUE (mentioned in conversation)
+- **Location**: 
+  - `src/views/ProfitSharing/StakeholdersTab.jsx`
   - `src/views/ProfitSharing/StakeholderDetail.jsx`
-  - `src/views/ProfitSharing/CreateProfitPlan.jsx`
+- **Issue**: Full name entered in "Add Stakeholder" modal (e.g., "Brett Tatum") is being overridden by username
+- **User Feedback**: "Full name. Now that didn't pull over correctly 'cause I typed in the full name as Brett space Tatum and it pulled through the username." (line 747)
+- **Action Needed**: 
+  - Review the stakeholder name display logic
+  - Ensure `stakeholder.name` field is preserved and displayed
+  - Do not override with linked user profile name
+- **Priority**: High
 
-**Action Required:**
-- Ensure `inputtable={true}` is set on all DatePicker components in Profit Sharing
-- Test typing dates in various formats
+### 4. **KPI Rendering Issue** ⚠️
+- **Status**: ⚠️ STILL AN ISSUE (mentioned in conversation)
+- **Location**: `src/views/ProfitSharing/OverviewTab.jsx`
+- **Issue**: KPIs not filling in initially, requires page reload or clicking overview again
+- **User Feedback**: "Now we can't really see how 'cause you some of your other KPIs aren't quite they're not filling in 'cause the award's not pulling through, correct?" (line 515)
+- **Action Needed**: 
+  - Investigate why KPIs don't render on first load
+  - Check data loading order and state updates
+  - Ensure proper dependency arrays in useEffect hooks
+- **Priority**: Medium
 
----
-
-### 4. Download Should Be PDF ❌
-**Status:** PARTIALLY COMPLETE
-
-**What was requested:**
-- Download should be PDF format (not DOCX)
-
-**Current State:**
-- DocumentPreviewModal.jsx downloads DOCX (line 67: `.docx`)
-- Award documents generate both DOCX and PDF (StakeholderDetail.jsx:1085-1091)
-- PDF conversion exists but download may default to DOCX
-
-**Files to Update:**
-- `src/views/ProfitSharing/components/DocumentPreviewModal.jsx` (line 67)
-- Verify PDF download in award document flows
-
-**Action Required:**
-- Change download to use PDF URL instead of DOCX
-- Ensure PDF is generated for all document types
-
----
-
-### 5. Remove Blank Front Page ❌
-**Status:** PENDING
-
-**What was requested:**
-- Remove blank front page from document templates
-
-**Current State:**
-- Document templates are in Firebase Storage
-- Need to check template files for blank pages
-- May require template file updates in Firebase
-
-**Files to Check:**
-- Firebase Storage: `profitSharing/templates/Profit Award Agreement Template.docx`
-- Firebase Storage: `profitSharing/templates/Profit Plan Agreement Template.docx`
-- `src/services/DocumentGenerationService.js` (may need template processing)
-
-**Action Required:**
-- Check template files in Firebase Storage
-- Remove blank pages from Word templates
-- Re-upload updated templates
+### 5. **Document Formatting** ⚠️
+- **Status**: ⚠️ ONGOING (Lower Priority)
+- **Location**: Document generation service and templates
+- **Issue**: Missing numbers, weird cutoffs in documents
+- **User Feedback**: "It looks like we're missing some numbers. I got purpose. I think that's supposed to be a want like 123." (line 74)
+- **Action Needed**: This is acknowledged as ongoing work, lower priority
+- **Note**: User understands this is challenging and will be addressed later
+- **Priority**: Low
 
 ---
 
-### 6. Supervisor Direct Reports View ❌
-**Status:** PENDING
+## 📋 ADDITIONAL NOTES FROM CONVERSATION
 
-**What was requested:**
-- Supervisors should be able to see all their direct reports
-- Filter stakeholders by managerId
+### User Profile Fields
+- **Request**: Change profile fields to "first name" and "last name" (line 985)
+- **Status**: This is separate from profit sharing module - affects user profile system
+- **Action**: Not part of profit sharing implementation
 
-**Current State:**
-- Supervisor role exists
-- Manager field exists (managerId)
-- But filtering logic for supervisors to see direct reports may not be implemented
+### User Invitation Feature
+- **Request**: Ability to add new users (line 860)
+- **Status**: Still in development, requires Firebase backend function
+- **Action**: Separate feature, not part of profit sharing module
 
-**Files to Check/Update:**
-- `src/views/ProfitSharing/StakeholdersTab.jsx` (filter by managerId for supervisors)
-- `src/views/ProfitSharing/OverviewTab.jsx` (may need supervisor filtering)
-- Permission checks throughout
-
-**Action Required:**
-- Add filtering logic: if user is supervisor, show only stakeholders where `managerId === userId`
-- Update StakeholdersTab to filter by managerId
-- Test supervisor view
+### Manager List
+- **Request**: Need to implement manager list functionality (line 167)
+- **Status**: Manager list was sent over weekend, needs to be implemented
+- **Action**: Future enhancement
 
 ---
 
-## 📋 IMPLEMENTATION TASKS SUMMARY
+## 🎯 RECOMMENDED NEXT STEPS
 
-### High Priority (Core Functionality)
-1. ✅ Stakeholder form changes - **DONE**
-2. ✅ Award status flow - **DONE**
-3. ✅ Remove signature pages - **DONE**
-4. ✅ Profit type field - **DONE**
-5. ✅ Stakeholder KPIs - **DONE**
-6. ✅ Supervisor role - **DONE**
-7. ❌ Supervisor direct reports view - **PENDING**
+### High Priority (Fix Immediately)
+1. **Fix Stakeholder Full Name Override** - User explicitly mentioned this is still broken
+2. **Fix Document Preview Scrolling** - User mentioned this is still an issue
 
-### Medium Priority (UX Improvements)
-1. ❌ Document preview scrolling fix - **PENDING**
-2. ❌ Save button behavior - **PENDING**
-3. ❌ Date picker typing support - **PENDING**
-4. ✅ Remove source field - **DONE** (already removed)
-5. ✅ User access to Valuations tab - **DONE**
-6. ❌ Download should be PDF - **PARTIALLY DONE**
+### Medium Priority (Fix Soon)
+3. **Implement Signature Font Styling** - User requested script font for signatures
+4. **Fix KPI Rendering Issue** - Affects user experience on first load
 
-### Low Priority (Polish)
-1. ❌ Remove blank front page - **PENDING**
+### Low Priority (When Time Permits)
+5. **Document Formatting Improvements** - Ongoing work, acknowledged as challenging
 
 ---
 
-## 🔍 DETAILED TASK BREAKDOWN
+## 📊 SUMMARY
 
-### Task 1: Fix Document Preview Scrolling
-**Files:**
-- `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
-- `src/views/ProfitSharing/components/PdfViewerModal.jsx`
-- `src/views/ProfitSharing/components/AwardDocumentModal.jsx`
+- **Completed**: 9 tasks
+- **Pending**: 5 tasks
+- **Overall Progress**: ~64% complete
 
-**Changes:**
-- Ensure preview containers have proper `max-height` and `overflow-y-auto`
-- Test scrolling on different screen sizes
-- May need to adjust modal height constraints
-
----
-
-### Task 2: Update Save Button Behavior
-**Files:**
-- `src/views/ProfitSharing/CreateProfitPlan.jsx`
-- `src/views/ProfitSharing/StakeholderDetail.jsx`
-
-**Changes:**
-- Change "Save" button text to "Save and Close"
-- OR modify save handlers to keep modal open after save
-
----
-
-### Task 3: Enable Date Picker Typing
-**Files:**
-- All DatePicker usages in Profit Sharing components
-
-**Changes:**
-- Add `inputtable={true}` prop to all DatePicker components
-- Test date typing in various formats (MM/DD/YYYY, YYYY-MM-DD, etc.)
-
----
-
-### Task 4: Ensure PDF Download
-**Files:**
-- `src/views/ProfitSharing/components/DocumentPreviewModal.jsx`
-- Award document download flows
-
-**Changes:**
-- Change download to use PDF URL instead of DOCX
-- Ensure PDF is always generated before download
-
----
-
-### Task 5: Remove Blank Front Page
-**Files:**
-- Firebase Storage templates (manual update required)
-- `src/services/DocumentGenerationService.js` (if programmatic removal needed)
-
-**Changes:**
-- Download templates from Firebase Storage
-- Remove blank pages in Word
-- Re-upload updated templates
-
----
-
-### Task 6: Implement Supervisor Direct Reports View
-**Files:**
-- `src/views/ProfitSharing/StakeholdersTab.jsx`
-- `src/views/ProfitSharing/OverviewTab.jsx`
-- Permission checks throughout
-
-**Changes:**
-- Add filtering: if `userRole === 'supervisor'`, filter stakeholders by `managerId === userId`
-- Update queries to include managerId filter
-- Test supervisor can only see their direct reports
-
----
-
-## 📊 COMPLETION STATUS
-
-**Overall Progress:** ~75% Complete
-
-- **Completed:** 6/13 tasks (46%)
-- **Pending:** 7/13 tasks (54%)
-
-**By Priority:**
-- **High Priority:** 6/7 complete (86%)
-- **Medium Priority:** 1/6 complete (17%)
-- **Low Priority:** 0/1 complete (0%)
-
----
-
-## 🎯 NEXT STEPS
-
-1. **Immediate:** Fix document preview scrolling (high user impact)
-2. **Quick Win:** Update save button text to "Save and Close"
-3. **User Experience:** Enable date picker typing
-4. **Core Feature:** Implement supervisor direct reports filtering
-5. **Polish:** Ensure PDF downloads work correctly
-6. **Template Update:** Remove blank front page from templates (manual Firebase update)
-
----
-
-## 📝 NOTES
-
-1. **Signature Removal:** Already implemented - using timestamps instead of signature pages
-2. **Source Field:** Already removed from ValuationsTab
-3. **Supervisor Role:** Infrastructure exists, but filtering logic for direct reports needs implementation
-4. **PDF Generation:** PDF conversion exists, but download may default to DOCX in some places
-5. **Template Updates:** Blank page removal requires manual update to Firebase Storage templates
-
+The major structural changes (removing My Summary, combining Overview/My Awards, renaming tabs, adding company dropdown) are all complete. The remaining issues are mostly UI/UX refinements and data display fixes.

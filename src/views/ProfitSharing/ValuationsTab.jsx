@@ -34,13 +34,15 @@ const formatNumber = (value) => {
 }
 
 const ValuationsTab = () => {
-    const { selectedCompanyId, loading: loadingCompany } = useSelectedCompany()
-    const { userRole, canEdit, loading: loadingAccess } = useProfitSharingAccess()
+    const { selectedCompanyId, loading: loadingCompany, setSelectedCompany } = useSelectedCompany()
+    const { userRole, canEdit, loading: loadingAccess, accessRecords } = useProfitSharingAccess()
     const isAdmin = canEdit || userRole === 'admin'
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
     const [plans, setPlans] = useState([])
     const [loadingPlans, setLoadingPlans] = useState(true)
+    const [companies, setCompanies] = useState([])
+    const [loadingCompanies, setLoadingCompanies] = useState(true)
     const [showAddDrawer, setShowAddDrawer] = useState(false)
     const [editingValuation, setEditingValuation] = useState(null)
     const [formData, setFormData] = useState({
@@ -55,6 +57,45 @@ const ValuationsTab = () => {
         notes: '',
     })
 
+    // Load companies user has access to
+    useEffect(() => {
+        if (loadingAccess) return
+        
+        const loadCompanies = async () => {
+            setLoadingCompanies(true)
+            try {
+                if (isAdmin) {
+                    // Admins can see all companies
+                    const result = await FirebaseDbService.companies.getAll()
+                    if (result.success) {
+                        setCompanies(result.data)
+                    }
+                } else {
+                    // Non-admins only see companies they have access to
+                    const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
+                    if (userCompanyIds.length > 0) {
+                        const allCompaniesResult = await FirebaseDbService.companies.getAll()
+                        if (allCompaniesResult.success) {
+                            const accessibleCompanies = allCompaniesResult.data.filter(
+                                company => userCompanyIds.includes(company.id)
+                            )
+                            setCompanies(accessibleCompanies)
+                        }
+                    } else {
+                        setCompanies([])
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading companies:', error)
+                setCompanies([])
+            } finally {
+                setLoadingCompanies(false)
+            }
+        }
+        
+        loadCompanies()
+    }, [loadingAccess, isAdmin, accessRecords])
+
     useEffect(() => {
         if (loadingCompany) {
             setLoading(true)
@@ -68,8 +109,10 @@ const ValuationsTab = () => {
             return
         }
         
+        // Reload data when company changes
         loadValuations()
         loadPlans()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompanyId, loadingCompany])
 
     const loadPlans = async () => {
@@ -534,7 +577,7 @@ const ValuationsTab = () => {
         return (
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Company Profits</h2>
                 </div>
                 <Card className="p-12">
                     <div className="text-center">
@@ -550,7 +593,7 @@ const ValuationsTab = () => {
         return (
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Company Profits</h2>
                 </div>
                 <Card className="p-12">
                     <div className="text-center">
@@ -561,12 +604,100 @@ const ValuationsTab = () => {
         )
     }
 
+    // Get accessible companies for dropdown (only show if user has multiple companies)
+    const accessibleCompanies = companies.filter(company => {
+        if (isAdmin) return true
+        const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
+        return userCompanyIds.includes(company.id)
+    })
+    const showCompanyDropdown = accessibleCompanies.length > 1
+
     return (
         <>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Profit entries</h2>
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Company Profits</h2>
+                        {showCompanyDropdown && (
+                            <Select
+                                className="w-64"
+                                placeholder="Select profit sharing plan"
+                                value={selectedCompanyId ? { value: selectedCompanyId, label: companies.find(c => c.id === selectedCompanyId)?.name || 'Unknown' } : null}
+                                options={accessibleCompanies.map(company => ({
+                                    value: company.id,
+                                    label: company.name
+                                }))}
+                                onChange={async (option) => {
+                                    // Handle both single option object and array (for compatibility)
+                                    const selectedOption = Array.isArray(option) ? option[0] : option
+                                    
+                                    if (selectedOption && selectedOption.value) {
+                                        const newCompanyId = selectedOption.value
+                                        
+                                        // Update company selection
+                                        await setSelectedCompany(newCompanyId)
+                                        
+                                        // Manually reload data for the new company
+                                        // The useEffect should handle this, but we'll ensure it happens
+                                        if (newCompanyId) {
+                                            // Use the new company ID directly to load data
+                                            const loadDataForCompany = async () => {
+                                                setLoading(true)
+                                                try {
+                                                    // Load valuations for new company
+                                                    const valuationsRef = collection(db, 'valuations')
+                                                    const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
+                                                    const querySnapshot = await getDocs(q)
+                                                    const valuationsData = []
+                                                    querySnapshot.forEach((doc) => {
+                                                        const data = doc.data()
+                                                        if (data.companyId === newCompanyId) {
+                                                            valuationsData.push({
+                                                                id: doc.id,
+                                                                ...data,
+                                                                valuationDate: data.valuationDate?.toDate ? data.valuationDate.toDate() : (data.valuationDate ? new Date(data.valuationDate) : null),
+                                                                updatedDate: data.updatedDate?.toDate ? data.updatedDate.toDate() : (data.updatedDate ? new Date(data.updatedDate) : null),
+                                                            })
+                                                        }
+                                                    })
+                                                    setValuations(valuationsData)
+                                                    
+                                                    // Load plans for new company
+                                                    const plansRef = collection(db, 'profitSharingPlans')
+                                                    const plansQuery = query(plansRef, orderBy('name'))
+                                                    const plansSnapshot = await getDocs(plansQuery)
+                                                    const plansData = plansSnapshot.docs
+                                                        .map((docSnap) => {
+                                                            const data = docSnap.data()
+                                                            const paymentScheduleDates = Array.isArray(data.paymentScheduleDates)
+                                                                ? data.paymentScheduleDates
+                                                                      .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
+                                                                      .filter(Boolean)
+                                                                : []
+                                                            return {
+                                                                id: docSnap.id,
+                                                                ...data,
+                                                                paymentScheduleDates,
+                                                            }
+                                                        })
+                                                        .filter(plan => plan.companyId === newCompanyId && ['draft', 'finalized'].includes(plan.status || 'draft'))
+                                                    setPlans(plansData)
+                                                } catch (error) {
+                                                    console.error('[ValuationsTab] Error loading data for company:', error)
+                                                    setValuations([])
+                                                    setPlans([])
+                                                } finally {
+                                                    setLoading(false)
+                                                }
+                                            }
+                                            loadDataForCompany()
+                                        }
+                                    }
+                                }}
+                            />
+                        )}
+                    </div>
                     {isAdmin && (
                         <Button 
                             variant="solid" 
@@ -714,7 +845,7 @@ const ValuationsTab = () => {
                                 </div>
                             ) : (
                                 <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
-                                    <span className="text-xs text-gray-400 dark:text-gray-500">Add profit entries to see trend chart</span>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">Add company profits to see trend chart</span>
                                 </div>
                             )}
                         </div>
