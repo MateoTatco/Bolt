@@ -69,6 +69,7 @@ const CreateProfitPlan = () => {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [showCancelDialog, setShowCancelDialog] = useState(false)
     const [cancelContext, setCancelContext] = useState(null) // 'page'
+    const [isGeneratingDocument, setIsGeneratingDocument] = useState(false)
     const [planId, setPlanId] = useState(null)
     const [loadingPlan, setLoadingPlan] = useState(false)
     const [existingCreatedAt, setExistingCreatedAt] = useState(null)
@@ -339,6 +340,9 @@ const CreateProfitPlan = () => {
             }
             
             // Generate and upload plan document
+            if (status === 'finalized') {
+                setIsGeneratingDocument(true)
+            }
             try {
                 const companyResult = await FirebaseDbService.companies.getById(formData.companyId)
                 if (companyResult.success) {
@@ -351,8 +355,8 @@ const CreateProfitPlan = () => {
                     // Update plan with document URLs (both DOCX and PDF)
                     const planRef = doc(db, 'profitSharingPlans', finalPlanId)
                     await updateDoc(planRef, {
-                        planDocumentUrl: documentResult.url, // PDF URL (preferred for viewing)
-                        planDocumentStoragePath: documentResult.path,
+                        planDocumentUrl: documentResult.pdfUrl || documentResult.url, // PDF URL (preferred for viewing), fallback to DOCX
+                        planDocumentStoragePath: documentResult.pdfPath || documentResult.path,
                         planDocumentDocxUrl: documentResult.docxUrl, // Original DOCX
                         planDocumentDocxPath: documentResult.docxPath,
                         planDocumentPdfUrl: documentResult.pdfUrl, // PDF version
@@ -368,6 +372,10 @@ const CreateProfitPlan = () => {
                         Plan saved, but document generation failed. Please try again.
                     </Notification>
                 )
+            } finally {
+                if (status === 'finalized') {
+                    setIsGeneratingDocument(false)
+                }
             }
             
             toast.push(
@@ -981,15 +989,6 @@ const CreateProfitPlan = () => {
                                     View Draft
                                 </Button>
                                 <Button
-                                    variant="twoTone"
-                                    onClick={async () => {
-                                        await savePlan('draft')
-                                        // Don't navigate - keep page open
-                                    }}
-                                >
-                                    Save and Close
-                                </Button>
-                                <Button
                                     variant="solid"
                                     size="lg"
                                     disabled={!isFormComplete()}
@@ -1004,11 +1003,12 @@ const CreateProfitPlan = () => {
                                 <Button
                                     variant="solid"
                                     size="lg"
-                                    disabled={!isFormComplete()}
+                                    disabled={!isFormComplete() || isGeneratingDocument}
                                     onClick={() => savePlan('finalized')}
                                     className="bg-green-600 hover:bg-green-700"
+                                    loading={isGeneratingDocument}
                                 >
-                                    Finalize
+                                    {isGeneratingDocument ? 'Generating Document...' : 'Finalize'}
                                 </Button>
                             </div>
                         </div>

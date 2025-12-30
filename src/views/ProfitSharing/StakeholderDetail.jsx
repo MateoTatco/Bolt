@@ -132,6 +132,7 @@ const StakeholderDetail = () => {
     const [stakeholder, setStakeholder] = useState(null)
     const [linkedUserProfile, setLinkedUserProfile] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [isGeneratingAwardDocument, setIsGeneratingAwardDocument] = useState(false)
     const [showNewAwardDrawer, setShowNewAwardDrawer] = useState(false)
     const [showAwardPreview, setShowAwardPreview] = useState(false)
     const [awardPreviewData, setAwardPreviewData] = useState(null)
@@ -1168,6 +1169,7 @@ const StakeholderDetail = () => {
 
             // Generate and upload award document
             const finalAwardId = editingAwardId || newAward.id
+            setIsGeneratingAwardDocument(true)
             try {
                 // Get plan data
                 let planData = null
@@ -1239,6 +1241,8 @@ const StakeholderDetail = () => {
                         "Award saved, but document generation failed. Please try again."
                     )
                 )
+            } finally {
+                setIsGeneratingAwardDocument(false)
             }
 
             toast.push(
@@ -1861,8 +1865,10 @@ const StakeholderDetail = () => {
                                                                     size="sm"
                                                                     onClick={() => handleIssueAward(award.id)}
                                                                     className="w-full"
+                                                                    disabled={isGeneratingAwardDocument}
+                                                                    loading={isGeneratingAwardDocument}
                                                                 >
-                                                                    Issue
+                                                                    {isGeneratingAwardDocument ? 'Generating...' : 'Issue'}
                                                                 </Button>
                                                             ) : (
                                                                 <Tag className={`px-2 py-1 text-xs font-medium ${
@@ -2247,8 +2253,10 @@ const StakeholderDetail = () => {
                                                 handleIssueAward(editingAward.id)
                                             }, 500)
                                         }}
+                                        disabled={isGeneratingAwardDocument}
+                                        loading={isGeneratingAwardDocument}
                                     >
-                                        Issue Award
+                                        {isGeneratingAwardDocument ? 'Generating Document...' : 'Issue Award'}
                                     </Button>
                                 )}
                             </div>
@@ -2613,9 +2621,10 @@ const StakeholderDetail = () => {
                                             }
                                         }, 500)
                                     }}
-                                    disabled={!isAwardFormComplete()}
+                                    disabled={!isAwardFormComplete() || isGeneratingAwardDocument}
+                                    loading={isGeneratingAwardDocument}
                                 >
-                                    Issue
+                                    {isGeneratingAwardDocument ? 'Generating Document...' : 'Issue'}
                                 </Button>
                             </div>
                         </div>

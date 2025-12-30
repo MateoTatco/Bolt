@@ -5488,3 +5488,10 @@ export const incrementProjectNumberCounter = functions
         }
     });
 
+// Export DOCX to PDF converter
+// Option 1: CloudConvert (paid but easy setup)
+// export { convertDocxToPdf } from './docxToPdfConverter';
+
+// Option 2: LibreOffice (FREE - recommended)
+export { convertDocxToPdfLibreOffice as convertDocxToPdf } from './docxToPdfConverterLibreOffice';
+

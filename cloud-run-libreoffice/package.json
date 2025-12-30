@@ -1,0 +1,13 @@
+{
+  "name": "libreoffice-converter",
+  "version": "1.0.0",
+  "description": "LibreOffice headless DOCX to PDF converter for Cloud Run",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "20"
+  }
+}
+

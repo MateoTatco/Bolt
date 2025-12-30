@@ -3,7 +3,7 @@ import PizZip from 'pizzip'
 import ImageModule from 'docxtemplater-image-module-free'
 import { storage } from '@/configs/firebase.config'
 import { ref as storageRef, getBytes, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { convertDocxToPdf } from '@/utils/pdfConverter'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 
 /**
  * Document Generation Service
@@ -15,6 +15,10 @@ const TEMPLATE_PATHS = {
     PLAN: 'profitSharing/templates/Profit Sharing Plan Template.docx',
     AWARD: 'profitSharing/templates/Profit Award Agreement Template.docx'
 }
+
+// Initialize Firebase Functions
+const functions = getFunctions()
+const convertDocxToPdfFunction = httpsCallable(functions, 'convertDocxToPdf')
 
 /**
  * Load a template from Firebase Storage
@@ -28,8 +32,15 @@ const loadTemplate = async (templateType) => {
             throw new Error(`Unknown template type: ${templateType}`)
         }
 
+        console.log(`[DocumentGeneration] Loading template from: ${templatePath}`)
         const templateRef = storageRef(storage, templatePath)
         const templateBytes = await getBytes(templateRef)
+        
+        if (!templateBytes || templateBytes.byteLength === 0) {
+            throw new Error(`Template file is empty or not found: ${templatePath}`)
+        }
+        
+        console.log(`[DocumentGeneration] Template loaded successfully, size: ${templateBytes.byteLength} bytes`)
         
         // Note: Signature placeholder removed - using timestamps instead
         
@@ -48,8 +59,10 @@ const loadTemplate = async (templateType) => {
  */
 export const generateDocument = async (templateType, data) => {
     try {
+        console.log('[DocumentGeneration] Loading template:', templateType)
         // Load template
         const templateBytes = await loadTemplate(templateType)
+        console.log('[DocumentGeneration] Template loaded, size:', templateBytes.byteLength, 'bytes')
         
         // Create PizZip instance from template
         const zip = new PizZip(templateBytes)
@@ -73,10 +86,13 @@ export const generateDocument = async (templateType, data) => {
             const cleanKey = key.replace(/[{}]/g, '').trim()
             templateData[cleanKey] = data[key] || ''
         })
+        
+        console.log('[DocumentGeneration] Template data to render:', templateData)
 
         try {
             // Render the document with data (new API - render with data directly)
             doc.render(templateData)
+            console.log('[DocumentGeneration] Document rendered successfully')
         } catch (error) {
             // Handle rendering errors (e.g., missing placeholders)
             console.error('[DocumentGeneration] Document rendering error:', error)
@@ -89,12 +105,69 @@ export const generateDocument = async (templateType, data) => {
             throw error
         }
 
+        // Post-process document XML to apply script font to signature names
+        // This applies cursive formatting to "Brett Tatum" and employee names
+        try {
+            const zip = doc.getZip()
+            const documentXml = zip.files['word/document.xml'].asText()
+            
+            let modifiedXml = documentXml
+            
+            // Apply script font to "Brett Tatum" in plan documents
+            if (templateType === 'PLAN') {
+                // Find "Brett Tatum" text and wrap with script font formatting
+                // Pattern: Look for runs containing "Brett Tatum" and add script font properties
+                modifiedXml = modifiedXml.replace(
+                    /(<w:r[^>]*>)(<w:t[^>]*>)(Brett Tatum)(<\/w:t>)(<\/w:r>)/g,
+                    (match, runOpen, textOpen, name, textClose, runClose) => {
+                        // Check if already has script font in the run
+                        const runContent = documentXml.substring(documentXml.indexOf(match) - 500, documentXml.indexOf(match) + match.length + 500)
+                        if (runContent.includes('Brush Script')) return match
+                        // Wrap with script font formatting
+                        return `${runOpen}<w:rPr><w:rFonts w:ascii="Brush Script MT" w:hAnsi="Brush Script MT" w:cs="Brush Script MT"/><w:i/></w:rPr>${textOpen}${name}${textClose}${runClose}`
+                    }
+                )
+            }
+            
+            // Apply script font to employee names in award documents (signature line)
+            if (templateType === 'AWARD' && templateData['EMPLOYEE NAME']) {
+                const employeeName = templateData['EMPLOYEE NAME']
+                // Escape special regex characters
+                const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                // Find employee name in signature context and apply script font
+                modifiedXml = modifiedXml.replace(
+                    new RegExp(`(<w:r[^>]*>)(<w:t[^>]*>)(${escapedName})(<\/w:t>)(<\/w:r>)`, 'g'),
+                    (match, runOpen, textOpen, name, textClose, runClose) => {
+                        // Check context to see if this is a signature (look for nearby signature-related text)
+                        const matchIndex = documentXml.indexOf(match)
+                        const context = documentXml.substring(Math.max(0, matchIndex - 500), Math.min(documentXml.length, matchIndex + match.length + 500))
+                        // If it's near signature-related text, apply script font
+                        if (context.includes('EMPLOYEE NAME') || context.includes('Signature') || context.includes('By:') || context.includes('Employee Name')) {
+                            // Check if already formatted
+                            if (context.includes('Brush Script')) return match
+                            return `${runOpen}<w:rPr><w:rFonts w:ascii="Brush Script MT" w:hAnsi="Brush Script MT" w:cs="Brush Script MT"/><w:i/></w:rPr>${textOpen}${name}${textClose}${runClose}`
+                        }
+                        return match
+                    }
+                )
+            }
+            
+            // Update the document XML
+            zip.file('word/document.xml', modifiedXml)
+            console.log('[DocumentGeneration] Applied script font formatting to signature names')
+        } catch (postProcessError) {
+            console.warn('[DocumentGeneration] Post-processing XML failed, continuing without script font formatting:', postProcessError)
+            // Continue without post-processing - template should handle formatting
+        }
+
         // Generate the document as a blob
         const blob = doc.getZip().generate({
             type: 'blob',
             mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             compression: 'DEFLATE',
         })
+        
+        console.log('[DocumentGeneration] Generated blob size:', blob.size, 'bytes')
 
         return blob
     } catch (error) {
@@ -141,24 +214,46 @@ export const generatePlanDocument = async (planData, companyData, planId) => {
     try {
         // Map plan and company data to template placeholders
         const templateData = mapPlanDataToTemplate(planData, companyData)
+        console.log('[DocumentGeneration] Template data for plan:', templateData)
         
         // Generate DOCX document
         const docxBlob = await generateDocument('PLAN', templateData)
+        console.log('[DocumentGeneration] Generated DOCX blob size:', docxBlob.size, 'bytes')
+        
+        if (docxBlob.size < 1000) {
+            console.warn('[DocumentGeneration] DOCX blob is suspiciously small, might be empty or corrupted')
+        }
         
         // Upload DOCX to storage
         const docxFileName = `plan-${planId}-${Date.now()}.docx`
         const docxStoragePath = `profitSharing/plans/${planId}/${docxFileName}`
         const docxResult = await uploadGeneratedDocument(docxBlob, docxStoragePath)
+        console.log('[DocumentGeneration] DOCX uploaded successfully:', docxResult.url)
         
-        // Convert DOCX to PDF
+        // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            const pdfBlob = await convertDocxToPdf(docxBlob)
+            console.log('[DocumentGeneration] Converting DOCX to PDF using Firebase Function...')
             const pdfFileName = `plan-${planId}-${Date.now()}.pdf`
-            const pdfStoragePath = `profitSharing/plans/${planId}/${pdfFileName}`
-            pdfResult = await uploadGeneratedDocument(pdfBlob, pdfStoragePath)
+            
+            // Call Firebase Function to convert DOCX to PDF
+            const conversionResult = await convertDocxToPdfFunction({
+                docxUrl: docxResult.url,
+                outputFileName: pdfFileName
+            })
+            
+            if (conversionResult.data && conversionResult.data.pdfUrl) {
+                // PDF was generated and uploaded by the function
+                pdfResult = {
+                    url: conversionResult.data.pdfUrl,
+                    path: conversionResult.data.pdfPath || `profitSharing/plans/${planId}/${pdfFileName}`
+                }
+                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
+            } else {
+                throw new Error('PDF conversion returned no URL')
+            }
         } catch (pdfError) {
-            console.warn('Could not generate PDF version:', pdfError)
+            console.error('[DocumentGeneration] Could not generate PDF version:', pdfError)
             // Continue without PDF - DOCX is still available
         }
         
@@ -201,15 +296,30 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
         
         const docxResult = await uploadGeneratedDocument(documentBlob, storagePath)
         
-        // Convert DOCX to PDF
+        // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            const pdfBlob = await convertDocxToPdf(documentBlob)
+            console.log('[DocumentGeneration] Converting DOCX to PDF using Firebase Function...')
             const pdfFileName = `award-${stakeholderId}-${awardId}-${Date.now()}.pdf`
-            const pdfStoragePath = `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
-            pdfResult = await uploadGeneratedDocument(pdfBlob, pdfStoragePath)
+            
+            // Call Firebase Function to convert DOCX to PDF
+            const conversionResult = await convertDocxToPdfFunction({
+                docxUrl: docxResult.url,
+                outputFileName: pdfFileName
+            })
+            
+            if (conversionResult.data && conversionResult.data.pdfUrl) {
+                // PDF was generated and uploaded by the function
+                pdfResult = {
+                    url: conversionResult.data.pdfUrl,
+                    path: conversionResult.data.pdfPath || `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
+                }
+                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
+            } else {
+                throw new Error('PDF conversion returned no URL')
+            }
         } catch (pdfError) {
-            console.warn('Could not generate PDF version:', pdfError)
+            console.error('[DocumentGeneration] Could not generate PDF version:', pdfError)
         }
         
         // Return both DOCX and PDF URLs
@@ -253,33 +363,34 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
         
         const docxResult = await uploadGeneratedDocument(documentBlob, storagePath)
         
-        // Convert DOCX to PDF with signature
+        // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            const pdfBlob = await convertDocxToPdf(documentBlob)
-            
-            // Validate PDF size - should be at least 5KB for a valid PDF
-            if (pdfBlob.size < 5000) {
-                console.error(`[DocumentGeneration] PDF blob is too small (${pdfBlob.size} bytes), conversion likely failed`)
-                throw new Error(`PDF blob is too small (${pdfBlob.size} bytes), conversion likely failed`)
-            }
-            
-            // Validate PDF header (should start with %PDF)
-            const pdfArrayBuffer = await pdfBlob.slice(0, 4).arrayBuffer()
-            const pdfHeader = new TextDecoder().decode(pdfArrayBuffer)
-            if (!pdfHeader.startsWith('%PDF')) {
-                console.error(`[DocumentGeneration] PDF header invalid: ${pdfHeader}, conversion likely failed`)
-                throw new Error(`Invalid PDF header: ${pdfHeader}`)
-            }
-            
+            console.log('[DocumentGeneration] Converting signed DOCX to PDF using Firebase Function...')
             const pdfFileName = `award-signed-${stakeholderId}-${awardId}-${Date.now()}.pdf`
-            const pdfStoragePath = `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
-            pdfResult = await uploadGeneratedDocument(pdfBlob, pdfStoragePath)
+            
+            // Call Firebase Function to convert DOCX to PDF
+            const conversionResult = await convertDocxToPdfFunction({
+                docxUrl: docxResult.url,
+                outputFileName: pdfFileName
+            })
+            
+            if (conversionResult.data && conversionResult.data.pdfUrl) {
+                // PDF was generated and uploaded by the function
+                pdfResult = {
+                    url: conversionResult.data.pdfUrl,
+                    path: conversionResult.data.pdfPath || `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
+                }
+                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
+            } else {
+                throw new Error('PDF conversion returned no URL')
+            }
         } catch (pdfError) {
             console.error('[DocumentGeneration] Could not generate PDF version:', pdfError)
             console.error('[DocumentGeneration] PDF conversion error details:', {
                 message: pdfError.message,
-                stack: pdfError.stack
+                code: pdfError.code,
+                details: pdfError.details
             })
             // Don't throw - we'll use DOCX URL as fallback and convert on-the-fly when viewing
         }
@@ -356,24 +467,30 @@ const mapPlanDataToTemplate = (planData, companyData) => {
         return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     }
 
+    // Format "Brett Tatum" signature with cursive font
+    const signatureName = 'Brett Tatum'
+    const formattedSignature = formatSignatureName(signatureName)
+
     return {
         'COMPANY NAME': companyData?.name || '',
         'START DATE': formatDate(planData?.startDate),
+        // Add signature name with cursive formatting (for plan template)
+        'SIGNATURE NAME': formattedSignature,
     }
 }
 
 /**
- * Format signature name with script font styling
- * Note: For proper script font in Word documents, the template should be modified
- * to apply script font formatting to the {ISSUED BY} and {ACCEPTED BY} placeholders.
- * This function currently returns the name as-is, but can be extended to use Word XML formatting.
+ * Format signature name with script font styling using Word XML
+ * Uses docxtemplater's ability to handle XML by post-processing the document
+ * Note: This requires the template to use a specific format, or we post-process the XML
  * @param {string} name - Name to format
- * @returns {string} Formatted name (currently returns as-is, template should handle font styling)
+ * @returns {string} Name (will be formatted via post-processing if needed)
  */
 const formatSignatureName = (name) => {
     if (!name) return ''
-    // TODO: Apply script font using Word XML formatting if docxtemplater supports it
-    // For now, the template should be modified in Word to apply script font to these placeholders
+    // Return name as-is - the template placeholders should be formatted in Word
+    // with script font (Brush Script MT, italic) for proper cursive appearance
+    // Alternative: Post-process the generated XML to apply script font formatting
     return name
 }
 
@@ -428,9 +545,12 @@ const mapAwardDataToTemplate = (awardData, planData, stakeholderData, companyDat
         ? planData.paymentScheduleDates.map(d => formatDate(d)).join(', ')
         : ''
 
+    // Format employee name signature with cursive font
+    const formattedEmployeeName = formatSignatureName(employeeName)
+
     return {
         'COMPANY NAME': companyData?.name || '',
-        'EMPLOYEE NAME': employeeName,
+        'EMPLOYEE NAME': formattedEmployeeName, // Apply cursive formatting to employee name signature
         'AWARD DATE': formatDate(awardData?.awardDate),
         'START DATE': formatDate(awardData?.awardStartDate),
         'END DATE': formatDate(awardData?.awardEndDate),
