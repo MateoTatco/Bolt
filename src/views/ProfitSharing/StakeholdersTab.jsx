@@ -106,17 +106,71 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                     // Handle Firestore Timestamp objects
                     createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
                     updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
+                    // Ensure managerId is explicitly set (convert undefined to null)
+                    managerId: stakeholder.managerId !== undefined ? stakeholder.managerId : null,
                 }))
                 
-                // Filter by companyId
-                formattedStakeholders = formattedStakeholders.filter(
-                    stakeholder => stakeholder.companyId === selectedCompanyId
-                )
+                // Deduplicate stakeholders with the same linkedUserId
+                // If a user has multiple stakeholder records, keep only one
+                // Priority: 1) Selected company, 2) More awards, 3) More recent update
+                if (!effectiveIsAdmin) {
+                    const stakeholdersByUserId = new Map()
+                    formattedStakeholders.forEach(stakeholder => {
+                        if (!stakeholder.linkedUserId) return // Skip if no linkedUserId
+                        
+                        const existing = stakeholdersByUserId.get(stakeholder.linkedUserId)
+                        if (!existing) {
+                            // First record for this user
+                            stakeholdersByUserId.set(stakeholder.linkedUserId, stakeholder)
+                        } else {
+                            // Priority 1: Prefer the one in the selected company
+                            const existingInSelectedCompany = existing.companyId === selectedCompanyId
+                            const currentInSelectedCompany = stakeholder.companyId === selectedCompanyId
+                            
+                            if (currentInSelectedCompany && !existingInSelectedCompany) {
+                                // Current is in selected company, existing is not - replace
+                                stakeholdersByUserId.set(stakeholder.linkedUserId, stakeholder)
+                            } else if (!currentInSelectedCompany && existingInSelectedCompany) {
+                                // Existing is in selected company, current is not - keep existing
+                                // Do nothing
+                            } else {
+                                // Both in same company status, compare by awards
+                                const existingAwards = (existing.profitAwards?.length || 0) + (existing.stockAwards?.length || 0)
+                                const currentAwards = (stakeholder.profitAwards?.length || 0) + (stakeholder.stockAwards?.length || 0)
+                                
+                                if (currentAwards > existingAwards) {
+                                    // Current has more awards, replace
+                                    stakeholdersByUserId.set(stakeholder.linkedUserId, stakeholder)
+                                } else if (currentAwards === existingAwards) {
+                                    // Same number of awards, prefer the one with more recent update
+                                    const existingUpdate = existing.updatedAt?.getTime() || existing.createdAt?.getTime() || 0
+                                    const currentUpdate = stakeholder.updatedAt?.getTime() || stakeholder.createdAt?.getTime() || 0
+                                    if (currentUpdate > existingUpdate) {
+                                        stakeholdersByUserId.set(stakeholder.linkedUserId, stakeholder)
+                                    }
+                                }
+                                // Otherwise keep existing
+                            }
+                        }
+                    })
+                    
+                    formattedStakeholders = Array.from(stakeholdersByUserId.values())
+                }
+                
+                // For admins: filter by selected company
+                // For supervisors and regular users: show all stakeholders across all companies
+                if (effectiveIsAdmin) {
+                    // Admins see stakeholders filtered by selected company
+                    formattedStakeholders = formattedStakeholders.filter(
+                        stakeholder => stakeholder.companyId === selectedCompanyId
+                    )
+                }
                 
                 // For regular users, only show their own stakeholder record
                 // For supervisors, show their own record + their direct reports (people who have them as manager)
                 if (!effectiveIsAdmin) {
                     const currentUserId = user?.id || user?.uid
+                    
                     if (effectiveIsSupervisor) {
                         // Supervisors can see themselves + their direct reports
                         // Filter to show: stakeholders where linkedUserId matches current user OR managerId matches current user
@@ -127,8 +181,6 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                                 return isSelf || isDirectReport
                             }
                         )
-                        // Debug log (can be removed later)
-                        console.log('[StakeholdersTab] Supervisor view - showing', formattedStakeholders.length, 'stakeholders (self + direct reports)')
                     } else {
                         // Regular users only see themselves
                         formattedStakeholders = formattedStakeholders.filter(
