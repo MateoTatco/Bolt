@@ -77,7 +77,16 @@ const Chart = (props) => {
     }
 
     if (customOptions) {
-        options = { ...options, ...customOptions }
+        // Merge customOptions, but preserve categories if they were set
+        const mergedOptions = { ...options, ...customOptions }
+        // Ensure xaxis categories are preserved if customOptions tries to override
+        if (notDonut.includes(type) && xAxis && Array.isArray(xAxis) && xAxis.length > 0) {
+            mergedOptions.xaxis = {
+                ...mergedOptions.xaxis,
+                categories: xAxis
+            }
+        }
+        options = mergedOptions
     }
 
     if (type === 'donut') {

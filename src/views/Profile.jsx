@@ -23,9 +23,8 @@ const Profile = () => {
     const [activeTab, setActiveTab] = useState('profile')
     const [formData, setFormData] = useState({
         firstName: '',
-        userName: '',
+        lastName: '',
         email: '',
-        phoneNumber: '',
     })
     const [avatar, setAvatar] = useState('')
     const fileInputRef = useRef(null)
@@ -97,9 +96,8 @@ const Profile = () => {
                         
                         setFormData({
                             firstName: profileData.firstName || user.firstName || '',
-                            userName: profileData.userName || user.userName || '',
+                            lastName: profileData.lastName || profileData.userName || user.lastName || user.userName || '', // Support both lastName and userName for backward compatibility
                             email: profileData.email || user.email || '',
-                            phoneNumber: profileData.phoneNumber || user.phoneNumber || '',
                         })
                         setAvatar(profileData.avatar || user.avatar || '')
                         
@@ -126,9 +124,8 @@ const Profile = () => {
                         setUser({
                             ...user,
                             firstName: profileData.firstName || user.firstName,
-                            userName: profileData.userName || user.userName,
+                            lastName: profileData.lastName || profileData.userName || user.lastName || user.userName, // Support both lastName and userName
                             email: profileData.email || user.email,
-                            phoneNumber: profileData.phoneNumber || user.phoneNumber,
                             avatar: profileData.avatar || user.avatar,
                         })
                     } else {
@@ -152,9 +149,8 @@ const Profile = () => {
                     // Fallback to store data if not authenticated
                     setFormData({
                         firstName: user.firstName || '',
-                        userName: user.userName || '',
+                        lastName: user.lastName || user.userName || '', // Fallback to userName for backward compatibility
                         email: user.email || '',
-                        phoneNumber: user.phoneNumber || '',
                     })
                     setAvatar(user.avatar || '')
                     
@@ -170,9 +166,8 @@ const Profile = () => {
                 // Fallback to store data on error
                 setFormData({
                     firstName: user.firstName || '',
-                    userName: user.userName || '',
+                    lastName: user.lastName || user.userName || '', // Fallback to userName for backward compatibility
                     email: user.email || '',
-                    phoneNumber: user.phoneNumber || '',
                 })
                 setAvatar(user.avatar || '')
                 
@@ -341,9 +336,8 @@ const Profile = () => {
 
             const userData = {
                 firstName: formData.firstName,
-                userName: formData.userName,
+                lastName: formData.lastName,
                 email: formData.email,
-                phoneNumber: formData.phoneNumber,
                 avatar: avatar,
             }
 
@@ -360,9 +354,8 @@ const Profile = () => {
                 // Update form data state to prevent reversion
                 setFormData({
                     firstName: formData.firstName,
-                    userName: formData.userName,
+                    lastName: formData.lastName,
                     email: formData.email,
-                    phoneNumber: formData.phoneNumber,
                 })
                 // Avatar is already set in state
 
@@ -684,11 +677,11 @@ const Profile = () => {
                                             />
                                         </FormItem>
 
-                                        <FormItem label="User name">
+                                        <FormItem label="Last name">
                                             <Input
-                                                value={formData.userName}
-                                                onChange={(e) => handleInputChange('userName', e.target.value)}
-                                                placeholder="Enter user name"
+                                                value={formData.lastName}
+                                                onChange={(e) => handleInputChange('lastName', e.target.value)}
+                                                placeholder="Enter last name"
                                                 size="sm"
                                             />
                                         </FormItem>
@@ -700,16 +693,6 @@ const Profile = () => {
                                             value={formData.email}
                                             onChange={(e) => handleInputChange('email', e.target.value)}
                                             placeholder="Enter email"
-                                            size="sm"
-                                        />
-                                    </FormItem>
-
-                                    <FormItem label="Phone number">
-                                        <Input
-                                            type="tel"
-                                            value={formData.phoneNumber}
-                                            onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                                            placeholder="Enter phone number"
                                             size="sm"
                                         />
                                     </FormItem>

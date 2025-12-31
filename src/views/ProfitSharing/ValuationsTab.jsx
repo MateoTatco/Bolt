@@ -43,6 +43,7 @@ const ValuationsTab = () => {
     const [loadingPlans, setLoadingPlans] = useState(true)
     const [companies, setCompanies] = useState([])
     const [loadingCompanies, setLoadingCompanies] = useState(true)
+    const [selectedPlanId, setSelectedPlanId] = useState(null) // Filter by plan
     const [showAddDrawer, setShowAddDrawer] = useState(false)
     const [editingValuation, setEditingValuation] = useState(null)
     const [formData, setFormData] = useState({
@@ -612,17 +613,23 @@ const ValuationsTab = () => {
     })
     const showCompanyDropdown = accessibleCompanies.length > 1
 
+    // Filter valuations by selected plan
+    const filteredValuations = selectedPlanId 
+        ? valuations.filter(v => v.planId === selectedPlanId)
+        : valuations
+
     return (
         <>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Company Profits</h2>
                     <div className="flex items-center gap-4">
-                        <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Company Profits</h2>
+                        {/* Company Filter */}
                         {showCompanyDropdown && (
                             <Select
                                 className="w-64"
-                                placeholder="Select profit sharing plan"
+                                placeholder="Select company"
                                 value={selectedCompanyId ? { value: selectedCompanyId, label: companies.find(c => c.id === selectedCompanyId)?.name || 'Unknown' } : null}
                                 options={accessibleCompanies.map(company => ({
                                     value: company.id,
@@ -637,6 +644,9 @@ const ValuationsTab = () => {
                                         
                                         // Update company selection
                                         await setSelectedCompany(newCompanyId)
+                                        
+                                        // Reset plan filter when company changes
+                                        setSelectedPlanId(null)
                                         
                                         // Manually reload data for the new company
                                         // The useEffect should handle this, but we'll ensure it happens
@@ -697,17 +707,39 @@ const ValuationsTab = () => {
                                 }}
                             />
                         )}
+                        
+                        {/* Plan Filter */}
+                        {selectedCompanyId && plans.length > 0 && (
+                            <Select
+                                className="w-64"
+                                placeholder="All Plans"
+                                value={selectedPlanId ? { value: selectedPlanId, label: plans.find(p => p.id === selectedPlanId)?.name || 'Unknown Plan' } : null}
+                                options={[
+                                    { value: null, label: 'All Plans' },
+                                    ...plans.map(plan => ({
+                                        value: plan.id,
+                                        label: plan.name || 'Unnamed Plan'
+                                    }))
+                                ]}
+                                onChange={(option) => {
+                                    const selectedOption = Array.isArray(option) ? option[0] : option
+                                    setSelectedPlanId(selectedOption?.value || null)
+                                }}
+                            />
+                        )}
+                        
+                        {/* Add Profit Button */}
+                        {isAdmin && (
+                            <Button 
+                                variant="solid" 
+                                size="sm"
+                                icon={<HiOutlinePlus />}
+                                onClick={handleOpenAdd}
+                            >
+                                Add profit
+                            </Button>
+                        )}
                     </div>
-                    {isAdmin && (
-                        <Button 
-                            variant="solid" 
-                            size="sm"
-                            icon={<HiOutlinePlus />}
-                            onClick={handleOpenAdd}
-                        >
-                            Add profit
-                        </Button>
-                    )}
                 </div>
 
                 {/* Current Value Card */}
@@ -769,14 +801,14 @@ const ValuationsTab = () => {
                                 )}
                             </div>
                             {/* Profit Trend Chart */}
-                            {valuations.length > 0 ? (
+                            {filteredValuations.length > 0 ? (
                                 <div className="h-64">
                                     <Chart
                                         type="line"
                                         series={[
                                             {
                                                 name: 'Profit',
-                                                data: valuations
+                                                data: filteredValuations
                                                     .sort((a, b) => {
                                                         const aDate = a.valuationDate?.getTime() || 0
                                                         const bDate = b.valuationDate?.getTime() || 0
@@ -788,16 +820,28 @@ const ValuationsTab = () => {
                                                     }),
                                             },
                                         ]}
-                                        xAxis={valuations
-                                            .sort((a, b) => {
-                                                const aDate = a.valuationDate?.getTime() || 0
-                                                const bDate = b.valuationDate?.getTime() || 0
-                                                return aDate - bDate
-                                            })
-                                            .map(v => {
-                                                if (!v.valuationDate) return 'N/A'
-                                                return v.valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                            })}
+                                        xAxis={(() => {
+                                            const sortedValuations = filteredValuations
+                                                .sort((a, b) => {
+                                                    const aDate = a.valuationDate?.getTime() || 0
+                                                    const bDate = b.valuationDate?.getTime() || 0
+                                                    return aDate - bDate
+                                                })
+                                            
+                                            const dateLabels = sortedValuations
+                                                .map(v => {
+                                                    if (!v.valuationDate) return null
+                                                    // Ensure valuationDate is a Date object
+                                                    const date = v.valuationDate instanceof Date 
+                                                        ? v.valuationDate 
+                                                        : (v.valuationDate?.toDate ? v.valuationDate.toDate() : new Date(v.valuationDate))
+                                                    if (isNaN(date.getTime())) return null
+                                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                })
+                                                .filter(label => label !== null)
+                                            
+                                            return dateLabels
+                                        })()}
                                         customOptions={{
                                             legend: {
                                                 show: true,
@@ -824,11 +868,19 @@ const ValuationsTab = () => {
                                                 },
                                             },
                                             xaxis: {
+                                                type: 'category',
                                                 title: {
                                                     text: 'Profit Date',
                                                     style: {
                                                         fontSize: '12px',
                                                         fontWeight: 500,
+                                                    },
+                                                },
+                                                labels: {
+                                                    rotate: -45,
+                                                    rotateAlways: false,
+                                                    formatter: function(val) {
+                                                        return val
                                                     },
                                                 },
                                             },
@@ -865,7 +917,7 @@ const ValuationsTab = () => {
                         <div className="p-12 text-center">
                             <div className="text-gray-400 dark:text-gray-500">Loading valuations...</div>
                         </div>
-                    ) : valuations.length === 0 ? (
+                    ) : filteredValuations.length === 0 ? (
                         <div className="p-12 text-center">
                             <div className="text-gray-400 dark:text-gray-500 text-lg">No valuations recorded yet</div>
                             <div className="text-gray-400 dark:text-gray-500 text-sm mt-2">Track company valuation over time</div>
@@ -887,7 +939,7 @@ const ValuationsTab = () => {
                                 </Table.Tr>
                             </Table.THead>
                             <Table.TBody>
-                                {valuations.map((valuation) => (
+                                {filteredValuations.map((valuation) => (
                                     <Table.Tr key={valuation.id}>
                                         <Table.Td>
                                             <span className="text-sm text-gray-900 dark:text-white">

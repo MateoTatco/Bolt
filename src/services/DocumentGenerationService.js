@@ -2,7 +2,7 @@ import Docxtemplater from 'docxtemplater'
 import PizZip from 'pizzip'
 import ImageModule from 'docxtemplater-image-module-free'
 import { storage } from '@/configs/firebase.config'
-import { ref as storageRef, getBytes, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { ref as storageRef, getBytes, uploadBytes, getDownloadURL, listAll } from 'firebase/storage'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 
 /**
@@ -16,39 +16,115 @@ const TEMPLATE_PATHS = {
     AWARD: 'profitSharing/templates/Profit Award Agreement Template.docx'
 }
 
+// Alternative template file names to try (case variations, common naming patterns)
+const ALTERNATIVE_TEMPLATE_NAMES = {
+    PLAN: [
+        'profitSharing/templates/Profit Sharing Plan Template.docx',
+        'profitSharing/templates/profit sharing plan template.docx',
+        'profitSharing/templates/Profit-Sharing-Plan-Template.docx',
+        'profitSharing/templates/ProfitSharingPlanTemplate.docx',
+        'profitSharing/templates/Plan Template.docx',
+        'profitSharing/templates/plan-template.docx'
+    ],
+    AWARD: [
+        'profitSharing/templates/Profit Award Agreement Template.docx',
+        'profitSharing/templates/profit award agreement template.docx',
+        'profitSharing/templates/Profit-Award-Agreement-Template.docx',
+        'profitSharing/templates/ProfitAwardAgreementTemplate.docx',
+        'profitSharing/templates/Award Agreement Template.docx',
+        'profitSharing/templates/award-agreement-template.docx',
+        'profitSharing/templates/Award Template.docx',
+        'profitSharing/templates/award-template.docx'
+    ]
+}
+
 // Initialize Firebase Functions
 const functions = getFunctions()
 const convertDocxToPdfFunction = httpsCallable(functions, 'convertDocxToPdf')
 
 /**
  * Load a template from Firebase Storage
+ * Tries the primary path first, then alternative paths if the primary fails
  * @param {string} templateType - 'PLAN' or 'AWARD'
  * @returns {Promise<ArrayBuffer>} Template file as ArrayBuffer
  */
 const loadTemplate = async (templateType) => {
-    try {
-        const templatePath = TEMPLATE_PATHS[templateType]
-        if (!templatePath) {
-            throw new Error(`Unknown template type: ${templateType}`)
-        }
-
-        console.log(`[DocumentGeneration] Loading template from: ${templatePath}`)
-        const templateRef = storageRef(storage, templatePath)
-        const templateBytes = await getBytes(templateRef)
-        
-        if (!templateBytes || templateBytes.byteLength === 0) {
-            throw new Error(`Template file is empty or not found: ${templatePath}`)
-        }
-        
-        console.log(`[DocumentGeneration] Template loaded successfully, size: ${templateBytes.byteLength} bytes`)
-        
-        // Note: Signature placeholder removed - using timestamps instead
-        
-        return templateBytes
-    } catch (error) {
-        console.error(`[DocumentGeneration] Error loading template ${templateType}:`, error)
-        throw new Error(`Failed to load template: ${error.message}`)
+    if (!TEMPLATE_PATHS[templateType]) {
+        throw new Error(`Unknown template type: ${templateType}. Expected 'PLAN' or 'AWARD'.`)
     }
+
+    // Get all paths to try (primary + alternatives)
+    const pathsToTry = ALTERNATIVE_TEMPLATE_NAMES[templateType] || [TEMPLATE_PATHS[templateType]]
+    const errors = []
+
+    // Try each path until one succeeds
+    for (const templatePath of pathsToTry) {
+        try {
+            console.log(`[DocumentGeneration] Attempting to load template from: ${templatePath}`)
+            const templateRef = storageRef(storage, templatePath)
+            const templateBytes = await getBytes(templateRef)
+            
+            if (!templateBytes || templateBytes.byteLength === 0) {
+                throw new Error(`Template file is empty: ${templatePath}`)
+            }
+            
+            console.log(`[DocumentGeneration] Template loaded successfully from: ${templatePath}, size: ${templateBytes.byteLength} bytes`)
+            return templateBytes
+        } catch (error) {
+            // Store error but continue trying other paths
+            errors.push({ path: templatePath, error: error.message })
+            console.warn(`[DocumentGeneration] Failed to load from ${templatePath}:`, error.message)
+            continue
+        }
+    }
+
+    // If all paths failed, try to list existing files in the templates directory to help diagnose
+    let existingFiles = []
+    try {
+        const templatesDirRef = storageRef(storage, 'profitSharing/templates/')
+        const listResult = await listAll(templatesDirRef)
+        existingFiles = listResult.items.map(item => item.name)
+    } catch (listError) {
+        console.warn('[DocumentGeneration] Could not list files in templates directory:', listError)
+    }
+
+    // Build error message
+    const primaryPath = TEMPLATE_PATHS[templateType]
+    const expectedFileName = templateType === 'PLAN' ? 'Profit Sharing Plan Template.docx' : 'Profit Award Agreement Template.docx'
+    
+    let errorMessage = `The ${templateType} template file is missing from Firebase Storage.\n\n`
+    errorMessage += `Expected file: ${expectedFileName}\n`
+    errorMessage += `Expected path: ${primaryPath}\n\n`
+    
+    if (existingFiles.length > 0) {
+        errorMessage += `Found ${existingFiles.length} file(s) in templates directory:\n`
+        existingFiles.forEach(file => {
+            errorMessage += `  - ${file}\n`
+        })
+        errorMessage += `\n`
+    } else {
+        errorMessage += `No files found in the templates directory (profitSharing/templates/).\n\n`
+    }
+    
+    errorMessage += `To fix this:\n`
+    errorMessage += `1. Go to Firebase Console → Storage\n`
+    errorMessage += `2. Navigate to: profitSharing/templates/\n`
+    errorMessage += `3. Upload the file: ${expectedFileName}\n`
+    errorMessage += `4. Ensure the file name matches exactly (case-sensitive)`
+
+    console.error(`[DocumentGeneration] All template paths failed for ${templateType}:`, errors)
+    if (existingFiles.length > 0) {
+        console.error(`[DocumentGeneration] Existing files in templates directory:`, existingFiles)
+    }
+    
+    // Create a user-friendly error object
+    const templateError = new Error(errorMessage)
+    templateError.isTemplateMissing = true
+    templateError.templateType = templateType
+    templateError.expectedFileName = expectedFileName
+    templateError.expectedPath = primaryPath
+    templateError.existingFiles = existingFiles
+    throw templateError
 }
 
 /**

@@ -18,9 +18,8 @@ export async function apiSignIn(data) {
                 // User doesn't exist in Firestore, create it
                 await FirebaseDbService.users.upsert(userId, {
                     email: result.user.email,
-                    userName: result.user.displayName || email.split('@')[0] || '',
+                    lastName: result.user.displayName || email.split('@')[0] || '', // Use lastName instead of userName
                     firstName: '',
-                    phoneNumber: '',
                     avatar: result.user.photoURL || '',
                 })
                 // Reload the profile

@@ -367,9 +367,33 @@ const CreateProfitPlan = () => {
             } catch (docError) {
                 console.error('Error generating plan document:', docError)
                 // Don't fail the save if document generation fails
+                
+                // Show specific error message for missing template
+                let errorMessage = "Plan saved, but document generation failed. Please try again."
+                let errorType = "warning"
+                let errorDuration = 5000
+                
+                if (docError?.isTemplateMissing) {
+                    errorType = "danger"
+                    errorDuration = 8000
+                    errorMessage = `The plan template file is missing from Firebase Storage. Please upload "Profit Sharing Plan Template.docx" to profitSharing/templates/ in Firebase Console.`
+                    
+                    if (docError.existingFiles && docError.existingFiles.length > 0) {
+                        errorMessage += ` Found ${docError.existingFiles.length} file(s) in templates directory, but not the expected template.`
+                    }
+                } else if (docError?.message) {
+                    // Check if error message mentions template
+                    if (docError.message.includes('template') || docError.message.includes('Template')) {
+                        errorMessage = docError.message.split('\n')[0] // Show first line of error
+                        if (errorMessage.length > 150) {
+                            errorMessage = errorMessage.substring(0, 150) + '...'
+                        }
+                    }
+                }
+                
                 toast.push(
-                    <Notification type="warning" duration={2000}>
-                        Plan saved, but document generation failed. Please try again.
+                    <Notification type={errorType} duration={errorDuration} title={errorType === "danger" ? "Template Missing" : "Warning"}>
+                        {errorMessage}
                     </Notification>
                 )
             } finally {

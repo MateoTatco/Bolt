@@ -123,7 +123,7 @@ const StakeholderDetail = () => {
     const navigate = useNavigate()
     const { stakeholderId } = useParams()
     const user = useSessionUser((state) => state.user)
-    const { userRole, canEdit, loading: loadingAccess, isSupervisor } = useProfitSharingAccess()
+    const { userRole, canEdit, loading: loadingAccess, isSupervisor, accessRecords } = useProfitSharingAccess()
     const { selectedCompanyId } = useSelectedCompany()
     const isAdmin = canEdit || userRole === 'admin'
     const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
@@ -159,22 +159,13 @@ const StakeholderDetail = () => {
     const [selectedPlan, setSelectedPlan] = useState(null)
     const [valuations, setValuations] = useState([])
     const [expandedAwardId, setExpandedAwardId] = useState(null)
+    const [selectedPlanForKPIs, setSelectedPlanForKPIs] = useState(null) // Selected plan for KPI calculations
     const justSavedRef = useRef(false) // Flag to prevent loadStakeholder from running right after save
     const savedNameRef = useRef(null) // Store the name we just saved to prevent overwriting
     const lastSavedNameRef = useRef(null) // Store the last saved name to compare against stale data
 
-    useEffect(() => {
-        // Wait for access to load before checking permissions
-        if (loadingAccess) {
-            return
-        }
-        
-        // Skip loading if we just saved (to prevent overwriting the saved data)
-        if (justSavedRef.current) {
-            return
-        }
-        
-        const loadStakeholder = async () => {
+    // Move loadStakeholder outside useEffect so it can be called from handleAcceptAward
+    const loadStakeholder = useCallback(async () => {
             if (!stakeholderId) {
                 navigate('/profit-sharing?tab=stakeholders')
                 return
@@ -186,6 +177,51 @@ const StakeholderDetail = () => {
                 const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
                 if (response.success) {
                     const data = response.data
+                    
+                    // Check if this stakeholder belongs to the selected company
+                    // If not, and user is non-admin, they might be viewing the wrong stakeholder
+                    if (selectedCompanyId && data.companyId !== selectedCompanyId) {
+                        // Company mismatch - log warning for debugging
+                    }
+                    
+                    // For non-admin users viewing their own record, merge awards from all their stakeholder records
+                    // This ensures they see all their awards regardless of which company's stakeholder record they're viewing
+                    if (!isAdmin) {
+                        const currentUserId = user?.id || user?.uid
+                        if (currentUserId && data.linkedUserId === currentUserId) {
+                            try {
+                                const allStakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
+                                if (allStakeholdersResponse.success) {
+                                    const userStakeholders = allStakeholdersResponse.data.filter(
+                                        sh => sh.linkedUserId === currentUserId
+                                    )
+                                    
+                                    // Collect all awards from all stakeholder records for this user
+                                    const allAwards = []
+                                    userStakeholders.forEach(sh => {
+                                        if (sh.profitAwards && Array.isArray(sh.profitAwards) && sh.profitAwards.length > 0) {
+                                            // Add companyId to each award so we know which company it belongs to
+                                            sh.profitAwards.forEach(award => {
+                                                allAwards.push({
+                                                    ...award,
+                                                    _sourceCompanyId: sh.companyId, // Track which company this award came from
+                                                    _sourceStakeholderId: sh.id // Track which stakeholder record this came from
+                                                })
+                                            })
+                                        }
+                                    })
+                                    
+                                    if (allAwards.length > 0) {
+                                        // Merge awards into the current stakeholder data
+                                        // This ensures the user sees all their awards regardless of which company's record they're viewing
+                                        data.profitAwards = allAwards
+                                    }
+                                }
+                            } catch (checkError) {
+                                console.error('[StakeholderDetail] Error merging awards from other stakeholder records:', checkError)
+                            }
+                        }
+                    }
                     
                     // Check access permissions
                     // Admins can access all records
@@ -246,13 +282,14 @@ const StakeholderDetail = () => {
                         email: data.email || '',
                         phone: data.phone || '',
                         managerId: data.managerId || null,
-                        stockAwards: data.stockAwards || [],
-                        profitAwards: data.profitAwards || [],
+                        stockAwards: Array.isArray(data.stockAwards) ? data.stockAwards : [],
+                        profitAwards: Array.isArray(data.profitAwards) ? data.profitAwards : [],
                         totalStockUnits: data.mareStock || 0,
                         estimatedFMV: 0, // Calculate this if needed
-                        totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
+                        totalAwards: (Array.isArray(data.stockAwards) ? data.stockAwards.length : 0) + (Array.isArray(data.profitAwards) ? data.profitAwards.length : 0),
                         linkedUserId: data.linkedUserId,
                     }
+                    
                     
                     // CRITICAL: Always use saved name if it exists and differs from database
                     // This prevents the page title from reverting when loadStakeholder runs after a save
@@ -331,12 +368,36 @@ const StakeholderDetail = () => {
             } finally {
                 setLoading(false)
             }
-        }
+    }, [stakeholderId, navigate, loadingAccess, canEdit, userRole, user, selectedCompanyId, isAdmin, effectiveIsSupervisor])
 
+    useEffect(() => {
+        // Wait for access to load before checking permissions
+        if (loadingAccess) {
+            return
+        }
+        
+        // Skip loading if we just saved (to prevent overwriting the saved data)
+        if (justSavedRef.current) {
+            return
+        }
+        
         loadStakeholder()
         loadProfitPlans()
         loadUsers()
-    }, [stakeholderId, navigate, loadingAccess, canEdit, userRole, user, selectedCompanyId])
+    }, [loadStakeholder, loadingAccess, stakeholderId, selectedCompanyId, isAdmin])
+
+    // Set default selected plan for KPIs when stakeholder loads
+    useEffect(() => {
+        if (stakeholder && stakeholder.profitAwards && stakeholder.profitAwards.length > 0) {
+            // If no plan is selected, select the first award's plan
+            if (!selectedPlanForKPIs) {
+                const firstAward = stakeholder.profitAwards.find(a => a.planId)
+                if (firstAward && firstAward.planId) {
+                    setSelectedPlanForKPIs(firstAward.planId)
+                }
+            }
+        }
+    }, [stakeholder, selectedPlanForKPIs, selectedCompanyId])
 
     useEffect(() => {
         if (stakeholder) {
@@ -384,18 +445,13 @@ const StakeholderDetail = () => {
 
     const loadProfitPlans = async () => {
         try {
-            if (!selectedCompanyId) {
-                setProfitPlans([])
-                return
-            }
-            
             const plansRef = collection(db, 'profitSharingPlans')
             const querySnapshot = await getDocs(plansRef)
             const plansData = []
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
-                // Only include plans from the selected company
-                if (data.companyId === selectedCompanyId) {
+                // For admins, load all plans globally; for non-admins, only from selected company
+                if (isAdmin || data.companyId === selectedCompanyId) {
                     plansData.push({ 
                         value: doc.id, 
                         label: data.name || 'Unnamed Plan',
@@ -417,14 +473,23 @@ const StakeholderDetail = () => {
         }
         
         try {
+            // Get all companies user belongs to (for non-admin users)
+            let companyIdsToLoad = [selectedCompanyId]
+            if (!isAdmin && accessRecords && accessRecords.length > 0) {
+                const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
+                if (userCompanyIds.length > 0) {
+                    companyIdsToLoad = [...new Set([...userCompanyIds, selectedCompanyId])]
+                }
+            }
+            
             const valuationsRef = collection(db, 'valuations')
             const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
             const querySnapshot = await getDocs(q)
             const valuationsData = []
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
-                // Filter by companyId
-                if (data.companyId === selectedCompanyId) {
+                // For admins, load all valuations; for non-admins, filter by company
+                if (isAdmin || (companyIdsToLoad && companyIdsToLoad.includes(data.companyId))) {
                     valuationsData.push({
                         id: doc.id,
                         ...data,
@@ -432,12 +497,13 @@ const StakeholderDetail = () => {
                     })
                 }
             })
+            
             setValuations(valuationsData)
         } catch (error) {
             console.error('Error loading valuations:', error)
             setValuations([])
         }
-    }, [selectedCompanyId])
+    }, [selectedCompanyId, isAdmin, accessRecords])
     
     // Load valuations when selectedCompanyId changes
     useEffect(() => {
@@ -449,7 +515,7 @@ const StakeholderDetail = () => {
     }, [selectedCompanyId, loadValuations])
 
     // Calculate payouts for a specific award
-    const calculateAwardPayouts = (award) => {
+    const calculateAwardPayouts = (award, includeEstimated = false) => {
         if (!award || !award.planId || !award.sharesIssued) return []
         
         const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
@@ -460,6 +526,8 @@ const StakeholderDetail = () => {
         return valuations
             .filter(v => {
                 if (!v.valuationDate || v.planId !== award.planId) return false
+                // For payout history, only include actual profits (not estimated)
+                if (!includeEstimated && v.profitType !== 'actual') return false
                 const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
                 return valDate >= awardStart && valDate <= awardEnd
             })
@@ -470,6 +538,7 @@ const StakeholderDetail = () => {
                     valuationId: v.id,
                     profitDate: v.valuationDate,
                     profitAmount: v.profitAmount || v.fmv || 0,
+                    profitType: v.profitType || 'actual',
                     pricePerShare,
                     sharesIssued: award.sharesIssued || 0,
                     payout,
@@ -904,15 +973,37 @@ const StakeholderDetail = () => {
         try {
             if (!stakeholderId) return
 
-            const stakeholderRef = doc(db, 'stakeholders', stakeholderId)
-            const currentData = await FirebaseDbService.stakeholders.getById(stakeholderId)
+            // First, check if the award is in the current stakeholder record
+            let targetStakeholderId = stakeholderId
+            let targetStakeholderRef = doc(db, 'stakeholders', stakeholderId)
+            let currentData = await FirebaseDbService.stakeholders.getById(stakeholderId)
             
             if (!currentData.success) {
                 throw new Error('Failed to load stakeholder data')
             }
 
-            const existingAwards = currentData.data.profitAwards || []
-            const awardIndex = existingAwards.findIndex(a => a.id === awardId)
+            let existingAwards = currentData.data.profitAwards || []
+            let awardIndex = existingAwards.findIndex(a => a.id === awardId)
+            
+            // If award not found in current stakeholder, check if it's from a merged award
+            // (merged awards have _sourceStakeholderId property)
+            if (awardIndex === -1) {
+                // Check if the award exists in the current stakeholder's merged awards
+                const mergedAward = stakeholder?.profitAwards?.find(a => a.id === awardId)
+                if (mergedAward && mergedAward._sourceStakeholderId) {
+                    // Award is from a different stakeholder record, update that record instead
+                    targetStakeholderId = mergedAward._sourceStakeholderId
+                    targetStakeholderRef = doc(db, 'stakeholders', targetStakeholderId)
+                    currentData = await FirebaseDbService.stakeholders.getById(targetStakeholderId)
+                    
+                    if (!currentData.success) {
+                        throw new Error('Failed to load source stakeholder data')
+                    }
+                    
+                    existingAwards = currentData.data.profitAwards || []
+                    awardIndex = existingAwards.findIndex(a => a.id === awardId)
+                }
+            }
             
             if (awardIndex === -1) {
                 throw new Error('Award not found')
@@ -934,7 +1025,7 @@ const StakeholderDetail = () => {
             }
 
             // Get user name
-            const userName = user?.firstName || user?.userName || user?.name || user?.email || 'User'
+            const userName = user?.firstName || user?.lastName || user?.userName || user?.name || user?.email || 'User'
 
             const updatedAward = {
                 ...award,
@@ -947,7 +1038,7 @@ const StakeholderDetail = () => {
                 idx === awardIndex ? updatedAward : a
             )
 
-            await updateDoc(stakeholderRef, {
+            await updateDoc(targetStakeholderRef, {
                 profitAwards: updatedAwards,
                 updatedAt: serverTimestamp(),
             })
@@ -960,29 +1051,9 @@ const StakeholderDetail = () => {
                 )
             )
 
-            // Reload stakeholder data
-            const response = await FirebaseDbService.stakeholders.getById(stakeholderId)
-            if (response.success) {
-                const data = response.data
-                // Use saved name if it exists and differs from database (prevents stale data from overwriting)
-                const nameToUse = (lastSavedNameRef.current && data.name !== lastSavedNameRef.current) 
-                    ? lastSavedNameRef.current 
-                    : (data.name || '')
-                setStakeholder({
-                    id: data.id,
-                    name: nameToUse,
-                    email: data.email || '',
-                    phone: data.phone || '',
-                    managerId: data.managerId || null,
-                    stockAwards: data.stockAwards || [],
-                    profitAwards: data.profitAwards || [],
-                    totalStockUnits: data.mareStock || 0,
-                    estimatedFMV: 0,
-                    totalAwards: (data.stockAwards?.length || 0) + (data.profitAwards?.length || 0),
-                    reinsRole: data.reinsRole || 'User',
-                    linkedUserId: data.linkedUserId,
-                })
-            }
+            // Reload stakeholder data (this will trigger the merge logic if needed)
+            // If award was in a different stakeholder record, the merge will pick it up on reload
+            loadStakeholder()
 
             window.dispatchEvent(new Event('stakeholdersUpdated'))
         } catch (error) {
@@ -1234,11 +1305,37 @@ const StakeholderDetail = () => {
                     profitAwards: cleanedAwards,
                     updatedAt: serverTimestamp(),
                 })
+                
+                // Show specific error message for missing template
+                let errorMessage = "Award saved, but document generation failed."
+                let errorTitle = "Warning"
+                let errorType = "warning"
+                let errorDuration = 5000
+                
+                if (docError?.isTemplateMissing) {
+                    errorTitle = "Template Missing"
+                    errorType = "danger"
+                    errorDuration = 8000
+                    errorMessage = `The award template file is missing from Firebase Storage. Please upload "Profit Award Agreement Template.docx" to profitSharing/templates/ in Firebase Console.`
+                    
+                    if (docError.existingFiles && docError.existingFiles.length > 0) {
+                        errorMessage += ` Found ${docError.existingFiles.length} file(s) in templates directory, but not the expected template.`
+                    }
+                } else if (docError?.message) {
+                    // Check if error message mentions template
+                    if (docError.message.includes('template') || docError.message.includes('Template')) {
+                        errorMessage = docError.message.split('\n')[0] // Show first line of error
+                        if (errorMessage.length > 150) {
+                            errorMessage = errorMessage.substring(0, 150) + '...'
+                        }
+                    }
+                }
+                
                 toast.push(
                     React.createElement(
                         Notification,
-                        { type: "warning", duration: 2000, title: "Warning" },
-                        "Award saved, but document generation failed. Please try again."
+                        { type: errorType, duration: errorDuration, title: errorTitle },
+                        errorMessage
                     )
                 )
             } finally {
@@ -1360,7 +1457,7 @@ const StakeholderDetail = () => {
         { key: 'overview', label: 'Overview', icon: <HiOutlineHome />, adminOnly: true },
         { key: 'plans', label: 'Plans', icon: <HiOutlineDocumentText />, adminOnly: true },
         { key: 'stakeholders', label: isAdmin ? 'Stakeholders' : effectiveIsSupervisor ? 'Awards' : 'My Awards', icon: <HiOutlineUsers />, adminOnly: false },
-        { key: 'valuations', label: 'Valuations', icon: <HiOutlineChartBar />, adminOnly: true },
+        { key: 'valuations', label: 'Company Profits', icon: <HiOutlineChartBar />, adminOnly: true },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
@@ -1474,294 +1571,545 @@ const StakeholderDetail = () => {
 
             {activeTab === 'profit' && (
                 <div className="space-y-6">
-                    {/* KPI Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Next Period Estimated Profit */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
-                                {(() => {
-                                    // Find the next estimated profit entry (future date, profitType = 'estimated')
-                                    const now = new Date()
-                                    const futureEstimates = valuations
-                                        .filter(v => {
-                                            if (v.profitType !== 'estimated') return false
-                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                            return valDate > now
+                    {/* Plan Selector for KPIs */}
+                    {(() => {
+                        // Check if user belongs to 2+ companies OR if admin (admins can filter by plan too)
+                        // For non-admin users, check both accessRecords AND stakeholder records (awards)
+                        let userCompanyIds = []
+                        if (isAdmin) {
+                            // For admins, get all companies from stakeholder's awards
+                            if (stakeholder?.profitAwards && stakeholder.profitAwards.length > 0) {
+                                const companyIdsFromAwards = stakeholder.profitAwards
+                                    .map(award => award._sourceCompanyId || stakeholder.companyId)
+                                    .filter(Boolean)
+                                userCompanyIds = [...new Set(companyIdsFromAwards)]
+                            }
+                        } else {
+                            // First try accessRecords
+                            const accessRecordCompanyIds = accessRecords?.map(record => record.companyId).filter(Boolean) || []
+                            
+                            // Also check stakeholder records/awards to see if user has awards in multiple companies
+                            // This catches cases where accessRecords might not be fully populated or user has awards across companies
+                            let awardCompanyIds = []
+                            if (stakeholder?.profitAwards && stakeholder.profitAwards.length > 0) {
+                                // Get unique company IDs from merged awards (which have _sourceCompanyId)
+                                const companyIdsFromAwards = stakeholder.profitAwards
+                                    .map(award => award._sourceCompanyId || stakeholder.companyId)
+                                    .filter(Boolean)
+                                awardCompanyIds = [...new Set(companyIdsFromAwards)]
+                            }
+                            
+                            // Combine both sources and use the larger set
+                            const allCompanyIds = [...new Set([...accessRecordCompanyIds, ...awardCompanyIds])]
+                            userCompanyIds = allCompanyIds
+                        }
+                        
+                        const hasMultipleCompanies = isAdmin ? true : userCompanyIds.length >= 2
+                        const hasMultiplePlans = stakeholder?.profitAwards ? [...new Set(stakeholder.profitAwards.map(a => a.planId).filter(Boolean))].length > 1 : false
+                        
+                        // Show filter if user has multiple plans OR (belongs to 2+ companies AND has awards)
+                        // For admins, show if there are multiple plans
+                        if ((!hasMultiplePlans && !hasMultipleCompanies) || !stakeholder?.profitAwards || stakeholder.profitAwards.length === 0) {
+                            return null
+                        }
+                        
+                        // Get unique plan IDs from awards
+                        // For admins, show all plans; for non-admins, show plans from all companies they belong to
+                        const planIdsFromAwards = stakeholder.profitAwards
+                            .filter(award => {
+                                if (!award.planId) return false
+                                // For admins, show all plans
+                                if (isAdmin) return true
+                                // For non-admins, include plans from all companies they belong to
+                                const awardCompanyId = award._sourceCompanyId || stakeholder.companyId
+                                return userCompanyIds.includes(awardCompanyId)
+                            })
+                            .map(a => a.planId)
+                        
+                        const uniquePlanIds = [...new Set(planIdsFromAwards)]
+                        
+                        // For admins, show all plans from profitPlans (which now includes all plans globally)
+                        // For non-admins, show plans from awards that match their companies
+                        let availablePlans = []
+                        
+                        if (isAdmin) {
+                            // Admins: show ALL plans from profitPlans (all companies globally)
+                            // This allows admins to quickly filter KPIs by any plan across all companies
+                            availablePlans = profitPlans.map(plan => ({
+                                value: plan.value,
+                                label: plan.label || 'Unknown Plan',
+                                companyId: plan.companyId
+                            }))
+                            
+                            // Also include plans from awards that might not be in profitPlans yet (edge case)
+                            uniquePlanIds.forEach(planId => {
+                                if (!availablePlans.find(p => p.value === planId)) {
+                                    const award = stakeholder.profitAwards.find(a => a.planId === planId)
+                                    if (award) {
+                                        availablePlans.push({
+                                            value: planId,
+                                            label: award.planName || 'Unknown Plan',
+                                            companyId: award._sourceCompanyId || stakeholder.companyId
                                         })
-                                        .sort((a, b) => {
-                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                            return aDate - bDate // Earliest first
-                                        })
+                                    }
+                                }
+                            })
+                        } else {
+                            // Non-admins: show plans from awards that match their companies
+                            availablePlans = uniquePlanIds
+                                .map(planId => {
+                                    const award = stakeholder.profitAwards.find(a => a.planId === planId)
+                                    // Try to find plan in profitPlans first
+                                    let plan = profitPlans.find(p => p.value === planId)
                                     
-                                    const nextEstimate = futureEstimates[0]
-                                    if (!nextEstimate) {
-                                        return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">No estimated profit entries</div>
-                                            </>
-                                        )
+                                    // If not found, create entry from award data
+                                    if (!plan && award) {
+                                        return {
+                                            value: planId,
+                                            label: award?.planName || 'Unknown Plan',
+                                            companyId: award._sourceCompanyId || stakeholder.companyId
+                                        }
                                     }
                                     
-                                    const estimateDate = nextEstimate.valuationDate instanceof Date 
-                                        ? nextEstimate.valuationDate 
-                                        : new Date(nextEstimate.valuationDate)
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(nextEstimate.profitAmount || 0)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
-
-                        {/* Last Quarter Actual Profit */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Quarter Actual Profit</div>
-                                {(() => {
-                                    // Find actual profit entries from the last quarter (last 3 months)
-                                    const now = new Date()
-                                    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
-                                    
-                                    const lastQuarterActuals = valuations
-                                        .filter(v => {
-                                            if (v.profitType !== 'actual') return false
-                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                            return valDate >= threeMonthsAgo && valDate <= now
-                                        })
-                                        .sort((a, b) => {
-                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                            return bDate - aDate // Most recent first
-                                        })
-                                    
-                                    const lastActual = lastQuarterActuals[0]
-                                    if (!lastActual) {
-                                        return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">No actual profit in last quarter</div>
-                                            </>
-                                        )
+                                    if (plan) {
+                                        return {
+                                            value: planId,
+                                            label: plan?.label || award?.planName || 'Unknown Plan',
+                                            companyId: plan.companyId || selectedCompanyId
+                                        }
                                     }
-                                    
-                                    const actualDate = lastActual.valuationDate instanceof Date 
-                                        ? lastActual.valuationDate 
-                                        : new Date(lastActual.valuationDate)
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(lastActual.profitAmount || 0)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                {actualDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
-
-                        {/* Annual Total Actual Profit */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Annual Total (Actuals Only)</div>
-                                {(() => {
-                                    // Calculate total of all actual profit entries for the current year
-                                    const now = new Date()
-                                    const yearStart = new Date(now.getFullYear(), 0, 1)
-                                    
-                                    const annualActuals = valuations
-                                        .filter(v => {
-                                            if (v.profitType !== 'actual') return false
-                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                            return valDate >= yearStart && valDate <= now
-                                        })
-                                    
-                                    const annualTotal = annualActuals.reduce((sum, v) => sum + (v.profitAmount || 0), 0)
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(annualTotal)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                Year to date ({now.getFullYear()})
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* Next Estimated Profit Payment Card */}
-                    <Card className="p-6">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Next Estimated Profit Payment</h3>
-                                <div className="group relative">
-                                    <HiOutlineInformationCircle className="w-4 h-4 text-gray-400 cursor-help" />
-                                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 pointer-events-none">
-                                        <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 w-64 shadow-lg">
-                                            This is an estimate based on previous performance and latest progress updates. Actual payment amount will vary once finalized by an administrator.
-                                        </div>
-                                    </div>
+                                    return null
+                                })
+                                .filter(Boolean)
+                        }
+                        
+                        // Show filter if there's at least 1 plan (even if only 1 plan, user should see which plan they're viewing)
+                        if (availablePlans.length === 0) {
+                            return null
+                        }
+                        
+                        return (
+                            <Card className="p-4">
+                                <div className="flex items-center gap-4">
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        Select Plan to view:
+                                    </label>
+                                    <Select
+                                        className="w-64"
+                                        placeholder="Select a plan"
+                                        value={selectedPlanForKPIs ? {
+                                            value: selectedPlanForKPIs,
+                                            label: profitPlans.find(p => p.value === selectedPlanForKPIs)?.label || 
+                                                   stakeholder.profitAwards.find(a => a.planId === selectedPlanForKPIs)?.planName || 
+                                                   'Unknown Plan'
+                                        } : null}
+                                        options={availablePlans}
+                                        onChange={(option) => {
+                                            const selectedOption = Array.isArray(option) ? option[0] : option
+                                            setSelectedPlanForKPIs(selectedOption?.value || null)
+                                        }}
+                                    />
                                 </div>
-                            </div>
-                            <div>
-                                {(() => {
-                                    if (!stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
-                                        return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                    No awards available
-                                                </div>
-                                            </>
-                                        )
-                                    }
-                                    
-                                    // Calculate estimated payout using latest valuation's price per share
-                                    // For each active award, find the latest valuation and calculate: shares × price per share
-                                    let totalEstimatedPayout = 0
-                                    let nextPaymentDate = null
-                                    let hasActiveAwards = false
-                                    let debugInfo = [] // For debugging
-                                    
-                                    const today = new Date()
-                                    today.setHours(0, 0, 0, 0)
-                                    
-                                    // Get the latest/active valuation overall (fallback if plan-specific not found)
-                                    const latestValuationOverall = valuations.length > 0
-                                        ? valuations.sort((a, b) => {
-                                            const aDate = a.valuationDate?.getTime() || 0
-                                            const bDate = b.valuationDate?.getTime() || 0
-                                            return bDate - aDate // Most recent first
-                                          })[0]
-                                        : null
-                                    
-                                    stakeholder.profitAwards.forEach(award => {
-                                        if (!award.sharesIssued || award.sharesIssued === 0) {
-                                            debugInfo.push(`Award ${award.id}: No shares issued`)
-                                            return
+                            </Card>
+                        )
+                    })()}
+
+                    {/* KPI Cards - 3 on top, 2 below */}
+                    <div className="space-y-6">
+                        {/* First Row: 3 cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Estimated Profit */}
+                            <Card className="p-6">
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Profit</div>
+                                    {(() => {
+                                        // Filter valuations by selected plan
+                                        let filteredValuations = valuations
+                                        if (selectedPlanForKPIs) {
+                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                                         }
                                         
-                                        // Try to find valuation for this specific plan first
-                                        let latestValuation = null
-                                        if (award.planId) {
-                                            const planValuations = valuations
-                                                .filter(v => v.planId === award.planId)
-                                                .sort((a, b) => {
-                                                    const aDate = a.valuationDate?.getTime() || 0
-                                                    const bDate = b.valuationDate?.getTime() || 0
-                                                    return bDate - aDate // Most recent first
-                                                })
-                                            
-                                            if (planValuations.length > 0) {
-                                                latestValuation = planValuations[0]
-                                            }
-                                        }
-                                        
-                                        // Fallback to latest valuation overall if no plan-specific one found
-                                        if (!latestValuation && latestValuationOverall) {
-                                            latestValuation = latestValuationOverall
-                                        }
-                                        
-                                        if (latestValuation) {
-                                            // Calculate price per share
-                                            const pricePerShare = latestValuation.pricePerShare || 
-                                                (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
-                                                    ? latestValuation.profitAmount / latestValuation.totalShares 
-                                                    : 0)
-                                            
-                                            if (pricePerShare > 0) {
-                                                const awardPayout = (award.sharesIssued || 0) * pricePerShare
-                                                totalEstimatedPayout += awardPayout
-                                                hasActiveAwards = true
-                                                
-                                                debugInfo.push(`Award ${award.id}: ${award.sharesIssued} shares × $${pricePerShare.toFixed(2)} = $${awardPayout.toFixed(2)}`)
-                                                
-                                                // Track the next payment date (award end date if it's upcoming)
-                                                if (award.awardEndDate) {
-                                                    const endDate = new Date(award.awardEndDate)
-                                                    endDate.setHours(0, 0, 0, 0)
-                                                    if (endDate >= today && (!nextPaymentDate || endDate < nextPaymentDate)) {
-                                                        nextPaymentDate = endDate
-                                                    }
-                                                }
-                                            } else {
-                                                debugInfo.push(`Award ${award.id}: Price per share is 0 (profit: ${latestValuation.profitAmount}, shares: ${latestValuation.totalShares})`)
-                                            }
-                                        } else {
-                                            debugInfo.push(`Award ${award.id}: No valuation found (planId: ${award.planId}, total valuations: ${valuations.length})`)
-                                        }
-                                    })
-                                    
-                                    // Log debug info to console for troubleshooting
-                                    // Debug logs disabled
-                                    
-                                    if (!hasActiveAwards || totalEstimatedPayout === 0) {
-                                        // Check if there are upcoming awards without valuations yet
-                                        const upcomingAward = stakeholder.profitAwards
-                                            .filter(award => {
-                                                const endDate = award.awardEndDate ? new Date(award.awardEndDate) : null
-                                                return endDate && endDate > today
+                                        // Find the next estimated profit entry (future date, profitType = 'estimated')
+                                        const now = new Date()
+                                        const futureEstimates = filteredValuations
+                                            .filter(v => {
+                                                if (v.profitType !== 'estimated') return false
+                                                const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                return valDate > now
                                             })
                                             .sort((a, b) => {
-                                                const aDate = a.awardEndDate ? new Date(a.awardEndDate).getTime() : 0
-                                                const bDate = b.awardEndDate ? new Date(b.awardEndDate).getTime() : 0
+                                                const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
                                                 return aDate - bDate // Earliest first
-                                            })[0]
+                                            })
                                         
-                                        if (upcomingAward) {
-                                            const endDate = upcomingAward.awardEndDate ? new Date(upcomingAward.awardEndDate) : null
+                                        const nextEstimate = futureEstimates[0]
+                                        if (!nextEstimate) {
                                             return (
                                                 <>
                                                     <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                        Pending - After {endDate ? endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
-                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No estimated profit</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        const estimateDate = nextEstimate.valuationDate instanceof Date 
+                                            ? nextEstimate.valuationDate 
+                                            : new Date(nextEstimate.valuationDate)
+                                        
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                    {formatCurrency(nextEstimate.profitAmount || 0)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
+                                </div>
+                            </Card>
+
+                            {/* Estimated Payout */}
+                            <Card className="p-6">
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Payout</div>
+                                    {(() => {
+                                        if (!stakeholder || !stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No awards</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        // Filter awards by selected plan
+                                        let relevantAwards = stakeholder.profitAwards
+                                        if (selectedPlanForKPIs) {
+                                            relevantAwards = stakeholder.profitAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Filter valuations by selected plan
+                                        let filteredValuations = valuations
+                                        if (selectedPlanForKPIs) {
+                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Get latest valuation for calculation
+                                        const latestValuation = filteredValuations.length > 0
+                                            ? filteredValuations.sort((a, b) => {
+                                                const aDate = a.valuationDate?.getTime() || 0
+                                                const bDate = b.valuationDate?.getTime() || 0
+                                                return bDate - aDate
+                                            })[0]
+                                            : null
+                                        
+                                        if (!latestValuation) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No valuations</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        // Calculate price per share
+                                        const pricePerShare = latestValuation.pricePerShare || 
+                                            (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
+                                                ? latestValuation.profitAmount / latestValuation.totalShares 
+                                                : 0)
+                                        
+                                        // Calculate total estimated payout
+                                        const totalEstimatedPayout = relevantAwards.reduce((sum, award) => {
+                                            if (!award.sharesIssued || award.sharesIssued === 0) return sum
+                                            return sum + ((award.sharesIssued || 0) * pricePerShare)
+                                        }, 0)
+                                        
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                    {formatCurrency(totalEstimatedPayout)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    Based on latest valuation
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
+                                </div>
+                            </Card>
+
+                            {/* Last Quarter Payout */}
+                            <Card className="p-6">
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Quarter Payout</div>
+                                    {(() => {
+                                        // Filter valuations by selected plan
+                                        let filteredValuations = valuations
+                                        if (selectedPlanForKPIs) {
+                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Find actual profit entries from the last quarter (last 3 months)
+                                        const now = new Date()
+                                        now.setHours(23, 59, 59, 999) // End of today
+                                        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1) // Start of month 3 months ago
+                                        threeMonthsAgo.setHours(0, 0, 0, 0)
+                                        
+                                        const lastQuarterActuals = filteredValuations
+                                            .filter(v => {
+                                                if (v.profitType !== 'actual') return false
+                                                if (!v.valuationDate) return false
+                                                const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                if (isNaN(valDate.getTime())) return false
+                                                return valDate >= threeMonthsAgo && valDate <= now
+                                            })
+                                            .sort((a, b) => {
+                                                const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                                return bDate - aDate // Most recent first
+                                            })
+                                        
+                                        if (lastQuarterActuals.length === 0) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No payouts in last quarter</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        // Filter awards by selected plan
+                                        let relevantAwards = stakeholder?.profitAwards || []
+                                        if (selectedPlanForKPIs) {
+                                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Calculate total payout from last quarter actuals
+                                        let totalPayout = 0
+                                        
+                                        lastQuarterActuals.forEach(valuation => {
+                                            const pricePerShare = valuation.pricePerShare || 
+                                                (valuation.profitAmount && valuation.totalShares && valuation.totalShares > 0
+                                                    ? valuation.profitAmount / valuation.totalShares 
+                                                    : 0)
+                                            
+                                            // Only calculate for awards that match this valuation's plan
+                                            relevantAwards
+                                                .filter(award => award.planId === valuation.planId)
+                                                .forEach(award => {
+                                                    if (award.sharesIssued && award.sharesIssued > 0) {
+                                                        const payout = award.sharesIssued * pricePerShare
+                                                        totalPayout += payout
+                                                    }
+                                                })
+                                        })
+                                        
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                    {formatCurrency(totalPayout)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    Last 3 months
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
+                                </div>
+                            </Card>
+                        </div>
+
+                        {/* Second Row: 2 cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Total Payout */}
+                            <Card className="p-6">
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Payout</div>
+                                    {(() => {
+                                        // Filter valuations by selected plan
+                                        let filteredValuations = valuations
+                                        if (selectedPlanForKPIs) {
+                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Get all actual profit entries (not estimated)
+                                        const actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
+                                        
+                                        if (actualValuations.length === 0) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        // Filter awards by selected plan
+                                        let relevantAwards = stakeholder?.profitAwards || []
+                                        if (selectedPlanForKPIs) {
+                                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Calculate total payout from all actual valuations
+                                        let totalPayout = 0
+                                        actualValuations.forEach(valuation => {
+                                            const pricePerShare = valuation.pricePerShare || 
+                                                (valuation.profitAmount && valuation.totalShares && valuation.totalShares > 0
+                                                    ? valuation.profitAmount / valuation.totalShares 
+                                                    : 0)
+                                            
+                                            relevantAwards.forEach(award => {
+                                                if (award.sharesIssued && award.sharesIssued > 0) {
+                                                    totalPayout += (award.sharesIssued * pricePerShare)
+                                                }
+                                            })
+                                        })
+                                        
+                                        return (
+                                            <>
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                    {formatCurrency(totalPayout)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    All time (actuals only)
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
+                                </div>
+                            </Card>
+
+                            {/* Next Estimated Profit Payment */}
+                            <Card className="p-6">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Estimated Profit Payment</div>
+                                        <div className="group relative">
+                                            <HiOutlineInformationCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-10 pointer-events-none">
+                                                <div className="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 w-64 shadow-lg">
+                                                    This is an estimate based on previous performance and latest progress updates. Actual payment amount will vary once finalized by an administrator.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {(() => {
+                                        if (!stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No awards available</div>
+                                                </>
+                                            )
+                                        }
+                                        
+                                        // Filter awards by selected plan
+                                        let relevantAwards = stakeholder.profitAwards
+                                        if (selectedPlanForKPIs) {
+                                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        // Calculate estimated payout using latest valuation's price per share
+                                        let totalEstimatedPayout = 0
+                                        let nextPaymentDate = null
+                                        let hasActiveAwards = false
+                                        
+                                        const today = new Date()
+                                        today.setHours(0, 0, 0, 0)
+                                        
+                                        // Get the latest/active valuation overall (fallback if plan-specific not found)
+                                        let filteredValuations = valuations
+                                        if (selectedPlanForKPIs) {
+                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                        }
+                                        
+                                        const latestValuationOverall = filteredValuations.length > 0
+                                            ? filteredValuations.sort((a, b) => {
+                                                const aDate = a.valuationDate?.getTime() || 0
+                                                const bDate = b.valuationDate?.getTime() || 0
+                                                return bDate - aDate // Most recent first
+                                              })[0]
+                                            : null
+                                        
+                                        relevantAwards.forEach(award => {
+                                            if (!award.sharesIssued || award.sharesIssued === 0) {
+                                                return
+                                            }
+                                            
+                                            // Try to find valuation for this specific plan first
+                                            let latestValuation = null
+                                            if (award.planId) {
+                                                const planValuations = filteredValuations
+                                                    .filter(v => v.planId === award.planId)
+                                                    .sort((a, b) => {
+                                                        const aDate = a.valuationDate?.getTime() || 0
+                                                        const bDate = b.valuationDate?.getTime() || 0
+                                                        return bDate - aDate // Most recent first
+                                                    })
+                                                
+                                                if (planValuations.length > 0) {
+                                                    latestValuation = planValuations[0]
+                                                }
+                                            }
+                                            
+                                            // Fallback to latest valuation overall if no plan-specific one found
+                                            if (!latestValuation && latestValuationOverall) {
+                                                latestValuation = latestValuationOverall
+                                            }
+                                            
+                                            if (latestValuation) {
+                                                // Calculate price per share
+                                                const pricePerShare = latestValuation.pricePerShare || 
+                                                    (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
+                                                        ? latestValuation.profitAmount / latestValuation.totalShares 
+                                                        : 0)
+                                                
+                                                if (pricePerShare > 0) {
+                                                    const awardPayout = (award.sharesIssued || 0) * pricePerShare
+                                                    totalEstimatedPayout += awardPayout
+                                                    hasActiveAwards = true
+                                                    
+                                                    // Track the next payment date (award end date if it's upcoming)
+                                                    if (award.awardEndDate) {
+                                                        const endDate = new Date(award.awardEndDate)
+                                                        endDate.setHours(0, 0, 0, 0)
+                                                        if (endDate >= today && (!nextPaymentDate || endDate < nextPaymentDate)) {
+                                                            nextPaymentDate = endDate
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        })
+                                        
+                                        if (!hasActiveAwards || totalEstimatedPayout === 0) {
+                                            return (
+                                                <>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No valuations available yet</div>
                                                 </>
                                             )
                                         }
                                         
                                         return (
                                             <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                    No valuations available yet
+                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                    {formatCurrency(totalEstimatedPayout)}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    {nextPaymentDate 
+                                                        ? nextPaymentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                                                        : 'Based on latest valuation'}
                                                 </div>
                                             </>
                                         )
-                                    }
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(totalEstimatedPayout)}
-                                            </div>
-                                            <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                                {nextPaymentDate 
-                                                    ? `Estimated - ${nextPaymentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
-                                                    : 'Based on latest valuation'}
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
+                                    })()}
+                                </div>
+                            </Card>
                         </div>
-                    </Card>
+                    </div>
 
                     {/* Profit Awards Table */}
                     {(!stakeholder.profitAwards || stakeholder.profitAwards.length === 0) ? (
@@ -1804,7 +2152,8 @@ const StakeholderDetail = () => {
                                 </Table.THead>
                                 <Table.TBody>
                                     {stakeholder.profitAwards.map((award) => {
-                                        const payouts = calculateAwardPayouts(award)
+                                        // For payout history, only show actual payouts (not estimated)
+                                        const payouts = calculateAwardPayouts(award, false)
                                         const totalPayout = payouts.reduce((sum, p) => sum + p.payout, 0)
                                         const isExpanded = expandedAwardId === award.id
                                         
@@ -1967,7 +2316,7 @@ const StakeholderDetail = () => {
                                                                             <Table.Th>Profit</Table.Th>
                                                                             <Table.Th>Price per Share</Table.Th>
                                                                             <Table.Th>Shares</Table.Th>
-                                                                            <Table.Th>Estimated Payout</Table.Th>
+                                                                            <Table.Th>Payout</Table.Th>
                                                                         </Table.Tr>
                                                                     </Table.THead>
                                                                     <Table.TBody>
@@ -2006,7 +2355,7 @@ const StakeholderDetail = () => {
                                                                 </Table>
                                                                 <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-700">
                                                                     <div className="text-sm">
-                                                                        <span className="text-gray-600 dark:text-gray-400">Total estimated payout: </span>
+                                                                        <span className="text-gray-600 dark:text-gray-400">Total payout: </span>
                                                                         <span className="font-semibold text-gray-900 dark:text-white">
                                                                             {formatCurrency(totalPayout)}
                                                                         </span>
