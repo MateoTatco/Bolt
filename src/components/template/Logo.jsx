@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { APP_NAME } from '@/constants/app.constant'
 
-const LOGO_SRC_PATH = '/img/logo/'
+const LOGO_SRC_PATH = '/img/newLogoFav/BOLT Logo.png'
 
 const Logo = (props) => {
     const {
@@ -23,7 +23,7 @@ const Logo = (props) => {
         >
             <img
                 className={imgClass}
-                src={`${LOGO_SRC_PATH}logo-${mode}-${type}.png`}
+                src={LOGO_SRC_PATH}
                 alt={`${APP_NAME} logo`}
             />
         </div>

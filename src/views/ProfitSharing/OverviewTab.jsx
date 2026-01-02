@@ -202,21 +202,15 @@ const OverviewTab = () => {
         }
     }
 
-    // Load current user's stakeholder data across all companies they have access to
+    // Load current user's stakeholder data across all companies
+    // IMPORTANT: Load ALL stakeholder records for the user, not just those in accessRecords
+    // This ensures users see all their awards across all companies, even if accessRecords is incomplete
     const loadMyStakeholderData = async () => {
         setLoadingMyData(true)
         try {
             const currentUserId = user?.id || user?.uid
-            if (!currentUserId) {
-                setMyStakeholderData([])
-                setLoadingMyData(false)
-                return
-            }
-
-            // Get all companies the user has access to
-            const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
             
-            if (userCompanyIds.length === 0) {
+            if (!currentUserId) {
                 setMyStakeholderData([])
                 setLoadingMyData(false)
                 return
@@ -224,38 +218,77 @@ const OverviewTab = () => {
 
             const response = await FirebaseDbService.stakeholders.getAll()
             if (response.success) {
-                // Filter to only this user's stakeholder records across their accessible companies
-                const myData = response.data
-                    .filter(stakeholder => 
-                        stakeholder.linkedUserId === currentUserId && 
-                        userCompanyIds.includes(stakeholder.companyId)
-                    )
-                    .map(stakeholder => ({
-                        ...stakeholder,
-                        createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
-                        updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
-                    }))
+                // Load ALL stakeholder records for this user (not filtered by accessRecords)
+                // This ensures we capture all awards across all companies
+                const allMyStakeholders = response.data.filter(
+                    stakeholder => stakeholder.linkedUserId === currentUserId
+                )
+                
+                // Map and format the data
+                const myData = allMyStakeholders.map(stakeholder => ({
+                    ...stakeholder,
+                    createdAt: stakeholder.createdAt?.toDate ? stakeholder.createdAt.toDate() : stakeholder.createdAt,
+                    updatedAt: stakeholder.updatedAt?.toDate ? stakeholder.updatedAt.toDate() : stakeholder.updatedAt,
+                }))
                 
                 setMyStakeholderData(myData)
             } else {
-                console.error('Error loading my stakeholder data:', response.error)
+                console.error('[OverviewTab] Error loading my stakeholder data:', response.error)
                 setMyStakeholderData([])
             }
         } catch (error) {
-            console.error('Error loading my stakeholder data:', error)
+            console.error('[OverviewTab] Error loading my stakeholder data:', error)
             setMyStakeholderData([])
         } finally {
             setLoadingMyData(false)
         }
     }
 
-    // Load plans for companies the user has access to (for non-admins)
+    // Load plans for companies where user has awards (for non-admins)
+    // IMPORTANT: Load plans from ALL companies where user has stakeholder records with awards,
+    // not just companies from accessRecords (similar to loadMyStakeholderData)
     const loadMyPlans = async () => {
         setLoadingPlans(true)
         try {
-            const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
+            const currentUserId = user?.id || user?.uid
             
-            if (userCompanyIds.length === 0) {
+            if (!currentUserId) {
+                setPlans([])
+                setLoadingPlans(false)
+                return
+            }
+
+            // Get company IDs from stakeholder records (where user has awards)
+            let companyIdsFromStakeholders = []
+            try {
+                const stakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
+                if (stakeholdersResponse.success) {
+                    const userStakeholders = stakeholdersResponse.data.filter(
+                        sh => sh.linkedUserId === currentUserId
+                    )
+                    
+                    // Get unique company IDs from stakeholder records that have awards
+                    userStakeholders.forEach(sh => {
+                        if (sh.profitAwards && Array.isArray(sh.profitAwards) && sh.profitAwards.length > 0) {
+                            if (sh.companyId && !companyIdsFromStakeholders.includes(sh.companyId)) {
+                                companyIdsFromStakeholders.push(sh.companyId)
+                            }
+                        }
+                    })
+                }
+            } catch (stakeholderError) {
+                console.error('[OverviewTab] Error loading stakeholder records for plans:', stakeholderError)
+            }
+
+            // Also get company IDs from accessRecords (fallback if no stakeholder records found)
+            const accessRecordCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
+            
+            // Use company IDs from stakeholder records (where user has awards)
+            const finalCompanyIds = companyIdsFromStakeholders.length > 0 
+                ? companyIdsFromStakeholders 
+                : accessRecordCompanyIds
+            
+            if (finalCompanyIds.length === 0) {
                 setPlans([])
                 setLoadingPlans(false)
                 return
@@ -263,24 +296,28 @@ const OverviewTab = () => {
 
             const plansRef = collection(db, 'profitSharingPlans')
             const snapshot = await getDocs(plansRef)
-            const plansData = snapshot.docs
-                .map(docSnap => {
-                    const data = docSnap.data()
-                    const paymentScheduleDates = Array.isArray(data.paymentScheduleDates)
-                        ? data.paymentScheduleDates
-                              .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
-                              .filter(Boolean)
-                        : []
-                    return {
-                        id: docSnap.id,
-                        ...data,
-                        paymentScheduleDates,
-                    }
-                })
-                .filter(plan => userCompanyIds.includes(plan.companyId) && plan.status === 'finalized')
+            const allPlans = snapshot.docs.map(docSnap => {
+                const data = docSnap.data()
+                const paymentScheduleDates = Array.isArray(data.paymentScheduleDates)
+                    ? data.paymentScheduleDates
+                          .map((d) => (d?.toDate ? d.toDate() : (d ? new Date(d) : null)))
+                          .filter(Boolean)
+                    : []
+                return {
+                    id: docSnap.id,
+                    ...data,
+                    paymentScheduleDates,
+                }
+            })
+            
+            // Filter plans: only finalized plans from companies where user has awards
+            const plansData = allPlans.filter(plan => 
+                finalCompanyIds.includes(plan.companyId) && plan.status === 'finalized'
+            )
+            
             setPlans(plansData)
         } catch (error) {
-            console.error('Error loading my plans:', error)
+            console.error('[OverviewTab] Error loading my plans:', error)
             setPlans([])
         } finally {
             setLoadingPlans(false)
@@ -771,6 +808,7 @@ const OverviewTab = () => {
             companyName: companies.find(c => c.id === sh.companyId)?.name || 'Unknown Company'
         }))
     )
+    
 
     return (
         <div className="space-y-8">

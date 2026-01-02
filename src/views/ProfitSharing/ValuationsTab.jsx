@@ -10,6 +10,7 @@ import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
+import { useSessionUser } from '@/store/authStore'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
@@ -36,6 +37,7 @@ const formatNumber = (value) => {
 const ValuationsTab = () => {
     const { selectedCompanyId, loading: loadingCompany, setSelectedCompany } = useSelectedCompany()
     const { userRole, canEdit, loading: loadingAccess, accessRecords } = useProfitSharingAccess()
+    const user = useSessionUser((state) => state.user)
     const isAdmin = canEdit || userRole === 'admin'
     const [valuations, setValuations] = useState([])
     const [loading, setLoading] = useState(true)
@@ -59,6 +61,10 @@ const ValuationsTab = () => {
     })
 
     // Load companies user has access to
+    // IMPORTANT: This logic ensures correct company filtering for both admin and non-admin users:
+    // - Admins: See ALL companies (they need full access for management)
+    // - Non-admins: See ONLY companies where they have actual stakeholder records with profitAwards
+    //   This prevents non-admins from seeing companies they're "added to" but have no awards in
     useEffect(() => {
         if (loadingAccess) return
         
@@ -66,19 +72,50 @@ const ValuationsTab = () => {
             setLoadingCompanies(true)
             try {
                 if (isAdmin) {
-                    // Admins can see all companies
+                    // Admins can see all companies - they need full visibility for management
                     const result = await FirebaseDbService.companies.getAll()
                     if (result.success) {
                         setCompanies(result.data)
                     }
                 } else {
-                    // Non-admins only see companies they have access to
-                    const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
-                    if (userCompanyIds.length > 0) {
+                    // Non-admins: Only show companies where they have actual stakeholder records with awards
+                    const currentUserId = user?.id || user?.uid
+                    
+                    // Get company IDs from actual stakeholder records with awards
+                    let awardCompanyIds = []
+                    if (currentUserId) {
+                        try {
+                            const stakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
+                            if (stakeholdersResponse.success) {
+                                // Find all stakeholder records for this user
+                                const userStakeholders = stakeholdersResponse.data.filter(
+                                    sh => sh.linkedUserId === currentUserId
+                                )
+                                
+                                // Get unique company IDs from stakeholder records that have awards
+                                userStakeholders.forEach(sh => {
+                                    if (sh.profitAwards && Array.isArray(sh.profitAwards) && sh.profitAwards.length > 0) {
+                                        if (sh.companyId && !awardCompanyIds.includes(sh.companyId)) {
+                                            awardCompanyIds.push(sh.companyId)
+                                        }
+                                    }
+                                })
+                            }
+                        } catch (stakeholderError) {
+                            console.error('[ValuationsTab] Error loading stakeholder records:', stakeholderError)
+                        }
+                    }
+                    
+                    // For non-admin users, ONLY show companies where they have actual awards
+                    // This ensures they don't see companies they're just "added to" but have no awards
+                    // Even if they have accessRecords for a company, if they have no awards there, don't show it
+                    const finalCompanyIds = awardCompanyIds
+                    
+                    if (finalCompanyIds.length > 0) {
                         const allCompaniesResult = await FirebaseDbService.companies.getAll()
                         if (allCompaniesResult.success) {
                             const accessibleCompanies = allCompaniesResult.data.filter(
-                                company => userCompanyIds.includes(company.id)
+                                company => finalCompanyIds.includes(company.id)
                             )
                             setCompanies(accessibleCompanies)
                         }
@@ -87,7 +124,7 @@ const ValuationsTab = () => {
                     }
                 }
             } catch (error) {
-                console.error('Error loading companies:', error)
+                console.error('[ValuationsTab] Error loading companies:', error)
                 setCompanies([])
             } finally {
                 setLoadingCompanies(false)
@@ -95,7 +132,7 @@ const ValuationsTab = () => {
         }
         
         loadCompanies()
-    }, [loadingAccess, isAdmin, accessRecords])
+    }, [loadingAccess, isAdmin, accessRecords, user])
 
     useEffect(() => {
         if (loadingCompany) {
@@ -606,11 +643,11 @@ const ValuationsTab = () => {
     }
 
     // Get accessible companies for dropdown (only show if user has multiple companies)
-    const accessibleCompanies = companies.filter(company => {
-        if (isAdmin) return true
-        const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
-        return userCompanyIds.includes(company.id)
-    })
+    // IMPORTANT: Do NOT re-filter here - the `companies` state is already correctly filtered:
+    // - For non-admin users: Only companies with actual awards (filtered in loadCompanies)
+    // - For admin users: All companies (loaded in loadCompanies)
+    // Re-filtering here would undo the correct filtering logic above
+    const accessibleCompanies = companies // Already filtered correctly in loadCompanies
     const showCompanyDropdown = accessibleCompanies.length > 1
 
     // Filter valuations by selected plan

@@ -60,7 +60,6 @@ const loadTemplate = async (templateType) => {
     // Try each path until one succeeds
     for (const templatePath of pathsToTry) {
         try {
-            console.log(`[DocumentGeneration] Attempting to load template from: ${templatePath}`)
             const templateRef = storageRef(storage, templatePath)
             const templateBytes = await getBytes(templateRef)
             
@@ -68,7 +67,6 @@ const loadTemplate = async (templateType) => {
                 throw new Error(`Template file is empty: ${templatePath}`)
             }
             
-            console.log(`[DocumentGeneration] Template loaded successfully from: ${templatePath}, size: ${templateBytes.byteLength} bytes`)
             return templateBytes
         } catch (error) {
             // Store error but continue trying other paths
@@ -135,10 +133,8 @@ const loadTemplate = async (templateType) => {
  */
 export const generateDocument = async (templateType, data) => {
     try {
-        console.log('[DocumentGeneration] Loading template:', templateType)
         // Load template
         const templateBytes = await loadTemplate(templateType)
-        console.log('[DocumentGeneration] Template loaded, size:', templateBytes.byteLength, 'bytes')
         
         // Create PizZip instance from template
         const zip = new PizZip(templateBytes)
@@ -162,13 +158,10 @@ export const generateDocument = async (templateType, data) => {
             const cleanKey = key.replace(/[{}]/g, '').trim()
             templateData[cleanKey] = data[key] || ''
         })
-        
-        console.log('[DocumentGeneration] Template data to render:', templateData)
 
         try {
             // Render the document with data (new API - render with data directly)
             doc.render(templateData)
-            console.log('[DocumentGeneration] Document rendered successfully')
         } catch (error) {
             // Handle rendering errors (e.g., missing placeholders)
             console.error('[DocumentGeneration] Document rendering error:', error)
@@ -230,7 +223,6 @@ export const generateDocument = async (templateType, data) => {
             
             // Update the document XML
             zip.file('word/document.xml', modifiedXml)
-            console.log('[DocumentGeneration] Applied script font formatting to signature names')
         } catch (postProcessError) {
             console.warn('[DocumentGeneration] Post-processing XML failed, continuing without script font formatting:', postProcessError)
             // Continue without post-processing - template should handle formatting
@@ -242,8 +234,6 @@ export const generateDocument = async (templateType, data) => {
             mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             compression: 'DEFLATE',
         })
-        
-        console.log('[DocumentGeneration] Generated blob size:', blob.size, 'bytes')
 
         return blob
     } catch (error) {
@@ -290,11 +280,9 @@ export const generatePlanDocument = async (planData, companyData, planId) => {
     try {
         // Map plan and company data to template placeholders
         const templateData = mapPlanDataToTemplate(planData, companyData)
-        console.log('[DocumentGeneration] Template data for plan:', templateData)
         
         // Generate DOCX document
         const docxBlob = await generateDocument('PLAN', templateData)
-        console.log('[DocumentGeneration] Generated DOCX blob size:', docxBlob.size, 'bytes')
         
         if (docxBlob.size < 1000) {
             console.warn('[DocumentGeneration] DOCX blob is suspiciously small, might be empty or corrupted')
@@ -304,12 +292,10 @@ export const generatePlanDocument = async (planData, companyData, planId) => {
         const docxFileName = `plan-${planId}-${Date.now()}.docx`
         const docxStoragePath = `profitSharing/plans/${planId}/${docxFileName}`
         const docxResult = await uploadGeneratedDocument(docxBlob, docxStoragePath)
-        console.log('[DocumentGeneration] DOCX uploaded successfully:', docxResult.url)
         
         // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            console.log('[DocumentGeneration] Converting DOCX to PDF using Firebase Function...')
             const pdfFileName = `plan-${planId}-${Date.now()}.pdf`
             
             // Call Firebase Function to convert DOCX to PDF
@@ -324,7 +310,6 @@ export const generatePlanDocument = async (planData, companyData, planId) => {
                     url: conversionResult.data.pdfUrl,
                     path: conversionResult.data.pdfPath || `profitSharing/plans/${planId}/${pdfFileName}`
                 }
-                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
             } else {
                 throw new Error('PDF conversion returned no URL')
             }
@@ -375,7 +360,6 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
         // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            console.log('[DocumentGeneration] Converting DOCX to PDF using Firebase Function...')
             const pdfFileName = `award-${stakeholderId}-${awardId}-${Date.now()}.pdf`
             
             // Call Firebase Function to convert DOCX to PDF
@@ -390,7 +374,6 @@ export const generateAwardDocument = async (awardData, planData, stakeholderData
                     url: conversionResult.data.pdfUrl,
                     path: conversionResult.data.pdfPath || `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
                 }
-                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
             } else {
                 throw new Error('PDF conversion returned no URL')
             }
@@ -442,7 +425,6 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
         // Convert DOCX to PDF using Firebase Function
         let pdfResult = null
         try {
-            console.log('[DocumentGeneration] Converting signed DOCX to PDF using Firebase Function...')
             const pdfFileName = `award-signed-${stakeholderId}-${awardId}-${Date.now()}.pdf`
             
             // Call Firebase Function to convert DOCX to PDF
@@ -457,7 +439,6 @@ export const generateAwardDocumentWithSignature = async (awardData, planData, st
                     url: conversionResult.data.pdfUrl,
                     path: conversionResult.data.pdfPath || `profitSharing/awards/${stakeholderId}/${awardId}/${pdfFileName}`
                 }
-                console.log('[DocumentGeneration] PDF conversion successful:', pdfResult.url)
             } else {
                 throw new Error('PDF conversion returned no URL')
             }

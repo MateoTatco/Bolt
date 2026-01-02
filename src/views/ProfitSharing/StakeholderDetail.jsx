@@ -1768,276 +1768,355 @@ const StakeholderDetail = () => {
                         )
                     })()}
 
-                    {/* KPI Cards - 2x2 grid */}
-                    <div className="space-y-6">
-                        {/* First Row: 2 cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Estimated Profit */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Profit</div>
-                                {(() => {
-                                        // Filter valuations by selected plan
-                                        let filteredValuations = valuations
-                                        if (selectedPlanForKPIs) {
-                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
-                                        }
+                    {/* KPI Cards - Dynamic grid (2x2 if 4 cards, 2x1 if 3 cards) */}
+                    {(() => {
+                        // Check if estimated profit exists
+                        let filteredValuations = valuations
+                        if (selectedPlanForKPIs) {
+                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                        }
+                        
+                        const now = new Date()
+                        const futureEstimates = filteredValuations
+                            .filter(v => {
+                                if (v.profitType !== 'estimated') return false
+                                const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                return valDate > now
+                            })
+                            .sort((a, b) => {
+                                const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                return aDate - bDate // Earliest first
+                            })
+                        
+                        const hasEstimatedProfit = !!futureEstimates[0]
+                        const nextEstimate = futureEstimates[0]
+                        
+                        return (
+                            <div className="space-y-6">
+                                {/* First Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Estimated Profit - Only show if there are estimated profits */}
+                                    {hasEstimatedProfit && nextEstimate && (() => {
+                                        const estimateDate = nextEstimate.valuationDate instanceof Date 
+                                            ? nextEstimate.valuationDate 
+                                            : new Date(nextEstimate.valuationDate)
                                         
-                                    // Find the next estimated profit entry (future date, profitType = 'estimated')
-                                    const now = new Date()
-                                        const futureEstimates = filteredValuations
-                                        .filter(v => {
-                                            if (v.profitType !== 'estimated') return false
-                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                            return valDate > now
-                                        })
-                                        .sort((a, b) => {
-                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                            return aDate - bDate // Earliest first
-                                        })
-                                    
-                                    const nextEstimate = futureEstimates[0]
-                                    if (!nextEstimate) {
                                         return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No estimated profit</div>
-                                            </>
+                                            <Card className="p-6">
+                                                <div className="space-y-2">
+                                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
+                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                        {formatCurrency(nextEstimate.profitAmount || 0)}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                    </div>
+                                                </div>
+                                            </Card>
                                         )
-                                    }
-                                    
-                                    const estimateDate = nextEstimate.valuationDate instanceof Date 
-                                        ? nextEstimate.valuationDate 
-                                        : new Date(nextEstimate.valuationDate)
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                {formatCurrency(nextEstimate.profitAmount || 0)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
+                                    })()}
 
-                            {/* Estimated Payout */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Payout</div>
-                                {(() => {
-                                        if (!stakeholder || !stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
-                                            return (
-                                                <>
-                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No awards</div>
-                                                </>
-                                            )
-                                        }
-                                        
-                                        // Filter awards by selected plan
-                                        let relevantAwards = stakeholder.profitAwards
-                                        if (selectedPlanForKPIs) {
-                                            relevantAwards = stakeholder.profitAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Filter valuations by selected plan
-                                        let filteredValuations = valuations
-                                        if (selectedPlanForKPIs) {
-                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Get latest valuation for calculation
-                                        const latestValuation = filteredValuations.length > 0
-                                            ? filteredValuations.sort((a, b) => {
-                                                const aDate = a.valuationDate?.getTime() || 0
-                                                const bDate = b.valuationDate?.getTime() || 0
-                                                return bDate - aDate
-                                            })[0]
-                                            : null
-                                        
-                                        if (!latestValuation) {
-                                        return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No valuations</div>
-                                            </>
-                                        )
-                                    }
-                                    
-                                        // Calculate price per share
-                                        const pricePerShare = latestValuation.pricePerShare || 
-                                            (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
-                                                ? latestValuation.profitAmount / latestValuation.totalShares 
-                                                : 0)
-                                        
-                                        // Calculate total estimated payout
-                                        const totalEstimatedPayout = relevantAwards.reduce((sum, award) => {
-                                            if (!award.sharesIssued || award.sharesIssued === 0) return sum
-                                            return sum + ((award.sharesIssued || 0) * pricePerShare)
-                                        }, 0)
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                    {formatCurrency(totalEstimatedPayout)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    Based on latest valuation
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
-
-                        </div>
-
-                        {/* Second Row: 2 cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Last Quarter Payout */}
-                        <Card className="p-6">
-                            <div className="space-y-2">
-                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Quarter Payout</div>
-                                {(() => {
-                                        // Filter valuations by selected plan
-                                        let filteredValuations = valuations
-                                        if (selectedPlanForKPIs) {
-                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Find actual profit entries from the last quarter (last 3 months)
-                                    const now = new Date()
-                                        now.setHours(23, 59, 59, 999) // End of today
-                                        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1) // Start of month 3 months ago
-                                        threeMonthsAgo.setHours(0, 0, 0, 0)
-                                    
-                                        const lastQuarterActuals = filteredValuations
-                                        .filter(v => {
-                                            if (v.profitType !== 'actual') return false
-                                                if (!v.valuationDate) return false
-                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                                if (isNaN(valDate.getTime())) return false
-                                                return valDate >= threeMonthsAgo && valDate <= now
-                                            })
-                                            .sort((a, b) => {
-                                                const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                                const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                                return bDate - aDate // Most recent first
-                                            })
-                                        
-                                        if (lastQuarterActuals.length === 0) {
-                                            return (
-                                                <>
-                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No payouts in last quarter</div>
-                                                </>
-                                            )
-                                        }
-                                        
-                                        // Filter awards by selected plan
-                                        let relevantAwards = stakeholder?.profitAwards || []
-                                        if (selectedPlanForKPIs) {
-                                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Calculate total payout from last quarter actuals
-                                        let totalPayout = 0
-                                        
-                                        lastQuarterActuals.forEach(valuation => {
-                                            const pricePerShare = valuation.pricePerShare || 
-                                                (valuation.profitAmount && valuation.totalShares && valuation.totalShares > 0
-                                                    ? valuation.profitAmount / valuation.totalShares 
-                                                    : 0)
-                                            
-                                            // Only calculate for awards that match this valuation's plan
-                                            relevantAwards
-                                                .filter(award => award.planId === valuation.planId)
-                                                .forEach(award => {
-                                                    if (award.sharesIssued && award.sharesIssued > 0) {
-                                                        const payout = award.sharesIssued * pricePerShare
-                                                        totalPayout += payout
-                                                    }
-                                                })
-                                        })
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                    {formatCurrency(totalPayout)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    Last 3 months
-                                            </div>
-                                        </>
-                                    )
-                                })()}
-                            </div>
-                        </Card>
-
-                            {/* Total Payout */}
-                    <Card className="p-6">
-                                <div className="space-y-2">
-                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Payout</div>
-                                {(() => {
-                                        // Filter valuations by selected plan
-                                        let filteredValuations = valuations
-                                        if (selectedPlanForKPIs) {
-                                            filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Get all actual profit entries (not estimated)
-                                        const actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
-                                        
-                                        if (actualValuations.length === 0) {
-                                        return (
-                                            <>
-                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
-                                            </>
-                                        )
-                                    }
-                                    
-                                        // Filter awards by selected plan
-                                        let relevantAwards = stakeholder?.profitAwards || []
-                                        if (selectedPlanForKPIs) {
-                                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                        }
-                                        
-                                        // Calculate total payout from all actual valuations
-                                        let totalPayout = 0
-                                        actualValuations.forEach(valuation => {
-                                            const pricePerShare = valuation.pricePerShare || 
-                                                (valuation.profitAmount && valuation.totalShares && valuation.totalShares > 0
-                                                    ? valuation.profitAmount / valuation.totalShares 
-                                                    : 0)
-                                            
-                                            relevantAwards.forEach(award => {
-                                                if (award.sharesIssued && award.sharesIssued > 0 && award.planId === valuation.planId) {
-                                                    totalPayout += (award.sharesIssued * pricePerShare)
+                                    {/* Estimated Payout */}
+                                    <Card className="p-6">
+                                        <div className="space-y-2">
+                                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Payout</div>
+                                            {(() => {
+                                                if (!stakeholder || !stakeholder.profitAwards || stakeholder.profitAwards.length === 0) {
+                                                    return (
+                                                        <>
+                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">No awards</div>
+                                                        </>
+                                                    )
                                                 }
-                                            })
-                                        })
-                                    
-                                    return (
-                                        <>
-                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                    {formatCurrency(totalPayout)}
+                                                
+                                                // Filter awards by selected plan
+                                                let relevantAwards = stakeholder.profitAwards
+                                                if (selectedPlanForKPIs) {
+                                                    relevantAwards = stakeholder.profitAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                }
+                                                
+                                                // Filter valuations by selected plan
+                                                let filteredValuations = valuations
+                                                if (selectedPlanForKPIs) {
+                                                    filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                                }
+                                                
+                                                // Get latest valuation for calculation
+                                                const latestValuation = filteredValuations.length > 0
+                                                    ? filteredValuations.sort((a, b) => {
+                                                        const aDate = a.valuationDate?.getTime() || 0
+                                                        const bDate = b.valuationDate?.getTime() || 0
+                                                        return bDate - aDate
+                                                    })[0]
+                                                    : null
+                                                
+                                                if (!latestValuation) {
+                                                    return (
+                                                        <>
+                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">No valuations</div>
+                                                        </>
+                                                    )
+                                                }
+                                                
+                                                // Calculate price per share
+                                                const pricePerShare = latestValuation.pricePerShare || 
+                                                    (latestValuation.profitAmount && latestValuation.totalShares && latestValuation.totalShares > 0
+                                                        ? latestValuation.profitAmount / latestValuation.totalShares 
+                                                        : 0)
+                                                
+                                                // Calculate total estimated payout
+                                                const totalEstimatedPayout = relevantAwards.reduce((sum, award) => {
+                                                    if (!award.sharesIssued || award.sharesIssued === 0) return sum
+                                                    return sum + ((award.sharesIssued || 0) * pricePerShare)
+                                                }, 0)
+                                            
+                                                return (
+                                                    <>
+                                                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                            {formatCurrency(totalEstimatedPayout)}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            Based on latest valuation
+                                                        </div>
+                                                    </>
+                                                )
+                                            })()}
+                                        </div>
+                                    </Card>
+
+                                    {/* If no estimated profit, show Last Period Payout in first row (2x1 layout) */}
+                                    {!hasEstimatedProfit && (
+                                        <Card className="p-6">
+                                            <div className="space-y-2">
+                                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Period Payout</div>
+                                                {(() => {
+                                                    // Filter valuations by selected plan
+                                                    let filteredValuations = valuations
+                                                    if (selectedPlanForKPIs) {
+                                                        filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
+                                                    // Find the most recent actual profit entry (not based on date range)
+                                                    const actualValuations = filteredValuations
+                                                        .filter(v => {
+                                                            if (v.profitType !== 'actual') return false
+                                                            if (!v.valuationDate) return false
+                                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                            return !isNaN(valDate.getTime())
+                                                        })
+                                                        .sort((a, b) => {
+                                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                                            return bDate - aDate // Most recent first
+                                                        })
+                                                    
+                                                    if (actualValuations.length === 0) {
+                                                        return (
+                                                            <>
+                                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
+                                                            </>
+                                                        )
+                                                    }
+                                                    
+                                                    // Get the most recent actual valuation (last entered payout)
+                                                    const lastPeriodValuation = actualValuations[0]
+                                                    
+                                                    // Filter awards by selected plan
+                                                    let relevantAwards = stakeholder?.profitAwards || []
+                                                    if (selectedPlanForKPIs) {
+                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
+                                                    // Calculate payout based on the single most recent actual valuation
+                                                    const pricePerShare = lastPeriodValuation.pricePerShare || 
+                                                        (lastPeriodValuation.profitAmount && lastPeriodValuation.totalShares && lastPeriodValuation.totalShares > 0
+                                                            ? lastPeriodValuation.profitAmount / lastPeriodValuation.totalShares 
+                                                            : 0)
+                                                    
+                                                    let totalPayout = 0
+                                                    
+                                                    // Only calculate for awards that match this valuation's plan
+                                                    relevantAwards
+                                                        .filter(award => award.planId === lastPeriodValuation.planId)
+                                                        .forEach(award => {
+                                                            if (award.sharesIssued && award.sharesIssued > 0) {
+                                                                const payout = award.sharesIssued * pricePerShare
+                                                                totalPayout += payout
+                                                            }
+                                                        })
+                                                    
+                                                    // Format the date for display
+                                                    const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
+                                                        ? lastPeriodValuation.valuationDate 
+                                                        : new Date(lastPeriodValuation.valuationDate)
+                                                    const formattedDate = valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                
+                                                    return (
+                                                        <>
+                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                                {formatCurrency(totalPayout)}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                                Last period: {formattedDate}
+                                                            </div>
+                                                        </>
+                                                    )
+                                                })()}
                                             </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    All time (actuals only)
+                                        </Card>
+                                    )}
+                                </div>
+
+                                {/* Second Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Last Period Payout - Only show in second row if estimated profit exists (2x2 layout) */}
+                                    {hasEstimatedProfit && (
+                                        <Card className="p-6">
+                                            <div className="space-y-2">
+                                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Period Payout</div>
+                                                {(() => {
+                                                    // Filter valuations by selected plan
+                                                    let filteredValuations = valuations
+                                                    if (selectedPlanForKPIs) {
+                                                        filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
+                                                    // Find the most recent actual profit entry (not based on date range)
+                                                    const actualValuations = filteredValuations
+                                                        .filter(v => {
+                                                            if (v.profitType !== 'actual') return false
+                                                            if (!v.valuationDate) return false
+                                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                            return !isNaN(valDate.getTime())
+                                                        })
+                                                        .sort((a, b) => {
+                                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                                            return bDate - aDate // Most recent first
+                                                        })
+                                                    
+                                                    if (actualValuations.length === 0) {
+                                                        return (
+                                                            <>
+                                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
+                                                            </>
+                                                        )
+                                                    }
+                                                    
+                                                    // Get the most recent actual valuation (last entered payout)
+                                                    const lastPeriodValuation = actualValuations[0]
+                                                    
+                                                    // Filter awards by selected plan
+                                                    let relevantAwards = stakeholder?.profitAwards || []
+                                                    if (selectedPlanForKPIs) {
+                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
+                                                    // Calculate payout based on the single most recent actual valuation
+                                                    const pricePerShare = lastPeriodValuation.pricePerShare || 
+                                                        (lastPeriodValuation.profitAmount && lastPeriodValuation.totalShares && lastPeriodValuation.totalShares > 0
+                                                            ? lastPeriodValuation.profitAmount / lastPeriodValuation.totalShares 
+                                                            : 0)
+                                                    
+                                                    let totalPayout = 0
+                                                    
+                                                    // Only calculate for awards that match this valuation's plan
+                                                    relevantAwards
+                                                        .filter(award => award.planId === lastPeriodValuation.planId)
+                                                        .forEach(award => {
+                                                            if (award.sharesIssued && award.sharesIssued > 0) {
+                                                                const payout = award.sharesIssued * pricePerShare
+                                                                totalPayout += payout
+                                                            }
+                                                        })
+                                                    
+                                                    // Format the date for display
+                                                    const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
+                                                        ? lastPeriodValuation.valuationDate 
+                                                        : new Date(lastPeriodValuation.valuationDate)
+                                                    const formattedDate = valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                
+                                                    return (
+                                                        <>
+                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                                {formatCurrency(totalPayout)}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                                Last period: {formattedDate}
+                                                            </div>
+                                                        </>
+                                                    )
+                                                })()}
                                             </div>
-                                        </>
-                                    )
-                                })()}
-                        </div>
-                    </Card>
-                        </div>
-                    </div>
+                                        </Card>
+                                    )}
+
+                                    {/* Total Payout */}
+                                    <Card className="p-6">
+                                        <div className="space-y-2">
+                                            <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Payout to Date</div>
+                                            {(() => {
+                                                // Filter valuations by selected plan
+                                                let filteredValuations = valuations
+                                                if (selectedPlanForKPIs) {
+                                                    filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                                }
+                                                
+                                                // Get all actual profit entries (not estimated)
+                                                const actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
+                                                
+                                                if (actualValuations.length === 0) {
+                                                    return (
+                                                        <>
+                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
+                                                        </>
+                                                    )
+                                                }
+                                                
+                                                // Filter awards by selected plan
+                                                let relevantAwards = stakeholder?.profitAwards || []
+                                                if (selectedPlanForKPIs) {
+                                                    relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                }
+                                                
+                                                // Calculate total payout from all actual valuations
+                                                let totalPayout = 0
+                                                actualValuations.forEach(valuation => {
+                                                    const pricePerShare = valuation.pricePerShare || 
+                                                        (valuation.profitAmount && valuation.totalShares && valuation.totalShares > 0
+                                                            ? valuation.profitAmount / valuation.totalShares 
+                                                            : 0)
+                                                    
+                                                    relevantAwards.forEach(award => {
+                                                        if (award.sharesIssued && award.sharesIssued > 0 && award.planId === valuation.planId) {
+                                                            totalPayout += (award.sharesIssued * pricePerShare)
+                                                        }
+                                                    })
+                                                })
+                                            
+                                                return (
+                                                    <>
+                                                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                            {formatCurrency(totalPayout)}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            All time (actuals only)
+                                                        </div>
+                                                    </>
+                                                )
+                                            })()}
+                                        </div>
+                                    </Card>
+                                </div>
+                            </div>
+                        )
+                    })()}
 
                     {/* Profit Awards Table */}
                     {(!stakeholder.profitAwards || stakeholder.profitAwards.length === 0) ? (
