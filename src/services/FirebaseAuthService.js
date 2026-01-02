@@ -135,5 +135,59 @@ export const FirebaseAuthService = {
                 error: error.message
             }
         }
+    },
+
+    // Create user with email and send password reset email
+    // This is used for admin-created users who need to set their own password
+    createUserWithPasswordReset: async (email, displayName) => {
+        try {
+            // Generate a secure temporary password
+            const tempPassword = generateSecurePassword()
+            
+            // Create the user with temporary password
+            const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword)
+            
+            // Update display name if provided
+            if (displayName) {
+                await updateProfile(userCredential.user, { displayName })
+            }
+            
+            // Send password reset email so user can set their own password
+            await sendPasswordResetEmail(auth, email)
+            
+            return {
+                success: true,
+                user: userCredential.user,
+                userId: userCredential.user.uid
+            }
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                errorCode: error.code
+            }
+        }
     }
+}
+
+// Generate a secure random password for new users
+// They will receive a password reset email to set their own password
+function generateSecurePassword() {
+    const length = 16
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
+    let password = ''
+    
+    // Ensure at least one of each required character type
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)] // uppercase
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)] // lowercase
+    password += '0123456789'[Math.floor(Math.random() * 10)] // number
+    password += '!@#$%^&*'[Math.floor(Math.random() * 8)] // special char
+    
+    // Fill the rest randomly
+    for (let i = password.length; i < length; i++) {
+        password += charset[Math.floor(Math.random() * charset.length)]
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('')
 }

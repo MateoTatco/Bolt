@@ -1485,7 +1485,12 @@ export const FirebaseDbService = {
                 })
                 return { success: true, data: { id: docRef.id, ...invitationData } }
             } catch (error) {
-                console.error('User invitation create error:', error)
+                // Silently handle permission errors - invitation record is optional
+                if (error.code === 'permission-denied' || error.message?.includes('permission')) {
+                    return { success: false, error: error.message, silent: true }
+                }
+                // Only log non-permission errors
+                console.warn('User invitation create error (non-critical):', error.message)
                 return { success: false, error: error.message }
             }
         },

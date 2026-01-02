@@ -6,6 +6,8 @@ import { ProcoreService } from '@/services/ProcoreService'
 import { useSessionUser } from '@/store/authStore'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
+import { FirebaseAuthService } from '@/services/FirebaseAuthService'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 
 // Authorized emails that can access Advanced Features Dashboard
 const AUTHORIZED_EMAILS = [
@@ -201,6 +203,60 @@ const AdvancedFeatures = () => {
             const invitedByEmail = user?.email || null
             const invitedByName = user?.userName || user?.name || null
 
+            // Step 1: Create Firebase Auth user and send password reset email
+            const displayName = trimmedFirst && trimmedLast 
+                ? `${trimmedFirst} ${trimmedLast}`.trim()
+                : trimmedFirst || trimmedLast || trimmedEmail.split('@')[0]
+            
+            const authResult = await FirebaseAuthService.createUserWithPasswordReset(
+                trimmedEmail,
+                displayName
+            )
+
+            if (!authResult.success) {
+                // Check if user already exists
+                if (authResult.errorCode === 'auth/email-already-in-use') {
+                    throw new Error('A user with this email already exists in Firebase Auth.')
+                }
+                throw new Error(authResult.error || 'Failed to create user in Firebase Auth.')
+            }
+
+            const userId = authResult.userId
+
+            // Step 2: Create user profile in Firestore
+            const userProfileResult = await FirebaseDbService.users.upsert(userId, {
+                email: trimmedEmail,
+                firstName: trimmedFirst || '',
+                lastName: trimmedLast || '',
+                avatar: '',
+            })
+
+            if (!userProfileResult.success) {
+                console.error('Failed to create user profile:', userProfileResult.error)
+                // Don't throw here - user is created in Auth, profile can be created later
+            }
+
+            // Step 3: Create invitation record in Firestore (optional - for tracking only)
+            // This may fail due to Firestore rules, but that's okay - user is already created
+            try {
+                const invitationData = {
+                    email: trimmedEmail,
+                    firstName: trimmedFirst || null,
+                    lastName: trimmedLast || null,
+                    role: inviteForm.role || 'user',
+                    invitedByEmail,
+                    invitedByName,
+                    userId: userId,
+                    status: 'completed',
+                }
+
+                await FirebaseDbService.userInvitations.create(invitationData)
+                // Silently ignore errors - invitation record is optional tracking only
+            } catch (inviteError) {
+                // Silently ignore - user creation is the important part and it succeeded
+            }
+
+            // Step 4: Create notification
             const metadata = {
                 email: trimmedEmail,
                 firstName: trimmedFirst || null,
@@ -208,13 +264,14 @@ const AdvancedFeatures = () => {
                 role: inviteForm.role || 'user',
                 invitedByEmail,
                 invitedByName,
+                userId: userId,
             }
 
             const notifyResult = await createNotification({
                 userId: user?.id || user?.uid || null,
                 type: NOTIFICATION_TYPES.SYSTEM,
-                title: 'Bolt User Invite Recorded',
-                message: `Invitation details saved for ${trimmedEmail}.`,
+                title: 'Bolt User Created',
+                message: `User ${trimmedEmail} has been created and can now sign in. A password reset email has been sent.`,
                 entityType: null,
                 entityId: null,
                 relatedUserId: user?.id || user?.uid || null,
@@ -222,12 +279,13 @@ const AdvancedFeatures = () => {
             })
 
             if (!notifyResult.success) {
-                throw new Error(notifyResult.error || 'Failed to record user invitation')
+                console.warn('Failed to create notification:', notifyResult.error)
+                // Don't throw - user creation was successful
             }
 
             toast.push(
-                <Notification type="success" duration={2500} title="User Invitation Created">
-                    Invitation recorded for {trimmedEmail}. Please create the auth user in Firebase when ready.
+                <Notification type="success" duration={4000} title="User Created Successfully">
+                    User {trimmedEmail} has been created in Firebase Auth and can sign in immediately. A password reset email has been sent to set their password.
                 </Notification>
             )
 
@@ -238,10 +296,10 @@ const AdvancedFeatures = () => {
                 role: 'user',
             })
         } catch (error) {
-            console.error('Error creating user invitation:', error)
+            console.error('Error creating user:', error)
             toast.push(
                 <Notification type="danger" duration={3000} title="Error">
-                    {error.message || 'Failed to create user invitation.'}
+                    {error.message || 'Failed to create user. Please try again.'}
                 </Notification>
             )
         } finally {
@@ -920,8 +978,7 @@ const AdvancedFeatures = () => {
             <Card className="p-4 mt-4">
                 <h3 className="text-lg font-semibold mb-2">Bolt User Invitations</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Create a record for new Bolt users you plan to add. This helps keep email, name, and intended role
-                    aligned with Profit Sharing access. (Auth user creation is still handled in Firebase for now.)
+                    Create new Bolt users directly from here. Users will be registered in Firebase Auth and receive a password reset email to set their own password. They can sign in immediately after setting their password.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="md:col-span-2">
@@ -966,7 +1023,7 @@ const AdvancedFeatures = () => {
                             loading={isInvitingUser}
                             disabled={isInvitingUser}
                         >
-                            Save Invitation
+                            Create User
                         </Button>
                     </div>
                 </div>

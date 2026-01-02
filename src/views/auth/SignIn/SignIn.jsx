@@ -27,7 +27,7 @@ export const SignInBase = ({
                 />
             </div>
             <div className="mb-10">
-                <h2 className="mb-2">Welcome to Tatco!</h2>
+                <h2 className="mb-2">Welcome to Bolt!</h2>
                 <p className="font-semibold heading-text">
                     Please enter your credentials to sign in!
                 </p>
