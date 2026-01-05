@@ -2279,16 +2279,21 @@ const StakeholderDetail = () => {
                                                                     title="View document"
                                                                 />
                                                             )}
-                                                            {/* Accept button - User only, for issued awards */}
-                                                            {!isAdmin && (award.status?.toLowerCase() === 'issued' || award.status === 'Issued') && (
-                                                                <Button
-                                                                    variant="solid"
-                                                                    size="sm"
-                                                                    onClick={() => handleAcceptAward(award.id)}
-                                                                >
-                                                                    Accept Award
-                                                                </Button>
-                                                            )}
+                                                            {/* Accept button - User only, for issued awards (not supervisors viewing employee records) */}
+                                                            {(() => {
+                                                                const currentUserId = user?.id || user?.uid
+                                                                const isOwnRecord = stakeholder?.linkedUserId === currentUserId
+                                                                // Only show accept button if it's the user's own record (not a supervisor viewing an employee)
+                                                                return !isAdmin && isOwnRecord && (award.status?.toLowerCase() === 'issued' || award.status === 'Issued') && (
+                                                                    <Button
+                                                                        variant="solid"
+                                                                        size="sm"
+                                                                        onClick={() => handleAcceptAward(award.id)}
+                                                                    >
+                                                                        Accept Award
+                                                                    </Button>
+                                                                )
+                                                            })()}
                                                             {isAdmin && (
                                                                 <>
                                                                     <Button

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast } from '@/components/ui'
+import { HiOutlineTrash } from 'react-icons/hi'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
 import { useSessionUser } from '@/store/authStore'
@@ -8,32 +9,197 @@ import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { FirebaseAuthService } from '@/services/FirebaseAuthService'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { getAllRoleOptions, USER_ROLES, ROLE_DISPLAY_NAMES } from '@/constants/roles.constant'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { components } from 'react-select'
 
-// Authorized emails that can access Advanced Features Dashboard
+// Authorized emails that can access Advanced Features Dashboard (legacy)
 const AUTHORIZED_EMAILS = [
     'admin-01@tatco.construction',
     'brett@tatco.construction'
 ]
 
+// Custom ValueContainer for multi-select (like Master Tracker)
+const CustomValueContainer = ({ children, ...props }) => {
+    const { getValue, selectProps } = props
+    const selected = getValue()
+    const hasValue = selected && selected.length > 0
+    
+    const childrenArray = React.Children.toArray(children)
+    const filteredChildren = hasValue 
+        ? childrenArray.filter(child => {
+            if (React.isValidElement(child) && child.props && child.props.className) {
+                return !child.props.className.includes('select-placeholder')
+            }
+            return true
+        })
+        : childrenArray
+    
+    if (selectProps.isMulti && hasValue) {
+        const input = filteredChildren[filteredChildren.length - 2]
+        const indicators = filteredChildren[filteredChildren.length - 1]
+        
+        if (selected.length === 1) {
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px'
+                    }}>
+                        {selected[0].label}
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        } else {
+            return (
+                <div className="select-value-container" style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', minHeight: '38px', maxHeight: '38px' }}>
+                    <div className="select-single-value" style={{ 
+                        flex: '1 1 auto',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        paddingRight: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <span>{selected.length} selected</span>
+                        <span className="px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 rounded">
+                            {selected.length}
+                        </span>
+                    </div>
+                    {input}
+                    {indicators}
+                </div>
+            )
+        }
+    }
+    
+    // When no value, use default ValueContainer to avoid whitespace
+    if (!hasValue) {
+        const { ValueContainer } = components
+        return <ValueContainer {...props}>{children}</ValueContainer>
+    }
+    
+    return <div className="select-value-container">{filteredChildren}</div>
+}
+
+// Custom MultiValue component to hide multi-value tags
+const CustomMultiValue = () => {
+    return null
+}
+
+// Custom MenuList to pin selected items to top
+const CustomMenuList = (props) => {
+    const { children, selectProps, ...rest } = props
+    const selected = selectProps.value || []
+    const selectedValues = Array.isArray(selected) ? selected.map(s => s.value) : []
+    
+    const childrenArray = React.Children.toArray(children)
+    const selectedOptions = []
+    const unselectedOptions = []
+    
+    childrenArray.forEach((child) => {
+        if (React.isValidElement(child) && child.props) {
+            const optionValue = child.props.data?.value
+            if (optionValue && selectedValues.includes(optionValue)) {
+                selectedOptions.push(child)
+            } else {
+                unselectedOptions.push(child)
+            }
+        } else {
+            unselectedOptions.push(child)
+        }
+    })
+    
+    if (selectedOptions.length > 0 && unselectedOptions.length > 0) {
+        const separator = (
+            <div 
+                key="separator" 
+                className="border-t border-gray-200 dark:border-gray-700 my-1"
+            />
+        )
+        const sortedChildren = [
+            ...selectedOptions,
+            separator,
+            ...unselectedOptions
+        ]
+        return <components.MenuList {...rest} selectProps={selectProps}>{sortedChildren}</components.MenuList>
+    }
+    
+    return <components.MenuList {...rest} selectProps={selectProps}>{children}</components.MenuList>
+}
+
+// Custom Option with checkmark
+const CustomOption = (props) => {
+    const { innerProps, label, isSelected, isDisabled, data } = props
+    
+    return (
+        <div
+            className={`
+                select-option
+                ${!isDisabled && !isSelected && 'hover:text-gray-800 dark:hover:text-gray-100'}
+                ${isSelected && 'text-primary bg-primary-subtle'}
+                ${isDisabled && 'opacity-50 cursor-not-allowed'}
+            `}
+            {...innerProps}
+        >
+            <span className="ml-2 flex-1">{label}</span>
+            {isSelected && (
+                <span className="text-primary text-lg">✓</span>
+            )}
+        </div>
+    )
+}
+
+// Custom Placeholder that hides when there's a value
+const CustomPlaceholder = (props) => {
+    const { selectProps } = props
+    const hasValue = selectProps.value && (Array.isArray(selectProps.value) ? selectProps.value.length > 0 : true)
+    
+    if (hasValue) {
+        return null
+    }
+    
+    return <components.Placeholder {...props} />
+}
+
+// Z-index fix for Select dropdowns to appear above sticky headers
+const selectZIndexStyles = {
+    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+    menu: (provided) => ({ ...provided, zIndex: 9999 }),
+}
+
 const AdvancedFeatures = () => {
     const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
+    const userRole = user?.role
+    
+    // Check authorization: admin role OR authorized email
+    const userEmail = user?.email?.toLowerCase() || ''
+    const isAuthorizedByEmail = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
+    // Handle both single role (string) and multiple roles (array)
+    const roles = Array.isArray(userRole) ? userRole : (userRole ? [userRole] : [])
+    // Check for both 'admin' string and USER_ROLES.ADMIN constant
+    const isAuthorizedByRole = roles.includes(USER_ROLES.ADMIN) || roles.includes('admin')
+    const isAuthorized = isAuthorizedByRole || isAuthorizedByEmail
     
     // Check authorization on mount
     useEffect(() => {
-        const userEmail = user?.email?.toLowerCase() || ''
-        const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
-        
         if (!isAuthorized) {
             // Redirect unauthorized users to home page
             navigate('/home', { replace: true })
         }
-    }, [user, navigate])
+    }, [user, userRole, navigate, isAuthorized])
     
     // Don't render anything if unauthorized (will redirect)
-    const userEmail = user?.email?.toLowerCase() || ''
-    const isAuthorized = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
-    
     if (!isAuthorized) {
         return null
     }
@@ -70,14 +236,17 @@ const AdvancedFeatures = () => {
         email: '',
         firstName: '',
         lastName: '',
-        role: 'user',
+        role: [USER_ROLES.TATCO_USER], // Default to Tatco User, now supports multiple roles
     })
     const [isInvitingUser, setIsInvitingUser] = useState(false)
+    
+    // User management state
+    const [allUsers, setAllUsers] = useState([])
+    const [loadingUsers, setLoadingUsers] = useState(false)
+    const [updatingUserRole, setUpdatingUserRole] = useState(null)
+    const [userRoleChanges, setUserRoleChanges] = useState({}) // Track pending role changes
 
-    const roleOptions = [
-        { value: 'admin', label: 'Admin - Full access' },
-        { value: 'user', label: 'User - View only / My Awards' },
-    ]
+    const roleOptions = getAllRoleOptions()
 
     // Online/Offline detection
     useEffect(() => {
@@ -105,6 +274,250 @@ const AdvancedFeatures = () => {
             loadFromCache()
         }
     }, [isOnline, loadFromCache])
+
+    // Load all users on mount
+    useEffect(() => {
+        loadAllUsers()
+        // Set default admin roles for super admins on mount
+        setDefaultAdminRoles()
+    }, [])
+
+    // Set default admin roles for super admin emails and migrate profit sharing users
+    const setDefaultAdminRoles = async () => {
+        try {
+            const usersResult = await FirebaseDbService.users.getAll()
+            if (!usersResult.success) return
+            
+            const users = usersResult.data || []
+            const superAdminEmails = ['admin-01@tatco.construction', 'brett@tatco.construction']
+            
+            // Get all profit sharing access records
+            const profitSharingResult = await FirebaseDbService.profitSharingAccess.getAll()
+            const profitSharingUsers = profitSharingResult.success ? profitSharingResult.data : []
+            
+            // Create a map of userId -> has profit sharing access
+            const profitSharingUserIds = new Set(profitSharingUsers.map(ps => ps.userId))
+            
+            for (const userItem of users) {
+                const email = userItem.email?.toLowerCase()
+                const userId = userItem.id
+                const currentRole = userItem.role
+                
+                // Check if super admin
+                if (email && superAdminEmails.includes(email)) {
+                    const currentRoles = Array.isArray(currentRole) ? currentRole : (currentRole ? [currentRole] : [])
+                    if (!currentRoles.includes(USER_ROLES.ADMIN)) {
+                        // Add admin role (keep existing roles)
+                        const newRoles = [...currentRoles, USER_ROLES.ADMIN]
+                        await FirebaseDbService.users.upsert(userId, {
+                            role: newRoles,
+                        })
+                        console.log(`Set admin role for ${email}`)
+                    }
+                    continue
+                }
+                
+                // Check if user has profit sharing access
+                if (profitSharingUserIds.has(userId)) {
+                    const currentRoles = Array.isArray(currentRole) ? currentRole : (currentRole ? [currentRole] : [])
+                    
+                    // Determine which role to add based on existing role
+                    let roleToAdd = null
+                    if (currentRoles.length === 0 || (currentRoles.length === 1 && currentRoles[0] === USER_ROLES.TATCO_USER)) {
+                        // User only has Tatco User or no role - add profit sharing
+                        roleToAdd = USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+                    } else if (currentRoles.includes(USER_ROLES.TATCO_USER) && !currentRoles.includes(USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING)) {
+                        // User has Tatco User but not profit sharing - replace with profit sharing version
+                        roleToAdd = USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+                    }
+                    // If user already has a profit sharing role, don't change it
+                    
+                    if (roleToAdd) {
+                        const newRoles = currentRoles.length === 0 
+                            ? [roleToAdd]
+                            : currentRoles.includes(USER_ROLES.TATCO_USER)
+                                ? currentRoles.map(r => r === USER_ROLES.TATCO_USER ? roleToAdd : r)
+                                : [...currentRoles, roleToAdd]
+                        
+                        await FirebaseDbService.users.upsert(userId, {
+                            role: newRoles,
+                        })
+                        console.log(`Migrated user ${email || userId} to profit sharing role`)
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error setting default admin roles and migrating users:', error)
+            // Silently fail - this is just a convenience function
+        }
+    }
+
+    const loadAllUsers = async () => {
+        setLoadingUsers(true)
+        try {
+            const result = await FirebaseDbService.users.getAll()
+            if (result.success) {
+                // Deduplicate users by email (keep the most recent one if duplicates exist)
+                const usersMap = new Map()
+                const users = result.data || []
+                
+                users.forEach(user => {
+                    const email = user.email?.toLowerCase()
+                    if (email) {
+                        const existing = usersMap.get(email)
+                        // Keep the user with the most recent updatedAt, or the one with an ID if the other doesn't
+                        if (!existing || 
+                            (user.updatedAt && existing.updatedAt && 
+                             new Date(user.updatedAt) > new Date(existing.updatedAt)) ||
+                            (user.id && !existing.id)) {
+                            usersMap.set(email, user)
+                        }
+                    } else if (user.id) {
+                        // If no email, use ID as key
+                        usersMap.set(user.id, user)
+                    }
+                })
+                
+                setAllUsers(Array.from(usersMap.values()))
+            } else {
+                console.error('Failed to load users:', result.error)
+                toast.push(
+                    <Notification type="danger" duration={3000} title="Error">
+                        Failed to load users: {result.error}
+                    </Notification>
+                )
+            }
+        } catch (error) {
+            console.error('Error loading users:', error)
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    Error loading users
+                </Notification>
+            )
+        } finally {
+            setLoadingUsers(false)
+        }
+    }
+
+    const handleUpdateUserRole = async (userId, newRole) => {
+        setUpdatingUserRole(userId)
+        try {
+            // Handle both single role (string) and multiple roles (array)
+            // If empty array, default to TATCO_USER
+            let rolesToStore = Array.isArray(newRole) ? newRole : (newRole ? [newRole] : [])
+            if (rolesToStore.length === 0) {
+                rolesToStore = [USER_ROLES.TATCO_USER]
+            }
+            
+            // Use upsert instead of update to handle permission issues better
+            const result = await FirebaseDbService.users.upsert(userId, {
+                role: rolesToStore,
+            })
+
+            if (result.success) {
+                // Update local state
+                setAllUsers(prevUsers =>
+                    prevUsers.map(u =>
+                        u.id === userId ? { ...u, role: rolesToStore } : u
+                    )
+                )
+
+                toast.push(
+                    <Notification type="success" duration={2500} title="Role Updated">
+                        User role has been updated successfully.
+                    </Notification>
+                )
+
+                // Reload user session if it's the current user (but don't reload page)
+                if (user?.id === userId || user?.uid === userId) {
+                    // Reload user profile to get updated role
+                    const profileResult = await FirebaseDbService.users.getById(userId)
+                    if (profileResult.success && profileResult.data) {
+                        const updatedProfile = profileResult.data
+                        // Update user in store
+                        const { setUser } = useSessionUser.getState()
+                        setUser({
+                            ...user,
+                            role: updatedProfile.role
+                        })
+                    }
+                }
+            } else {
+                throw new Error(result.error || 'Failed to update user role')
+            }
+        } catch (error) {
+            console.error('Error updating user role:', error)
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    {error.message || 'Failed to update user role. You may not have permission to update users.'}
+                </Notification>
+            )
+        } finally {
+            setUpdatingUserRole(null)
+        }
+    }
+    
+    const handleSaveAllRoleChanges = async () => {
+        const userIds = Object.keys(userRoleChanges)
+        if (userIds.length === 0) {
+            toast.push(
+                <Notification type="warning" duration={2500} title="No Changes">
+                    No role changes to save.
+                </Notification>
+            )
+            return
+        }
+        
+        // Update all users with pending changes
+        for (const userId of userIds) {
+            const newRole = userRoleChanges[userId]
+            await handleUpdateUserRole(userId, newRole)
+        }
+        
+        // Clear all pending changes after successful save
+        setUserRoleChanges({})
+    }
+
+    const handleDeleteUser = async (userId, userEmail) => {
+        if (!window.confirm(`Are you sure you want to delete ${userEmail}? This will permanently delete their account from Firebase Auth and Firestore.`)) {
+            return
+        }
+
+        try {
+            // Step 1: Delete from Firebase Auth via Cloud Function
+            try {
+                const functions = getFunctions()
+                const deleteUserFunction = httpsCallable(functions, 'deleteUser')
+                await deleteUserFunction({ userId })
+            } catch (authError) {
+                console.warn('Failed to delete from Auth (user may not exist in Auth):', authError)
+                // Continue with Firestore deletion even if Auth deletion fails
+            }
+
+            // Step 2: Delete from Firestore
+            const result = await FirebaseDbService.users.delete(userId)
+            
+            if (result.success) {
+                // Remove from local state
+                setAllUsers(prevUsers => prevUsers.filter(u => u.id !== userId))
+                
+                toast.push(
+                    <Notification type="success" duration={2500} title="User Deleted">
+                        User has been permanently deleted from Firebase Auth and Firestore.
+                    </Notification>
+                )
+            } else {
+                throw new Error(result.error || 'Failed to delete user from Firestore')
+            }
+        } catch (error) {
+            console.error('Error deleting user:', error)
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    {error.message || 'Failed to delete user. You may not have permission to delete users.'}
+                </Notification>
+            )
+        }
+    }
 
     const formatTime = (timestamp) => {
         return new Date(timestamp).toLocaleString()
@@ -164,10 +577,10 @@ const AdvancedFeatures = () => {
         try {
             console.log('🔍 Fetching Procore project templates...')
             const result = await ProcoreService.getProjectTemplates({ page: 1, per_page: 100 })
-            console.log('✅ Templates result:', result)
+            console.log('Templates result:', result)
             setProcoreTemplates(result)
         } catch (error) {
-            console.error('❌ Error fetching templates:', error)
+            console.error('Error fetching templates:', error)
             alert(`Error fetching templates: ${error?.message || error?.details || 'Unknown error'}`)
         } finally {
             setIsLoadingTemplates(false)
@@ -213,55 +626,113 @@ const AdvancedFeatures = () => {
                 displayName
             )
 
+            let userId = null
+            let userAlreadyExists = false
+
             if (!authResult.success) {
                 // Check if user already exists
                 if (authResult.errorCode === 'auth/email-already-in-use') {
-                    throw new Error('A user with this email already exists in Firebase Auth.')
+                    // User already exists - send them a welcome email and update their profile
+                    userAlreadyExists = true
+                    
+                    // Try to find the user in Firestore to get their ID
+                    const usersResult = await FirebaseDbService.users.getAll()
+                    if (usersResult.success) {
+                        const existingUser = usersResult.data.find(u => 
+                            u.email?.toLowerCase() === trimmedEmail.toLowerCase()
+                        )
+                        if (existingUser?.id) {
+                            userId = existingUser.id
+                        }
+                    }
+                    
+                    // If we couldn't find the user ID, try to get it from Auth
+                    // We can't directly query Auth from client, but we can try to send the email anyway
+                    // The Cloud Function will handle generating the password reset link for existing users
+                    
+                    // Send welcome email to existing user
+                    try {
+                        const functions = getFunctions()
+                        const sendWelcomeEmailFunction = httpsCallable(functions, 'sendWelcomeEmail')
+                        await sendWelcomeEmailFunction({ email: trimmedEmail, displayName })
+                    } catch (emailError) {
+                        console.warn('Failed to send welcome email to existing user:', emailError)
+                        // Fall back to regular password reset
+                        try {
+                            await FirebaseAuthService.resetPassword(trimmedEmail)
+                        } catch (resetError) {
+                            console.error('Failed to send password reset:', resetError)
+                            throw new Error('User exists but failed to send password reset email. Please try again or contact support.')
+                        }
+                    }
+                } else {
+                    throw new Error(authResult.error || 'Failed to create user in Firebase Auth.')
                 }
-                throw new Error(authResult.error || 'Failed to create user in Firebase Auth.')
+            } else {
+                userId = authResult.userId
             }
 
-            const userId = authResult.userId
+            // Step 2: Create or update user profile in Firestore with role(s)
+            // If user already exists, we still want to update their profile with the new role/info
+            if (userId) {
+                // Handle multiple roles - store as array, or single role as string for backward compatibility
+                // If empty array, default to TATCO_USER
+                let rolesToStore = Array.isArray(inviteForm.role) 
+                    ? inviteForm.role.length > 0 
+                        ? inviteForm.role 
+                        : [USER_ROLES.TATCO_USER]
+                    : (inviteForm.role ? [inviteForm.role] : [USER_ROLES.TATCO_USER])
+                if (rolesToStore.length === 0) {
+                    rolesToStore = [USER_ROLES.TATCO_USER]
+                }
+                
+                const userProfileResult = await FirebaseDbService.users.upsert(userId, {
+                    email: trimmedEmail,
+                    firstName: trimmedFirst || '',
+                    lastName: trimmedLast || '',
+                    avatar: '',
+                    role: rolesToStore, // Store role(s) in user profile
+                })
 
-            // Step 2: Create user profile in Firestore
-            const userProfileResult = await FirebaseDbService.users.upsert(userId, {
-                email: trimmedEmail,
-                firstName: trimmedFirst || '',
-                lastName: trimmedLast || '',
-                avatar: '',
-            })
-
-            if (!userProfileResult.success) {
-                console.error('Failed to create user profile:', userProfileResult.error)
-                // Don't throw here - user is created in Auth, profile can be created later
+                if (!userProfileResult.success) {
+                    console.error('Failed to create/update user profile:', userProfileResult.error)
+                    // Don't throw here - user exists in Auth, profile can be updated later
+                }
+            } else {
+                // User exists but we couldn't find their ID - this is okay, they'll get the email
+                console.warn('User exists in Auth but ID not found in Firestore. Email sent but profile not updated.')
             }
 
             // Step 3: Create invitation record in Firestore (optional - for tracking only)
             // This may fail due to Firestore rules, but that's okay - user is already created
-            try {
-                const invitationData = {
-                    email: trimmedEmail,
-                    firstName: trimmedFirst || null,
-                    lastName: trimmedLast || null,
-                    role: inviteForm.role || 'user',
-                    invitedByEmail,
-                    invitedByName,
-                    userId: userId,
-                    status: 'completed',
-                }
+            if (userId) {
+                try {
+                    const rolesForInvitation = Array.isArray(inviteForm.role) ? inviteForm.role : [inviteForm.role || 'user']
+                    const invitationData = {
+                        email: trimmedEmail,
+                        firstName: trimmedFirst || null,
+                        lastName: trimmedLast || null,
+                        role: rolesForInvitation,
+                        invitedByEmail,
+                        invitedByName,
+                        userId: userId,
+                        status: 'completed',
+                    }
 
-                await FirebaseDbService.userInvitations.create(invitationData)
-                // Silently ignore errors - invitation record is optional tracking only
-            } catch (inviteError) {
-                // Silently ignore - user creation is the important part and it succeeded
+                    await FirebaseDbService.userInvitations.create(invitationData)
+                    // Silently ignore errors - invitation record is optional tracking only
+                } catch (inviteError) {
+                    // Silently ignore - user creation is the important part and it succeeded
+                }
             }
 
             // Step 4: Create notification
+            const rolesForMetadata = Array.isArray(inviteForm.role) ? inviteForm.role : [inviteForm.role || 'user']
             const metadata = {
                 email: trimmedEmail,
                 firstName: trimmedFirst || null,
                 lastName: trimmedLast || null,
-                role: inviteForm.role || 'user',
+                role: rolesForMetadata,
                 invitedByEmail,
                 invitedByName,
                 userId: userId,
@@ -270,8 +741,10 @@ const AdvancedFeatures = () => {
             const notifyResult = await createNotification({
                 userId: user?.id || user?.uid || null,
                 type: NOTIFICATION_TYPES.SYSTEM,
-                title: 'Bolt User Created',
-                message: `User ${trimmedEmail} has been created and can now sign in. A password reset email has been sent.`,
+                title: userAlreadyExists ? 'Bolt User Updated' : 'Bolt User Created',
+                message: userAlreadyExists 
+                    ? `User ${trimmedEmail} already existed. A welcome email has been sent and their profile has been updated.`
+                    : `User ${trimmedEmail} has been created and can now sign in. A welcome email has been sent.`,
                 entityType: null,
                 entityId: null,
                 relatedUserId: user?.id || user?.uid || null,
@@ -284,8 +757,11 @@ const AdvancedFeatures = () => {
             }
 
             toast.push(
-                <Notification type="success" duration={4000} title="User Created Successfully">
-                    User {trimmedEmail} has been created in Firebase Auth and can sign in immediately. A password reset email has been sent to set their password.
+                <Notification type="success" duration={4000} title={userAlreadyExists ? "User Updated Successfully" : "User Created Successfully"}>
+                    {userAlreadyExists 
+                        ? `User ${trimmedEmail} already exists. A welcome email with password reset link has been sent, and their profile has been updated.`
+                        : `User ${trimmedEmail} has been created in Firebase Auth and can sign in immediately. A welcome email has been sent to set their password.`
+                    }
                 </Notification>
             )
 
@@ -293,7 +769,7 @@ const AdvancedFeatures = () => {
                 email: '',
                 firstName: '',
                 lastName: '',
-                role: 'user',
+                role: [USER_ROLES.TATCO_USER],
             })
         } catch (error) {
             console.error('Error creating user:', error)
@@ -363,7 +839,7 @@ const AdvancedFeatures = () => {
             console.log('Deletion result:', result)
             
             if (result && result.success !== false) {
-                alert(`✅ Successfully deleted ${result.deleted || 0} record(s)`)
+                alert(`Successfully deleted ${result.deleted || 0} record(s)`)
                 // Refresh investigation results
                 await handleInvestigateProject()
             } else {
@@ -372,7 +848,7 @@ const AdvancedFeatures = () => {
         } catch (error) {
             console.error('Error deleting project:', error)
             const errorMessage = error?.message || error?.details || error?.code || 'Unknown error'
-            alert(`❌ Error deleting project: ${errorMessage}`)
+            alert(`Error deleting project: ${errorMessage}`)
         } finally {
             setIsDeleting(false)
         }
@@ -420,16 +896,16 @@ const AdvancedFeatures = () => {
             console.log('Promotion result:', result)
             
             if (result && result.success !== false) {
-                alert(`✅ Successfully promoted record to most recent archive date (${result.promotedToDate || 'N/A'})`)
+                alert(`Successfully promoted record to most recent archive date (${result.promotedToDate || 'N/A'})`)
                 // Refresh investigation results
                 await handleInvestigateProject()
             } else {
-                alert(`⚠️ Promotion completed but result was unexpected: ${JSON.stringify(result)}`)
+                alert(`Promotion completed but result was unexpected: ${JSON.stringify(result)}`)
             }
         } catch (error) {
             console.error('Error promoting project:', error)
             const errorMessage = error?.message || error?.details || error?.code || 'Unknown error'
-            alert(`❌ Error promoting project: ${errorMessage}`)
+            alert(`Error promoting project: ${errorMessage}`)
         } finally {
             setIsDeleting(false)
         }
@@ -614,7 +1090,7 @@ const AdvancedFeatures = () => {
                                 {investigationResults.records.length === 0 ? (
                                     <Alert type="warning">
                                         <p className="text-sm">
-                                            ⚠️ No records found on the most recent archive date. 
+                                            No records found on the most recent archive date. 
                                             If you delete any records, this project will disappear from Project Profitability.
                                         </p>
                                     </Alert>
@@ -1007,14 +1483,41 @@ const AdvancedFeatures = () => {
                     </div>
                 </div>
                 <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="max-w-xs">
-                        <label className="block text-sm font-medium mb-1">Intended Role</label>
+                    <div className="min-w-[350px]">
+                        <label className="block text-sm font-medium mb-1">User Role(s)</label>
                         <Select
+                            isMulti
+                            isClearable
                             options={roleOptions}
-                            value={roleOptions.find(opt => opt.value === inviteForm.role) || roleOptions[1]}
-                            onChange={(opt) =>
-                                setInviteForm(prev => ({ ...prev, role: opt?.value || 'user' }))
-                            }
+                            placeholder="Select role(s)..."
+                            value={(() => {
+                                const roles = Array.isArray(inviteForm.role) ? inviteForm.role : (inviteForm.role ? [inviteForm.role] : [])
+                                if (roles.length === 0) {
+                                    return null // Show placeholder when empty
+                                }
+                                return roleOptions.filter(opt => roles.includes(opt.value))
+                            })()}
+                            onChange={(selected) => {
+                                // Handle clear (null or empty array) - set to empty array to show placeholder
+                                if (!selected || selected.length === 0) {
+                                    setInviteForm(prev => ({ ...prev, role: [] }))
+                                } else {
+                                    const selectedRoles = selected.map(opt => opt.value)
+                                    setInviteForm(prev => ({ ...prev, role: selectedRoles }))
+                                }
+                            }}
+                            components={{
+                                ValueContainer: CustomValueContainer,
+                                MultiValue: CustomMultiValue,
+                                MenuList: CustomMenuList,
+                                Option: CustomOption,
+                                Placeholder: CustomPlaceholder,
+                            }}
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={selectZIndexStyles}
+                            controlShouldRenderValue={false}
+                            hideSelectedOptions={false}
                         />
                     </div>
                     <div className="flex justify-end">
@@ -1027,6 +1530,176 @@ const AdvancedFeatures = () => {
                         </Button>
                     </div>
                 </div>
+            </Card>
+
+            {/* User Role Management */}
+            <Card className="p-4 mt-4">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="text-lg font-semibold mb-1">User Role Management</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            View and manage user roles. Changes take effect immediately.
+                        </p>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                            setUserRoleChanges({}) // Clear pending changes
+                            loadAllUsers() // Reload users
+                        }}
+                        loading={loadingUsers}
+                    >
+                        Refresh
+                    </Button>
+                </div>
+
+                {loadingUsers ? (
+                    <div className="text-center py-8">
+                        <div className="text-gray-500">Loading users...</div>
+                    </div>
+                ) : allUsers.length === 0 ? (
+                    <div className="text-center py-8">
+                        <div className="text-gray-500">No users found</div>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200 dark:border-gray-700">
+                                    <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
+                                    <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
+                                    <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
+                                    <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
+                                    <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {allUsers.map((userItem) => (
+                                    <tr
+                                        key={userItem.id}
+                                        className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                    >
+                                        <td className="py-3 px-4">
+                                            {userItem.firstName || userItem.lastName
+                                                ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
+                                                : 'N/A'}
+                                        </td>
+                                        <td className="py-3 px-4">{userItem.email || 'N/A'}</td>
+                                        <td className="py-3 px-4">
+                                            <div className="flex flex-wrap gap-1">
+                                                {(() => {
+                                                    const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                    if (roles.length === 0) {
+                                                        return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">No role assigned</Badge>
+                                                    }
+                                                    return roles.map((role, idx) => (
+                                                        <Badge key={idx} className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                            {ROLE_DISPLAY_NAMES[role] || role}
+                                                        </Badge>
+                                                    ))
+                                                })()}
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <div className="flex items-center gap-2">
+                                                <Select
+                                                    isMulti
+                                                    isClearable
+                                                    options={roleOptions}
+                                                    value={(() => {
+                                                        // Use pending changes if available, otherwise use current role
+                                                        const pendingRoles = userRoleChanges[userItem.id]
+                                                        if (pendingRoles !== undefined) {
+                                                            // If pendingRoles is empty array, return null (cleared)
+                                                            if (pendingRoles.length === 0) {
+                                                                return null
+                                                            }
+                                                            return roleOptions.filter(opt => pendingRoles.includes(opt.value))
+                                                        }
+                                                        const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                        if (roles.length === 0) {
+                                                            return null
+                                                        }
+                                                        return roleOptions.filter(opt => roles.includes(opt.value))
+                                                    })()}
+                                                    onChange={(selected) => {
+                                                        // Handle clear (null or empty array)
+                                                        if (!selected || selected.length === 0) {
+                                                            // Clear all selections - store empty array
+                                                            setUserRoleChanges(prev => ({
+                                                                ...prev,
+                                                                [userItem.id]: []
+                                                            }))
+                                                        } else {
+                                                            const selectedRoles = selected.map(opt => opt.value)
+                                                            // Store changes locally instead of immediately updating
+                                                            setUserRoleChanges(prev => ({
+                                                                ...prev,
+                                                                [userItem.id]: selectedRoles
+                                                            }))
+                                                        }
+                                                    }}
+                                                    size="sm"
+                                                    className="min-w-[350px]"
+                                                    disabled={updatingUserRole === userItem.id}
+                                                    components={{
+                                                        ValueContainer: CustomValueContainer,
+                                                        MultiValue: CustomMultiValue,
+                                                        MenuList: CustomMenuList,
+                                                        Option: CustomOption,
+                                                        Placeholder: CustomPlaceholder,
+                                                    }}
+                                                    menuPortalTarget={document.body}
+                                                    menuPosition="fixed"
+                                                    styles={selectZIndexStyles}
+                                                    controlShouldRenderValue={false}
+                                                    hideSelectedOptions={false}
+                                                    placeholder="Select role(s)..."
+                                                />
+                                                {updatingUserRole === userItem.id && (
+                                                    <div className="text-xs text-gray-500">Updating...</div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                icon={<HiOutlineTrash />}
+                                                onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                className="text-red-500 hover:text-red-700"
+                                            >
+                                                Remove
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                
+                {/* Save button for role changes */}
+                {Object.keys(userRoleChanges).length > 0 && (
+                    <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setUserRoleChanges({})
+                                loadAllUsers() // Reload to reset changes
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSaveAllRoleChanges}
+                            loading={Object.keys(userRoleChanges).some(id => updatingUserRole === id)}
+                        >
+                            Save Role Changes ({Object.keys(userRoleChanges).length})
+                        </Button>
+                    </div>
+                )}
             </Card>
         </div>
     )

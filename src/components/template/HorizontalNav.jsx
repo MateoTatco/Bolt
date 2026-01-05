@@ -13,10 +13,12 @@ const HorizontalNav = ({
     const user = useSessionUser((state) => state.user)
     const userAuthority = user?.authority || []
     const userEmail = user?.email || ''
+    const userRole = user?.role || null
     const { hasAccess: hasProfitSharingAccess } = useProfitSharingAccessContext()
     
-    // Filter navigation based on user email and profit sharing access
-    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess)
+    // Filter navigation based on user email, role, and profit sharing access
+    // Ensure we always get a valid array
+    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess, userRole) || []
 
     return (
         <HorizontalMenuContent

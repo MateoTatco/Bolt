@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSessionUser } from '@/store/authStore'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { USER_ROLES, hasModuleAccess, MODULES } from '@/constants/roles.constant'
 
 // Admin user IDs that always have full access
 const SUPER_ADMIN_EMAILS = ['admin-01@tatco.construction', 'brett@tatco.construction']
@@ -33,8 +34,9 @@ export const useProfitSharingAccess = () => {
         try {
             const userId = user?.id || user?.uid
             const userEmail = user?.email
+            const userRoleFromProfile = user?.role // Get role from user profile
 
-            // Check if super admin
+            // Check if super admin (always has access)
             if (userEmail && SUPER_ADMIN_EMAILS.includes(userEmail.toLowerCase())) {
                 setHasAccess(true)
                 setUserRole('admin')
@@ -42,7 +44,32 @@ export const useProfitSharingAccess = () => {
                 return
             }
 
-            // Check profitSharingAccess collection
+            // NEW: Check user role from user profile first
+            if (userRoleFromProfile) {
+                // Handle both single role (string) and multiple roles (array)
+                const roles = Array.isArray(userRoleFromProfile) ? userRoleFromProfile : [userRoleFromProfile]
+                
+                // Admin role has full access
+                if (roles.includes(USER_ROLES.ADMIN)) {
+                    setHasAccess(true)
+                    setUserRole('admin')
+                    setLoading(false)
+                    return
+                }
+                
+                // Check if any role has profit sharing module access
+                const hasProfitSharingAccess = roles.some(role => hasModuleAccess(role, MODULES.PROFIT_SHARING))
+                if (hasProfitSharingAccess) {
+                    setHasAccess(true)
+                    // For role-based users, check if they have admin role in profit sharing
+                    // For now, assign 'user' role - can be enhanced later
+                    setUserRole('user')
+                    setLoading(false)
+                    return
+                }
+            }
+
+            // LEGACY: Fall back to profitSharingAccess collection for backward compatibility
             const result = await FirebaseDbService.profitSharingAccess.getByUserId(userId)
             
             if (result.success && result.data.length > 0) {

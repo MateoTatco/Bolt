@@ -2,6 +2,11 @@ import { useMemo } from 'react'
 import isPlainObject from 'lodash/isPlainObject'
 
 const getRouteInfo = (navTree, key) => {
+    // Add null/undefined check
+    if (!navTree) {
+        return null
+    }
+    
     if (!Array.isArray(navTree) && navTree.key === key) {
         return navTree
     }
@@ -35,19 +40,25 @@ const getRouteInfo = (navTree, key) => {
 }
 
 const findNestedRoute = (navTree, key) => {
+    if (!navTree || !Array.isArray(navTree)) {
+        return false
+    }
     const found = navTree.find((node) => {
-        return node.key === key
+        return node && node.key === key
     })
     if (found) {
         return true
     }
-    return navTree.some((c) => findNestedRoute(c.subMenu, key))
+    return navTree.some((c) => c && c.subMenu && findNestedRoute(c.subMenu, key))
 }
 
 const getTopRouteKey = (navTree, key) => {
+    if (!navTree || !Array.isArray(navTree)) {
+        return {}
+    }
     let foundNav = {}
     navTree.forEach((nav) => {
-        if (findNestedRoute([nav], key)) {
+        if (nav && findNestedRoute([nav], key)) {
             foundNav = nav
         }
     })

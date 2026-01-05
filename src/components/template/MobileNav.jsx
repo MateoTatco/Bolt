@@ -34,9 +34,11 @@ const MobileNav = ({ translationSetup = appConfig.activeNavTranslation }) => {
     const user = useSessionUser((state) => state.user)
     const userAuthority = user?.authority || []
     const userEmail = user?.email || ''
+    const userRole = user?.role || null
     const { hasAccess: hasProfitSharingAccess } = useProfitSharingAccessContext()
     
-    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess)
+    // Ensure we always get a valid array
+    const filteredNavigationConfig = getNavigationConfig(userEmail, hasProfitSharingAccess, userRole) || []
 
     return (
         <>

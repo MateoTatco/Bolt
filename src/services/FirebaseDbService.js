@@ -1269,6 +1269,19 @@ export const FirebaseDbService = {
                 return { success: false, error: error.message }
             }
         },
+
+        // Delete user profile
+        delete: async (userId) => {
+            try {
+                await ensureAuthUser()
+                const userRef = doc(db, 'users', userId)
+                await deleteDoc(userRef)
+                return { success: true }
+            } catch (error) {
+                console.error('User delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
     },
 
     // NOTIFICATIONS COLLECTION

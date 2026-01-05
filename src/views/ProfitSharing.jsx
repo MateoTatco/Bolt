@@ -4,6 +4,7 @@ import { Button, Card } from '@/components/ui'
 import { HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
+import { USER_ROLES, hasModuleAccess, MODULES } from '@/constants/roles.constant'
 import OverviewTab from './ProfitSharing/OverviewTab'
 import PlansTab from './ProfitSharing/PlansTab'
 import StakeholdersTab from './ProfitSharing/StakeholdersTab'
@@ -25,13 +26,21 @@ const ProfitSharing = () => {
 
     // Check if super admin
     const userEmail = user?.email?.toLowerCase() || ''
+    const userRoleFromProfile = user?.role // Get role from user profile
     const isSuperAdmin = SUPER_ADMIN_EMAILS.some(email => email.toLowerCase() === userEmail)
     
+    // Check if user has admin role from profile (handle both single role and array)
+    const roles = Array.isArray(userRoleFromProfile) ? userRoleFromProfile : (userRoleFromProfile ? [userRoleFromProfile] : [])
+    const isAdminFromRole = roles.includes('admin') || roles.includes(USER_ROLES.ADMIN)
+    
     // Determine effective role
-    const effectiveRole = isSuperAdmin ? 'admin' : userRole
-    const isAdmin = effectiveRole === 'admin'
+    const effectiveRole = isSuperAdmin || isAdminFromRole ? 'admin' : userRole
+    const isAdmin = effectiveRole === 'admin' || isSuperAdmin || isAdminFromRole
     const effectiveIsSupervisor = isSupervisor || userRole === 'supervisor'
-    const canAccess = isSuperAdmin || hasAccess
+    
+    // Check access: super admin, has profit sharing access, or has role with profit sharing module
+    const hasRoleBasedAccess = roles.length > 0 && roles.some(role => hasModuleAccess(role, MODULES.PROFIT_SHARING))
+    const canAccess = isSuperAdmin || isAdminFromRole || hasAccess || hasRoleBasedAccess
 
     // Initialize tab from URL params or default to 'overview'
     const getInitialTab = () => {

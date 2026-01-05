@@ -2,6 +2,7 @@ import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import axios from 'axios';
 import * as sql from 'mssql';
+import * as nodemailer from 'nodemailer';
 
 // Initialize Firebase Admin only if not already initialized
 try {
@@ -5646,4 +5647,274 @@ export const incrementProjectNumberCounter = functions
 
 // Option 2: LibreOffice (FREE - recommended)
 export { convertDocxToPdfLibreOffice as convertDocxToPdf } from './docxToPdfConverterLibreOffice';
+
+// Welcome Email Function
+// Sends a custom welcome email with password reset link to new users
+export const sendWelcomeEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMAIL_PASSWORD'] }).https.onCall(async (data, context) => {
+    // Verify the caller is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to send welcome emails');
+    }
+
+    const { email, displayName } = data;
+
+    if (!email) {
+        throw new functions.https.HttpsError('invalid-argument', 'Email is required');
+    }
+
+    try {
+        // Generate password reset link using Firebase Admin SDK
+        const passwordResetLink = await admin.auth().generatePasswordResetLink(email);
+
+        // Configure email transporter
+        // Using Gmail SMTP - you can configure this via environment variables
+        // For production, use environment variables: EMAIL_USER and EMAIL_PASSWORD
+        const emailUser = process.env.EMAIL_USER;
+        const emailPassword = process.env.EMAIL_PASSWORD;
+
+        if (!emailUser || !emailPassword) {
+            console.error('Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD environment variables.');
+            throw new functions.https.HttpsError('failed-precondition', 'Email service not configured');
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: emailUser,
+                pass: emailPassword,
+            },
+        });
+
+        // Create welcome email HTML template
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Bolt</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        h1 {
+            color: #1f2937;
+            margin: 0 0 20px 0;
+            font-size: 28px;
+        }
+        p {
+            color: #4b5563;
+            margin: 16px 0;
+            font-size: 16px;
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background-color: #2563eb !important;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        .button:hover {
+            background-color: #1d4ed8 !important;
+            color: #ffffff !important;
+        }
+        a.button {
+            color: #ffffff !important;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .link {
+            color: #2563eb;
+            word-break: break-all;
+        }
+        .instructions {
+            background-color: #f9fafb;
+            border-left: 4px solid #2563eb;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #1f2937;
+            font-size: 18px;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">BOLT</div>
+        </div>
+        
+        <h1>Welcome to Bolt!</h1>
+        
+        <p>Hello${displayName ? ` ${displayName}` : ''},</p>
+        
+        <p>We're excited to have you join the Bolt platform! Your account has been created and you're ready to get started.</p>
+        
+        <div class="instructions">
+            <h3>Getting Started</h3>
+            <ol>
+                <li>Click the button below to set your password</li>
+                <li>You'll be redirected to a secure page to create your password</li>
+                <li>Once your password is set, you can sign in to Bolt</li>
+            </ol>
+        </div>
+        
+        <div class="button-container">
+            <a href="${passwordResetLink}" class="button">Set Your Password</a>
+        </div>
+        
+        <p>Or copy and paste this link into your browser:</p>
+        <p><a href="${passwordResetLink}" class="link">${passwordResetLink}</a></p>
+        
+        <p><strong>Important:</strong> This link will expire in 1 hour. If you didn't request this account, you can safely ignore this email.</p>
+        
+        <div class="footer">
+            <p>If you have any questions, please contact your administrator.</p>
+            <p>&copy; ${new Date().getFullYear()} Bolt. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+        `;
+
+        // Plain text version for email clients that don't support HTML
+        const emailText = `
+Welcome to Bolt!
+
+Hello${displayName ? ` ${displayName}` : ''},
+
+We're excited to have you join the Bolt platform! Your account has been created and you're ready to get started.
+
+Getting Started:
+1. Click the link below to set your password
+2. You'll be redirected to a secure page to create your password
+3. Once your password is set, you can sign in to Bolt
+
+Set Your Password: ${passwordResetLink}
+
+Important: This link will expire in 1 hour. If you didn't request this account, you can safely ignore this email.
+
+If you have any questions, please contact your administrator.
+
+© ${new Date().getFullYear()} Bolt. All rights reserved.
+        `;
+
+        // Send email
+        const mailOptions = {
+            from: `"Bolt" <${emailUser}>`,
+            to: email,
+            subject: 'Welcome to Bolt',
+            text: emailText,
+            html: emailHtml,
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        console.log(`Welcome email sent successfully to ${email}`);
+
+        return {
+            success: true,
+            message: 'Welcome email sent successfully',
+        };
+    } catch (error: any) {
+        console.error('Error sending welcome email:', error);
+        
+        // Handle specific Firebase Auth errors
+        if (error.code === 'auth/user-not-found') {
+            throw new functions.https.HttpsError('not-found', 'User not found');
+        }
+        
+        if (error.code === 'auth/invalid-email') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid email address');
+        }
+
+        throw new functions.https.HttpsError('internal', 'Failed to send welcome email', error.message);
+    }
+});
+
+// Delete User Function
+// Deletes a user from both Firebase Auth and Firestore
+export const deleteUser = functions.runWith({ secrets: [] }).https.onCall(async (data, context) => {
+    // Verify the caller is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to delete users');
+    }
+
+    const { userId } = data;
+
+    if (!userId) {
+        throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
+    }
+
+    try {
+        // Delete user from Firebase Auth
+        await admin.auth().deleteUser(userId);
+
+        // Note: Firestore user profile deletion should be handled by the client
+        // since it may have different permission requirements
+
+        console.log(`User ${userId} deleted from Firebase Auth successfully`);
+
+        return {
+            success: true,
+            message: 'User deleted from Firebase Auth successfully',
+        };
+    } catch (error: any) {
+        console.error('Error deleting user:', error);
+        
+        // Handle specific Firebase Auth errors
+        if (error.code === 'auth/user-not-found') {
+            throw new functions.https.HttpsError('not-found', 'User not found in Firebase Auth');
+        }
+
+        throw new functions.https.HttpsError('internal', 'Failed to delete user', error.message);
+    }
+});
 

@@ -1,5 +1,6 @@
 import { FirebaseAuthService } from './FirebaseAuthService'
 import { FirebaseDbService } from './FirebaseDbService'
+import { USER_ROLES } from '@/constants/roles.constant'
 
 export async function apiSignIn(data) {
     const { email, password } = data
@@ -10,17 +11,34 @@ export async function apiSignIn(data) {
         
         // Try to load user profile from Firestore
         let userProfile = null
+        const superAdminEmails = ['admin-01@tatco.construction', 'brett@tatco.construction']
+        const isSuperAdmin = superAdminEmails.includes(email.toLowerCase())
+        
         try {
             const profileResult = await FirebaseDbService.users.getById(userId)
             if (profileResult.success && profileResult.data) {
                 userProfile = profileResult.data
+                
+                // If super admin doesn't have admin role, set it
+                if (isSuperAdmin && userProfile.role !== USER_ROLES.ADMIN) {
+                    await FirebaseDbService.users.upsert(userId, {
+                        role: USER_ROLES.ADMIN,
+                    })
+                    // Reload the profile to get updated role
+                    const updatedProfileResult = await FirebaseDbService.users.getById(userId)
+                    if (updatedProfileResult.success && updatedProfileResult.data) {
+                        userProfile = updatedProfileResult.data
+                    }
+                }
             } else {
                 // User doesn't exist in Firestore, create it
+                const initialRole = isSuperAdmin ? USER_ROLES.ADMIN : null
                 await FirebaseDbService.users.upsert(userId, {
                     email: result.user.email,
                     lastName: result.user.displayName || email.split('@')[0] || '', // Use lastName instead of userName
                     firstName: '',
                     avatar: result.user.photoURL || '',
+                    role: initialRole, // Set admin role for super admins
                 })
                 // Reload the profile
                 const newProfileResult = await FirebaseDbService.users.getById(userId)
@@ -36,13 +54,16 @@ export async function apiSignIn(data) {
             token: result.token,
             user: {
                 id: userId,
+                uid: userId, // Add uid for compatibility
                 email: userProfile?.email || result.user.email,
-                userName: userProfile?.userName || result.user.displayName || '',
+                userName: userProfile?.userName || userProfile?.lastName || result.user.displayName || '',
+                lastName: userProfile?.lastName || userProfile?.userName || result.user.displayName || '',
                 firstName: userProfile?.firstName || '',
                 phoneNumber: userProfile?.phoneNumber || '',
                 avatar: userProfile?.avatar || result.user.photoURL || '',
-                displayName: userProfile?.userName || result.user.displayName,
-                photoURL: userProfile?.avatar || result.user.photoURL
+                displayName: userProfile?.userName || userProfile?.lastName || result.user.displayName,
+                photoURL: userProfile?.avatar || result.user.photoURL,
+                role: userProfile?.role || null // Include role from Firestore profile
             }
         }
     } else {

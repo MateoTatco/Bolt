@@ -9,7 +9,7 @@ import { useAuth } from '@/auth'
 const dropdownItemList = []
 
 const _UserDropdown = () => {
-    const { avatar, userName, email } = useSessionUser((state) => state.user)
+    const { avatar, userName, firstName, lastName, email } = useSessionUser((state) => state.user)
 
     const { signOut } = useAuth()
 
@@ -20,6 +20,11 @@ const _UserDropdown = () => {
     const avatarProps = {
         ...(avatar ? { src: avatar } : { icon: <PiUserDuotone /> }),
     }
+    
+    // Display name: firstName lastName, or fallback to userName, or 'User'
+    const displayName = (firstName || lastName)
+        ? `${firstName || ''} ${lastName || ''}`.trim()
+        : (userName || 'User')
 
     return (
         <Dropdown
@@ -37,7 +42,7 @@ const _UserDropdown = () => {
                     <Avatar {...avatarProps} />
                     <div>
                         <div className="font-bold text-gray-900 dark:text-gray-100">
-                            {userName || 'User'}
+                            {displayName}
                         </div>
                         <div className="text-xs">
                             {email || 'No email available'}

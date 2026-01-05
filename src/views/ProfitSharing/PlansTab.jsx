@@ -8,8 +8,9 @@ import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore'
 import AgreementSettingsPanel from './components/AgreementSettingsPanel'
 import PdfViewerModal from './components/PdfViewerModal'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { USER_ROLES } from '@/constants/roles.constant'
 
-// Authorized emails that can upload/delete PDFs
+// Authorized emails that can upload/delete PDFs (legacy fallback)
 const ADMIN_EMAILS = [
     'admin-01@tatco.construction',
     'brett@tatco.construction'
@@ -28,7 +29,11 @@ const PlansTab = () => {
     const [loading, setLoading] = useState(true)
     const [deletingId, setDeletingId] = useState(null)
 
-    const isAdmin = ADMIN_EMAILS.some(email => email.toLowerCase() === user?.email?.toLowerCase())
+    // Check if user is admin: either has admin role OR is in super admin emails (legacy)
+    const userRole = user?.role
+    const isAdminFromRole = userRole === USER_ROLES.ADMIN
+    const isAdminFromEmail = ADMIN_EMAILS.some(email => email.toLowerCase() === user?.email?.toLowerCase())
+    const isAdmin = isAdminFromRole || isAdminFromEmail
 
     // Load plans from Firestore
     useEffect(() => {

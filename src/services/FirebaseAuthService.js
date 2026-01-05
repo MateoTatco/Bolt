@@ -11,6 +11,7 @@ import {
     EmailAuthProvider,
     reauthenticateWithCredential
 } from 'firebase/auth'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { auth } from '@/configs/firebase.config'
 
 // Google Auth Provider
@@ -137,7 +138,7 @@ export const FirebaseAuthService = {
         }
     },
 
-    // Create user with email and send password reset email
+    // Create user with email and send welcome email with password reset link
     // This is used for admin-created users who need to set their own password
     createUserWithPasswordReset: async (email, displayName) => {
         try {
@@ -152,8 +153,16 @@ export const FirebaseAuthService = {
                 await updateProfile(userCredential.user, { displayName })
             }
             
-            // Send password reset email so user can set their own password
-            await sendPasswordResetEmail(auth, email)
+            // Call Cloud Function to send welcome email with password reset link
+            try {
+                const functions = getFunctions()
+                const sendWelcomeEmailFunction = httpsCallable(functions, 'sendWelcomeEmail')
+                await sendWelcomeEmailFunction({ email, displayName })
+            } catch (emailError) {
+                // If Cloud Function fails, fall back to default password reset email
+                console.warn('Failed to send welcome email via Cloud Function, falling back to default:', emailError)
+                await sendPasswordResetEmail(auth, email)
+            }
             
             return {
                 success: true,

@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is the owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // USERS COLLECTION
+    // Allow authenticated users to read all users (for user management)
+    // Allow users to update their own profile
+    // Allow authenticated users to update any user document (for admin role management)
+    // Note: Advanced Features Dashboard access is controlled by email check in the app
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      // Allow authenticated users to update any user document
+      // The Advanced Features Dashboard already restricts access to authorized emails
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // LEADS COLLECTION
+    match /leads/{leadId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // CLIENTS COLLECTION
+    match /clients/{clientId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // PROJECTS COLLECTION
+    match /projects/{projectId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // STAKEHOLDERS COLLECTION
+    match /stakeholders/{stakeholderId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // PROFIT PLANS COLLECTION
+    match /profitPlans/{planId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // VALUATIONS COLLECTION
+    match /valuations/{valuationId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // NOTIFICATIONS COLLECTION
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+    
+    // USER INVITATIONS COLLECTION (optional - may fail due to permissions)
+    match /userInvitations/{invitationId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // PROFIT SHARING ACCESS COLLECTION
+    match /profitSharingAccess/{accessId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
