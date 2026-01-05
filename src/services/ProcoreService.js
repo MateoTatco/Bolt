@@ -694,6 +694,23 @@ export const ProcoreService = {
             throw error
         }
     },
+
+    /**
+     * Search for a Procore project by project_number
+     * Used to find existing projects before creating duplicates
+     * @param {string|number} projectNumber - Project number to search for
+     * @returns {Promise<Object>} Search result with found flag and project data if found
+     */
+    async searchProjectByNumber(projectNumber) {
+        try {
+            const searchFunction = httpsCallable(functions, 'procoreSearchProjectByNumber')
+            const result = await searchFunction({ projectNumber })
+            return result.data
+        } catch (error) {
+            console.error('Error searching Procore project by number:', error)
+            throw error
+        }
+    },
 }
 
 export default ProcoreService

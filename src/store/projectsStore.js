@@ -18,6 +18,7 @@ export const useProjectsStore = create((set, get) => ({
         favorite: null,
         dateFrom: null,
         dateTo: null,
+        archived: null, // Default to "All" (null)
     },
     view: 'list', // 'list' | 'board'
     selectedProjectId: null,
@@ -611,12 +612,9 @@ export const useProjectsStore = create((set, get) => ({
                 ),
             )
             
-            // Log errors to console for debugging
-            if (result.errorCount > 0 && result.errors) {
-                console.error('Sync errors:', result.errors)
-            }
             return result
         } catch (error) {
+            console.error('❌ Error syncing projects from Procore:', error)
             set({ error: error.message, loading: false })
             toast.push(
                 React.createElement(

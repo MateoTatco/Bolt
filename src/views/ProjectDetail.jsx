@@ -282,23 +282,31 @@ const ProjectDetail = () => {
         }
         setIsSyncingFromProcore(true)
         try {
+            console.log(`🔄 Syncing project from Procore: ${project.ProjectName || project.projectName}`)
+            console.log(`   Procore Project ID: ${project.procoreProjectId}`)
+            
             const { ProcoreService } = await import('@/services/ProcoreService')
             const { mapProcoreToBolt } = await import('@/configs/procoreFieldMapping')
 
             const procoreData = await ProcoreService.getProject(project.procoreProjectId)
+            console.log('📥 Received Procore data:', procoreData)
+            
             const mapped = mapProcoreToBolt(procoreData?.data || procoreData)
+            console.log('🔄 Mapped to Bolt format:', mapped)
 
             if (!mapped || Object.keys(mapped).length === 0) {
+                console.warn('⚠️  No mappable fields returned from Procore')
                 alert('No mappable fields were returned from Procore for this project.')
                 return
             }
 
             // Procore should win: apply Procore-mapped fields over current Bolt project
             await updateProject(project.id, mapped, { skipProcoreSync: true })
+            console.log('✅ Project synced successfully from Procore')
             setAlertBanner({ visible: true, kind: 'saved' })
             setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 3000)
         } catch (error) {
-            console.error('Error syncing project from Procore:', error)
+            console.error('❌ Error syncing project from Procore:', error)
             alert(error?.message || 'Failed to sync project from Procore.')
         } finally {
             setIsSyncingFromProcore(false)
@@ -327,27 +335,53 @@ const ProjectDetail = () => {
             }
 
             let result
-            if (project.procoreProjectId) {
+            let procoreProjectId = project.procoreProjectId
+
+            // If we don't have a procoreProjectId, search for existing project by project_number
+            if (!procoreProjectId && project.ProjectNumber) {
+                console.log(`🔍 No procoreProjectId found. Searching Procore for project with number: ${project.ProjectNumber}`)
+                try {
+                    const searchResult = await ProcoreService.searchProjectByNumber(project.ProjectNumber)
+                    if (searchResult.found && searchResult.project) {
+                        procoreProjectId = searchResult.project.id
+                        console.log(`✅ Found existing Procore project: ID ${procoreProjectId}, Name: ${searchResult.project.name}`)
+                        // Update Bolt project with the found Procore ID
+                        await updateProject(project.id, {
+                            procoreProjectId: procoreProjectId,
+                            procoreSyncStatus: 'linked',
+                            procoreSyncedAt: new Date().toISOString()
+                        }, { skipProcoreSync: true })
+                    } else {
+                        console.log(`❌ No existing Procore project found with project_number: ${project.ProjectNumber}`)
+                    }
+                } catch (searchError) {
+                    console.error('Error searching for existing Procore project:', searchError)
+                    // Continue with creation if search fails
+                }
+            }
+
+            if (procoreProjectId) {
                 // Update existing Procore project
-                console.log('Updating project in Procore:', project.procoreProjectId)
-                result = await ProcoreService.updateProject(project.procoreProjectId, procoreProjectData)
+                console.log(`🔄 Updating existing project in Procore: ${procoreProjectId}`)
+                result = await ProcoreService.updateProject(procoreProjectId, procoreProjectData)
                 
                 if (result.success) {
                     // Update local project with sync status
                     await updateProject(project.id, {
+                        procoreProjectId: procoreProjectId,
                         procoreSyncStatus: 'synced',
                         procoreSyncedAt: new Date().toISOString()
                     }, { skipProcoreSync: true })
                     
                     setAlertBanner({ visible: true, kind: 'saved' })
                     setTimeout(() => setAlertBanner((b) => ({ ...b, visible: false })), 5000)
-                    alert('Project successfully updated in Procore!')
+                    alert(`Project successfully updated in Procore! (Procore ID: ${procoreProjectId})`)
                 } else {
                     throw new Error(result.message || 'Failed to update project in Procore')
                 }
             } else {
-                // Create new Procore project
-                console.log('Creating new project in Procore')
+                // Create new Procore project (only if no existing project was found)
+                console.log('➕ Creating new project in Procore (no existing project found)')
                 result = await ProcoreService.createProject(procoreProjectData)
                 
                 if (result.success && result.procoreProjectId) {

@@ -35,6 +35,11 @@ const projectProbabilityOptions = [
     { value: 'Low', label: 'Low' }
 ]
 
+const archivedOptions = [
+    { value: false, label: 'Not Archived' },
+    { value: true, label: 'Archived' }
+]
+
 const projectStyleOptions = [
     { value: 'Ground Up', label: 'Ground Up' },
     { value: 'TI', label: 'TI' },
@@ -353,7 +358,8 @@ const ProjectsList = () => {
         projectStatus: true,
         projectProbability: true,
         projectManager: true,
-        superintendent: true
+        superintendent: true,
+        archived: true
     }
     const [filterVisibility, setFilterVisibility] = useState(defaultFilterVisibility)
     const [isLoadingFilterPrefs, setIsLoadingFilterPrefs] = useState(true)
@@ -463,7 +469,7 @@ const ProjectsList = () => {
     }, [filters.search])
 
     const filteredProjects = useMemo(() => {
-        const { search, market, projectStatus, projectProbability, projectManager, superintendent } = filters
+        const { search, market, projectStatus, projectProbability, projectManager, superintendent, archived } = filters
         
         return projects
             .filter((project) => {
@@ -513,6 +519,17 @@ const ProjectsList = () => {
                         if (project.Superintendent !== superintendent.value) return false
                     }
                 }
+                // Archived filter - toggle between Archived (true), Not Archived (false), and All (null)
+                if (archived !== null && archived !== undefined) {
+                    const projectArchived = project.Archived === true || project.Archived === 'true' || project.Archived === 1 || project.Archived === '1'
+                    // If archived filter is true, show only archived projects
+                    // If archived filter is false, show only non-archived projects
+                    if (archived === true) {
+                        if (!projectArchived) return false
+                    } else if (archived === false) {
+                        if (projectArchived) return false
+                    }
+                }
                 
                 return true
             })
@@ -540,6 +557,7 @@ const ProjectsList = () => {
             projectProbability: null,
             projectManager: null,
             superintendent: null,
+            archived: null, // Reset to default "All"
         })
         setLocalSearchValue('')
     }
@@ -1268,6 +1286,61 @@ const ProjectsList = () => {
                                         hideSelectedOptions={false}
                                     />
                                 )}
+                                {filterVisibility.archived && (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                            Show Archived
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPageIndex(1)
+                                                
+                                                // Toggle between All (null), Archived (true), and Not Archived (false)
+                                                let newArchived
+                                                if (filters.archived === true) {
+                                                    // Currently showing archived, switch to not archived
+                                                    newArchived = false
+                                                } else if (filters.archived === false) {
+                                                    // Currently showing not archived, switch to all (null)
+                                                    newArchived = null
+                                                } else {
+                                                    // Currently showing all, switch to archived
+                                                    newArchived = true
+                                                }
+                                                
+                                                // setFilters expects an object, not a function
+                                                setFilters({ archived: newArchived })
+                                            }}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className={`
+                                                    relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
+                                                    ${filters.archived === true
+                                                        ? 'bg-emerald-500'
+                                                        : filters.archived === false
+                                                        ? 'bg-orange-500'
+                                                        : 'bg-gray-300 dark:bg-gray-600'}
+                                                `}
+                                            >
+                                                <span
+                                                    className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                                    style={{
+                                                        transform: filters.archived === true
+                                                            ? 'translateX(24px)'      // Archived (right)
+                                                            : filters.archived === false
+                                                            ? 'translateX(13px)'     // Not Archived (middle)
+                                                            : 'translateX(2px)',     // All (left)
+                                                    }}
+                                                />
+                                            </span>
+                                            <span className="text-xs text-gray-700 dark:text-gray-200">
+                                                {filters.archived === true ? 'Archived' : filters.archived === false ? 'Not Archived' : 'All'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1406,6 +1479,61 @@ const ProjectsList = () => {
                                         hideSelectedOptions={false}
                                     />
                                 )}
+                                {filterVisibility.archived && (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                            Show Archived
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPageIndex(1)
+                                                
+                                                // Toggle between All (null), Archived (true), and Not Archived (false)
+                                                let newArchived
+                                                if (filters.archived === true) {
+                                                    // Currently showing archived, switch to not archived
+                                                    newArchived = false
+                                                } else if (filters.archived === false) {
+                                                    // Currently showing not archived, switch to all (null)
+                                                    newArchived = null
+                                                } else {
+                                                    // Currently showing all, switch to archived
+                                                    newArchived = true
+                                                }
+                                                
+                                                // setFilters expects an object, not a function
+                                                setFilters({ archived: newArchived })
+                                            }}
+                                            className="inline-flex items-center gap-2"
+                                        >
+                                            <span
+                                                className={`
+                                                    relative inline-flex h-5 w-11 items-center rounded-full transition-colors duration-200
+                                                    ${filters.archived === true
+                                                        ? 'bg-emerald-500'
+                                                        : filters.archived === false
+                                                        ? 'bg-orange-500'
+                                                        : 'bg-gray-300 dark:bg-gray-600'}
+                                                `}
+                                            >
+                                                <span
+                                                    className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                                    style={{
+                                                        transform: filters.archived === true
+                                                            ? 'translateX(24px)'      // Archived (right)
+                                                            : filters.archived === false
+                                                            ? 'translateX(13px)'     // Not Archived (middle)
+                                                            : 'translateX(2px)',     // All (left)
+                                                    }}
+                                                />
+                                            </span>
+                                            <span className="text-xs text-gray-700 dark:text-gray-200">
+                                                {filters.archived === true ? 'Archived' : filters.archived === false ? 'Not Archived' : 'All'}
+                                            </span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                             {/* More Filters Toggle Button - desktop only */}
                             <div className="flex items-center pt-0">
@@ -1426,7 +1554,8 @@ const ProjectsList = () => {
                         (filters.projectStatus && (Array.isArray(filters.projectStatus) ? filters.projectStatus.length > 0 : filters.projectStatus.value)) ||
                         (filters.projectProbability && (Array.isArray(filters.projectProbability) ? filters.projectProbability.length > 0 : filters.projectProbability.value)) ||
                         (filters.projectManager && (Array.isArray(filters.projectManager) ? filters.projectManager.length > 0 : filters.projectManager.value)) ||
-                        (filters.superintendent && (Array.isArray(filters.superintendent) ? filters.superintendent.length > 0 : filters.superintendent.value))) && (
+                        (filters.superintendent && (Array.isArray(filters.superintendent) ? filters.superintendent.length > 0 : filters.superintendent.value)) ||
+                        (filters.archived !== null && filters.archived !== undefined)) && (
                         <div className="flex justify-end">
                             <Button 
                                 size="sm" 
@@ -1482,6 +1611,13 @@ const ProjectsList = () => {
                                             onChange={(checked) => handleFilterVisibilityChange('superintendent', checked)}
                                         />
                                         <span>Super Assigned</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <Checkbox
+                                            checked={filterVisibility.archived !== false}
+                                            onChange={(checked) => handleFilterVisibilityChange('archived', checked)}
+                                        />
+                                        <span>Archived</span>
                                     </label>
                                 </div>
                             </Card>

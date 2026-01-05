@@ -50,6 +50,44 @@ function parseTimePreference(timeStr: string): number {
     }
 }
 
+// Helper function to retry API calls with exponential backoff for rate limiting
+async function retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 5,
+    baseDelay: number = 1000
+): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error: any) {
+            lastError = error;
+            
+            // Only retry on 429 (rate limit) or 503 (service unavailable)
+            const status = error?.response?.status;
+            if (status !== 429 && status !== 503) {
+                throw error; // Don't retry for other errors
+            }
+            
+            // If this is the last attempt, throw the error
+            if (attempt === maxRetries) {
+                throw error;
+            }
+            
+            // Calculate exponential backoff delay
+            const delay = baseDelay * Math.pow(2, attempt);
+            const jitter = Math.random() * 0.3 * delay; // Add up to 30% jitter
+            const totalDelay = delay + jitter;
+            
+            console.log(`   ⚠️  Rate limited (${status}), retrying in ${Math.round(totalDelay)}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+        }
+    }
+    
+    throw lastError;
+}
+
 // Helper function to check if notification should be sent
 async function shouldNotifyUser(
     userId: string,
@@ -1768,6 +1806,108 @@ export const procoreGetProject = functions
         }
     });
 
+// Search for a Procore project by project_number
+// This is used to find existing projects in Procore before creating duplicates
+export const procoreSearchProjectByNumber = functions
+    .region('us-central1')
+    .runWith({
+        timeoutSeconds: 60,
+        memory: '256MB',
+    })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const accessToken = await getProcoreAccessToken(userId, true);
+
+        if (!accessToken) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'No valid Procore access token. Please authorize the application.'
+            );
+        }
+
+        const { projectNumber } = data as { projectNumber: string | number };
+        if (!projectNumber) {
+            throw new functions.https.HttpsError('invalid-argument', 'projectNumber is required');
+        }
+
+        const projectNumberStr = String(projectNumber).trim();
+        if (!projectNumberStr) {
+            throw new functions.https.HttpsError('invalid-argument', 'projectNumber cannot be empty');
+        }
+
+        try {
+            console.log(`🔍 Searching Procore for project with project_number: "${projectNumberStr}"`);
+
+            // Fetch all projects from Procore and search by project_number
+            const apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/companies/${PROCORE_CONFIG.companyId}/projects`;
+            
+            let response = await axios.get(apiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                },
+            });
+
+            if (response.status === 401) {
+                console.log('Got 401, attempting token refresh...');
+                const refreshedToken = await getProcoreAccessToken(userId, true);
+                if (refreshedToken && refreshedToken !== accessToken) {
+                    response = await axios.get(apiUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${refreshedToken}`,
+                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                        },
+                    });
+                }
+            }
+
+            const allProjects = Array.isArray(response.data) ? response.data : [];
+            console.log(`📊 Found ${allProjects.length} total projects in Procore`);
+
+            // Search for matching project_number (case-insensitive, trim whitespace)
+            const matchingProject = allProjects.find((p: any) => {
+                const procoreProjectNumber = p.project_number ? String(p.project_number).trim() : '';
+                return procoreProjectNumber.toLowerCase() === projectNumberStr.toLowerCase();
+            });
+
+            if (matchingProject) {
+                console.log(`✅ Found matching project in Procore:`, {
+                    id: matchingProject.id,
+                    name: matchingProject.name,
+                    project_number: matchingProject.project_number,
+                });
+                return {
+                    success: true,
+                    found: true,
+                    project: matchingProject,
+                };
+            } else {
+                console.log(`❌ No project found in Procore with project_number: "${projectNumberStr}"`);
+                return {
+                    success: true,
+                    found: false,
+                    project: null,
+                };
+            }
+        } catch (error: any) {
+            console.error('Error searching Procore project by number:', {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data,
+            });
+
+            throw new functions.https.HttpsError(
+                'internal',
+                error.response?.data?.errors || error.response?.data?.error_description || error.response?.data?.message || error.message || 'Failed to search Procore project'
+            );
+        }
+    });
+
 // Sync all linked projects from Procore to Bolt
 // This function fetches all projects from Firebase that have procoreProjectId,
 // then fetches each from Procore and updates Firebase with Procore data
@@ -1795,32 +1935,35 @@ export const procoreSyncAllProjectsToBolt = functions
         }
 
         try {
-            // Get all projects from Firebase that have procoreProjectId
+            // Fetch only linked projects from Firebase
             const projectsRef = admin.firestore().collection('projects');
-            const snapshot = await projectsRef
-                .where('procoreProjectId', '!=', null)
-                .get();
+            const projectsSnapshot = await projectsRef.where('procoreProjectId', '!=', null).get();
+            const projects = projectsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            })) as Array<{ 
+                id: string; 
+                procoreProjectId?: number | string; 
+                [key: string]: any 
+            }>;
 
-            if (snapshot.empty) {
+            if (projects.length === 0) {
                 return {
                     success: true,
                     syncedCount: 0,
+                    errorCount: 0,
+                    totalProjects: 0,
+                    errors: [],
+                    errorDetails: null,
                     message: 'No projects linked to Procore found.',
                 };
             }
-
-            const projects = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-            })) as Array<{ id: string; procoreProjectId?: number | string; ProjectName?: string; projectName?: string; [key: string]: any }>;
-
-            console.log(`Found ${projects.length} projects linked to Procore. Starting sync...`);
 
             let syncedCount = 0;
             let errorCount = 0;
             const errors: Array<{ projectId: string; projectName: string; error: string }> = [];
 
-            // Process projects in batches to avoid timeout
+            // Process projects in batches to avoid timeout and rate limits
             const batchSize = 10;
             for (let i = 0; i < projects.length; i += batchSize) {
                 const batch = projects.slice(i, i + batchSize);
@@ -1844,11 +1987,13 @@ export const procoreSyncAllProjectsToBolt = functions
                             let response;
                             
                             try {
-                                response = await axios.get(apiUrl, {
-                                    headers: {
-                                        'Authorization': `Bearer ${accessToken}`,
-                                        'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                    },
+                                response = await retryWithBackoff(async () => {
+                                    return await axios.get(apiUrl, {
+                                        headers: {
+                                            'Authorization': `Bearer ${accessToken}`,
+                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                        },
+                                    });
                                 });
                             } catch (v2Error: any) {
                                 // If v2.0 fails with 404 or 400, try v1.0 format
@@ -1856,14 +2001,16 @@ export const procoreSyncAllProjectsToBolt = functions
                                     console.log(`v2.0 endpoint failed for project ${projectIdNum}, trying v1.0 format...`);
                                     // Fallback to v1.0 endpoint format
                                     apiUrl = `${PROCORE_CONFIG.apiBaseUrl}/rest/v1.0/projects/${projectIdNum}`;
-                                    response = await axios.get(apiUrl, {
-                                        params: {
-                                            company_id: PROCORE_CONFIG.companyId,
-                                        },
-                                        headers: {
-                                            'Authorization': `Bearer ${accessToken}`,
-                                            'Procore-Company-Id': PROCORE_CONFIG.companyId,
-                                        },
+                                    response = await retryWithBackoff(async () => {
+                                        return await axios.get(apiUrl, {
+                                            params: {
+                                                company_id: PROCORE_CONFIG.companyId,
+                                            },
+                                            headers: {
+                                                'Authorization': `Bearer ${accessToken}`,
+                                                'Procore-Company-Id': PROCORE_CONFIG.companyId,
+                                            },
+                                        });
                                     });
                                 } else {
                                     throw v2Error;
@@ -2401,6 +2548,11 @@ export const procoreSyncAllProjectsToBolt = functions
                         }
                     })
                 );
+                
+                // Delay between batches to avoid rate limits
+                if (i + batchSize < projects.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
 
             return {
@@ -2408,8 +2560,8 @@ export const procoreSyncAllProjectsToBolt = functions
                 syncedCount,
                 errorCount,
                 totalProjects: projects.length,
-                errors: errors.slice(0, 10), // Return first 10 errors
-                errorDetails: errors.length > 0 ? errors.map(e => `${e.projectName}: ${e.error}`).join('; ') : null
+                errors: errors.slice(0, 10),
+                errorDetails: errors.length > 0 ? errors.map(e => `${e.projectName}: ${e.error}`).join('; ') : null,
             };
         } catch (error: any) {
             console.error('Error syncing all projects from Procore:', error);
