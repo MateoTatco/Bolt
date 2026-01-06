@@ -9,10 +9,12 @@ import {
     PiClipboardTextDuotone,
     PiCurrencyDollarDuotone,
     PiGiftDuotone,
+    PiAddressBookDuotone,
 } from 'react-icons/pi'
 
 const navigationIcon = {
     home: <PiHouseLineDuotone />,
+    crm: <PiAddressBookDuotone />,
     masterTracker: <PiClipboardTextDuotone />,
     projectProfitability: <PiCurrencyDollarDuotone />,
     profitSharing: <PiGiftDuotone />,

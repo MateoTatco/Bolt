@@ -15,13 +15,24 @@ const baseNavigationConfig = [
     {
         key: 'home',
         path: '/home',
-        title: 'CRM',
+        title: 'Home',
         translateKey: 'nav.home',
         icon: 'home',
         type: NAV_ITEM_TYPE_ITEM,
         authority: [],
         subMenu: [],
-        module: MODULES.CRM, // Map to module for role-based filtering
+        module: null, // Home is accessible to all roles
+    },
+    {
+        key: 'crm',
+        path: '/crm',
+        title: 'CRM',
+        translateKey: 'nav.crm',
+        icon: 'crm',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+        module: MODULES.CRM, // CRM is only for Tatco roles
     },
     {
         key: 'masterTracker',
@@ -82,6 +93,11 @@ export const getNavigationConfig = (userEmail, hasProfitSharingAccess = false, u
             return false
         }
         
+        // Home is always accessible to all users
+        if (nav.key === 'home') {
+            return true
+        }
+        
         // Advanced Features: accessible by authorized emails OR admin role
         if (nav.key === 'advancedFeatures') {
             // Admin role has access - handle both string and array
@@ -134,3 +150,4 @@ export const getNavigationConfig = (userEmail, hasProfitSharingAccess = false, u
 const navigationConfig = baseNavigationConfig
 
 export default navigationConfig
+

@@ -1,0 +1,114 @@
+import React from 'react'
+import { useSessionUser } from '@/store/authStore'
+import { shouldShowWelcomePage, USER_ROLES } from '@/constants/roles.constant'
+import { Button } from '@/components/ui'
+import { useNavigate } from 'react-router'
+
+// Welcome page component for users without CRM access
+const WelcomePage = () => {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+            <div className="text-center space-y-6 max-w-2xl">
+                <h1 className="text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
+                    Welcome To Bolt
+                </h1>
+                <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 font-medium">
+                    App under construction
+                </p>
+                <div className="pt-8">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 dark:bg-primary/20 rounded-full">
+                        <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                            We're building something amazing for you
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// Dashboard/home page for Tatco users
+const TatcoHomePage = () => {
+    const navigate = useNavigate()
+    
+    return (
+        <div className="flex flex-col gap-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                        Welcome to Bolt
+                    </h1>
+                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                        Your central hub for managing leads, clients, projects, and more
+                    </p>
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate('/crm')}>
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                            <span className="text-2xl">👤</span>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">CRM</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Manage leads and clients</p>
+                        </div>
+                    </div>
+                </Card>
+                
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate('/projects')}>
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                            <span className="text-2xl">📊</span>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Master Tracker</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Track and manage projects</p>
+                        </div>
+                    </div>
+                </Card>
+                
+                <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate('/project-profitability')}>
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                            <span className="text-2xl">💰</span>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Project Profitability</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Analyze project performance</p>
+                        </div>
+                    </div>
+                </Card>
+            </div>
+        </div>
+    )
+}
+
+const Home = () => {
+    const user = useSessionUser((state) => state.user)
+    
+    // Check if user should see welcome page (non-Tatco roles)
+    const showWelcomePage = shouldShowWelcomePage(user?.role)
+    
+    // Check if user has Tatco role
+    const roles = Array.isArray(user?.role) ? user.role : (user?.role ? [user.role] : [])
+    const hasTatcoRole = roles.some(r => r === USER_ROLES.TATCO_USER || r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING)
+    const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
+    
+    // Show welcome page for non-Tatco roles, dashboard for Tatco/Admin
+    if (showWelcomePage) {
+        return <WelcomePage />
+    }
+    
+    // For Tatco users and admins, show dashboard
+    if (hasTatcoRole || hasAdminRole) {
+        return <TatcoHomePage />
+    }
+    
+    // Fallback to welcome page
+    return <WelcomePage />
+}
+
+export default Home

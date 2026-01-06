@@ -6,6 +6,64 @@ import toast from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import { db } from '@/configs/firebase.config'
 import { collection, getDocs, getDoc, doc } from 'firebase/firestore'
+import { USER_ROLES, MODULES, hasModuleAccess } from '@/constants/roles.constant'
+
+/**
+ * Check if a user should receive notifications for a specific entity type based on their role
+ * Non-Tatco roles should not receive notifications for CRM entities (lead, client) or projects
+ * @param {string} userId - User ID to check role for
+ * @param {string} entityType - Entity type (lead, client, project)
+ * @returns {Promise<boolean>} True if user should receive notifications for this entity type
+ */
+export async function shouldReceiveNotificationForEntity(userId, entityType) {
+    if (!userId || !entityType) {
+        return true // Default to enabled if missing params
+    }
+
+    try {
+        const userResult = await FirebaseDbService.users.getById(userId)
+        if (userResult.success && userResult.data) {
+            const userRole = userResult.data.role
+            if (!userRole) {
+                return true // No role set, allow notifications (backward compatibility)
+            }
+
+            const roles = Array.isArray(userRole) ? userRole : [userRole]
+            
+            // Admin and Tatco roles can receive all notifications
+            const hasTatcoRole = roles.some(r => 
+                r === USER_ROLES.TATCO_USER || 
+                r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+            )
+            const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
+            
+            if (hasTatcoRole || hasAdminRole) {
+                return true // Tatco users and admins get all notifications
+            }
+
+            // For non-Tatco roles, block notifications for CRM and project-related entities
+            // Only allow profit sharing notifications
+            if (entityType === 'lead' || entityType === 'client') {
+                // These are CRM entities - block for non-Tatco roles
+                return false
+            }
+            
+            if (entityType === 'project') {
+                // Projects are part of Master Tracker/Project Profitability - block for non-Tatco roles
+                return false
+            }
+
+            // Allow other entity types (like profit sharing)
+            return true
+        }
+        // Default to enabled if no user found
+        return true
+    } catch (error) {
+        console.error('Error checking notification entity access:', error)
+        // Default to enabled on error
+        return true
+    }
+}
 
 /**
  * Check if a notification type is enabled for a user
@@ -63,6 +121,14 @@ export async function createNotification({
     if (!userId || !type || !title || !message) {
         console.error('Missing required notification parameters', { userId, type, title, message })
         return { success: false, error: 'Missing required parameters' }
+    }
+
+    // Check if user should receive notifications for this entity type based on role
+    if (entityType) {
+        const shouldReceive = await shouldReceiveNotificationForEntity(userId, entityType)
+        if (!shouldReceive) {
+            return { success: true, skipped: true, reason: 'User role does not have access to this entity type' }
+        }
     }
 
     // Check user preferences before creating notification

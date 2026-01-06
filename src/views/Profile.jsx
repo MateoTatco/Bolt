@@ -14,6 +14,7 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject }
 import { getAuth } from 'firebase/auth'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
+import { getVisibleNotificationTypes } from '@/constants/roles.constant'
 
 const Profile = () => {
     const navigate = useNavigate()
@@ -45,6 +46,16 @@ const Profile = () => {
 
     // Profit sharing access (to conditionally show related notification settings)
     const { hasAccess: hasProfitSharingAccess, userRole: profitSharingUserRole } = useProfitSharingAccess()
+    
+    // Get visible notification types based on user role
+    const visibleNotificationTypes = React.useMemo(() => {
+        return getVisibleNotificationTypes(user?.role)
+    }, [user?.role])
+    
+    // Helper to check if a notification type should be visible
+    const isNotificationTypeVisible = (type) => {
+        return visibleNotificationTypes.includes(type)
+    }
     
     // Time-based notification settings
     const timeOptions = [
@@ -111,7 +122,8 @@ const Profile = () => {
                         } else {
                             // Default: all enabled with default time settings
                             const defaultPreferences = {}
-                            Object.values(NOTIFICATION_TYPES).forEach(type => {
+                            // Only set defaults for visible notification types
+                            visibleNotificationTypes.forEach(type => {
                                 defaultPreferences[type] = true
                             })
                             // Default time settings
@@ -140,7 +152,8 @@ const Profile = () => {
                         
                         // Default notification preferences
                         const defaultPreferences = {}
-                        Object.values(NOTIFICATION_TYPES).forEach(type => {
+                        // Only set defaults for visible notification types
+                        visibleNotificationTypes.forEach(type => {
                             defaultPreferences[type] = true
                         })
                         setNotificationPreferences(defaultPreferences)
@@ -818,7 +831,12 @@ const Profile = () => {
                             
                             <Form onSubmit={handleSaveNotificationPreferences}>
                                 <FormContainer>
-                                    {/* Task Notifications */}
+                                    {/* Task Notifications - Only show for Tatco roles */}
+                                    {(isNotificationTypeVisible(NOTIFICATION_TYPES.TASK_ASSIGNED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.TASK_COMPLETED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.TASK_UPDATED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.TASK_DUE_SOON) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.TASK_OVERDUE)) && (
                                     <div className="mb-6 md:mb-8">
                                         <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Task Notifications</h2>
                                         <div className="space-y-3 md:space-y-4">
@@ -922,8 +940,13 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
-                                    {/* Entity Notifications */}
+                                    {/* Entity Notifications - Only show for Tatco roles */}
+                                    {(isNotificationTypeVisible(NOTIFICATION_TYPES.ENTITY_CREATED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.ENTITY_UPDATED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.ENTITY_STATUS_CHANGED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.ENTITY_DELETED)) && (
                                     <div className="mb-6 md:mb-8">
                                         <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Entity Notifications</h2>
                                         <div className="space-y-3 md:space-y-4">
@@ -972,8 +995,11 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
-                                    {/* Attachment Notifications */}
+                                    {/* Attachment Notifications - Only show for Tatco roles */}
+                                    {(isNotificationTypeVisible(NOTIFICATION_TYPES.ATTACHMENT_ADDED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.ATTACHMENT_DELETED)) && (
                                     <div className="mb-6 md:mb-8">
                                         <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Attachment Notifications</h2>
                                         <div className="space-y-3 md:space-y-4">
@@ -1000,8 +1026,10 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
-                                    {/* Activity Notifications */}
+                                    {/* Activity Notifications - Only show for Tatco roles */}
+                                    {isNotificationTypeVisible(NOTIFICATION_TYPES.ACTIVITY_ADDED) && (
                                     <div className="mb-6 md:mb-8">
                                         <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Activity Notifications</h2>
                                         <div className="space-y-3 md:space-y-4">
@@ -1017,8 +1045,10 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
-                                    {/* System Notifications */}
+                                    {/* System Notifications - Show for all roles */}
+                                    {isNotificationTypeVisible(NOTIFICATION_TYPES.SYSTEM) && (
                                     <div className="mb-6 md:mb-8">
                                         <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">System Notifications</h2>
                                         <div className="space-y-3 md:space-y-4">
@@ -1034,9 +1064,10 @@ const Profile = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )}
 
                                     {/* Profit Sharing Notifications (visible only if user has access) */}
-                                    {hasProfitSharingAccess && (
+                                    {hasProfitSharingAccess && isNotificationTypeVisible(NOTIFICATION_TYPES.PROFIT_SHARING) && (
                                         <div className="mb-6 md:mb-8">
                                             <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">
                                                 Profit Sharing

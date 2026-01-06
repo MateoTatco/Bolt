@@ -12,6 +12,12 @@ export const protectedRoutes = [
         authority: [],
     },
     {
+        key: 'crm',
+        path: '/crm',
+        component: lazy(() => import('@/views/CRM')),
+        authority: [],
+    },
+    {
         key: 'leadDetail',
         path: '/leads/:leadId',
         component: lazy(() => import('@/views/LeadDetail')),
