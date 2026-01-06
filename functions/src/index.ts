@@ -1870,10 +1870,72 @@ export const procoreSearchProjectByNumber = functions
             const allProjects = Array.isArray(response.data) ? response.data : [];
             console.log(`📊 Found ${allProjects.length} total projects in Procore`);
 
+            // Debug: Show sample project numbers for troubleshooting
+            const sampleProjectNumbers = allProjects
+                .slice(0, 10)
+                .map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    project_number: p.project_number,
+                    project_number_type: typeof p.project_number,
+                    project_number_string: String(p.project_number || ''),
+                }));
+            console.log(`🔍 Sample project numbers from Procore (first 10):`, JSON.stringify(sampleProjectNumbers, null, 2));
+            
+            // Check if any projects have the project_number field at all
+            const projectsWithNumber = allProjects.filter((p: any) => p.project_number != null && p.project_number !== '');
+            const projectsWithoutNumber = allProjects.length - projectsWithNumber.length;
+            console.log(`📊 Projects with project_number: ${projectsWithNumber.length} / ${allProjects.length}`);
+            console.log(`📊 Projects without project_number: ${projectsWithoutNumber}`);
+            
+            // Show projects that might match (similar numbers)
+            const searchNum = Number(projectNumberStr);
+            if (!Number.isNaN(searchNum)) {
+                const similarNumbers = allProjects
+                    .filter((p: any) => {
+                        if (!p.project_number) return false;
+                        const pNum = Number(p.project_number);
+                        return !Number.isNaN(pNum) && Math.abs(pNum - searchNum) < 1000;
+                    })
+                    .slice(0, 5)
+                    .map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        project_number: p.project_number,
+                    }));
+                if (similarNumbers.length > 0) {
+                    console.log(`💡 Found ${similarNumbers.length} projects with similar numbers:`, JSON.stringify(similarNumbers, null, 2));
+                }
+            }
+
             // Search for matching project_number (case-insensitive, trim whitespace)
+            // Try multiple comparison methods to handle different formats
             const matchingProject = allProjects.find((p: any) => {
-                const procoreProjectNumber = p.project_number ? String(p.project_number).trim() : '';
-                return procoreProjectNumber.toLowerCase() === projectNumberStr.toLowerCase();
+                if (!p.project_number) return false;
+                
+                // Try as string (trimmed, case-insensitive)
+                const procoreProjectNumberStr = String(p.project_number).trim();
+                if (procoreProjectNumberStr.toLowerCase() === projectNumberStr.toLowerCase()) {
+                    return true;
+                }
+                
+                // Try as number (in case one is stored as number and other as string)
+                const procoreProjectNumberNum = Number(p.project_number);
+                const searchNumberNum = Number(projectNumberStr);
+                if (!Number.isNaN(procoreProjectNumberNum) && !Number.isNaN(searchNumberNum)) {
+                    if (procoreProjectNumberNum === searchNumberNum) {
+                        return true;
+                    }
+                }
+                
+                // Try removing leading zeros
+                const procoreNoLeadingZeros = procoreProjectNumberStr.replace(/^0+/, '');
+                const searchNoLeadingZeros = projectNumberStr.replace(/^0+/, '');
+                if (procoreNoLeadingZeros === searchNoLeadingZeros) {
+                    return true;
+                }
+                
+                return false;
             });
 
             if (matchingProject) {
@@ -1881,18 +1943,47 @@ export const procoreSearchProjectByNumber = functions
                     id: matchingProject.id,
                     name: matchingProject.name,
                     project_number: matchingProject.project_number,
+                    project_number_type: typeof matchingProject.project_number,
                 });
                 return {
                     success: true,
                     found: true,
                     project: matchingProject,
+                    debug: {
+                        searchedFor: projectNumberStr,
+                        foundAs: String(matchingProject.project_number),
+                        totalProjectsSearched: allProjects.length,
+                    },
                 };
             } else {
+                // Debug: Show projects with similar numbers
+                const similarProjects = allProjects
+                    .filter((p: any) => {
+                        if (!p.project_number) return false;
+                        const procoreNum = String(p.project_number).trim();
+                        return procoreNum.includes(projectNumberStr) || projectNumberStr.includes(procoreNum);
+                    })
+                    .slice(0, 5)
+                    .map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        project_number: p.project_number,
+                    }));
+                
                 console.log(`❌ No project found in Procore with project_number: "${projectNumberStr}"`);
+                if (similarProjects.length > 0) {
+                    console.log(`💡 Found ${similarProjects.length} projects with similar numbers:`, JSON.stringify(similarProjects, null, 2));
+                }
+                
                 return {
                     success: true,
                     found: false,
                     project: null,
+                    debug: {
+                        searchedFor: projectNumberStr,
+                        totalProjectsSearched: allProjects.length,
+                        similarProjects: similarProjects,
+                    },
                 };
             }
         } catch (error: any) {
