@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast, Tabs } from '@/components/ui'
 import { HiOutlineTrash } from 'react-icons/hi'
-import { PiUsersDuotone, PiChartLineDuotone, PiPlugDuotone, PiCodeDuotone } from 'react-icons/pi'
+import { PiUsersDuotone, PiChartLineDuotone, PiPlugDuotone, PiCodeDuotone, PiMagnifyingGlass } from 'react-icons/pi'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
 import { useSessionUser } from '@/store/authStore'
@@ -10,7 +10,7 @@ import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { FirebaseAuthService } from '@/services/FirebaseAuthService'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
-import { getAllRoleOptions, USER_ROLES, ROLE_DISPLAY_NAMES } from '@/constants/roles.constant'
+import { getAllRoleOptions, USER_ROLES, ROLE_DISPLAY_NAMES, getCompanyForRole, ROLE_TO_COMPANY } from '@/constants/roles.constant'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { components } from 'react-select'
 
@@ -184,7 +184,7 @@ const AdvancedFeatures = () => {
     const userRole = user?.role
     
     // Check authorization: admin role OR authorized email
-    const userEmail = user?.email?.toLowerCase() || ''
+        const userEmail = user?.email?.toLowerCase() || ''
     const isAuthorizedByEmail = AUTHORIZED_EMAILS.some(email => email.toLowerCase() === userEmail)
     // Handle both single role (string) and multiple roles (array)
     const roles = Array.isArray(userRole) ? userRole : (userRole ? [userRole] : [])
@@ -240,12 +240,15 @@ const AdvancedFeatures = () => {
         role: [USER_ROLES.TATCO_USER], // Default to Tatco User, now supports multiple roles
     })
     const [isInvitingUser, setIsInvitingUser] = useState(false)
-    
+
     // User management state
     const [allUsers, setAllUsers] = useState([])
     const [loadingUsers, setLoadingUsers] = useState(false)
     const [updatingUserRole, setUpdatingUserRole] = useState(null)
     const [userRoleChanges, setUserRoleChanges] = useState({}) // Track pending role changes
+    const [userSearchQuery, setUserSearchQuery] = useState('') // Search query for users
+    const [activeCompanyTab, setActiveCompanyTab] = useState('tatco') // Active company tab
+    const [deletingUserId, setDeletingUserId] = useState(null) // Track which user is being deleted
 
     const roleOptions = getAllRoleOptions()
 
@@ -479,11 +482,106 @@ const AdvancedFeatures = () => {
         setUserRoleChanges({})
     }
 
+    // Helper function to normalize company name to tab key
+    const normalizeCompanyKey = (companyName) => {
+        if (!companyName) return 'no-company'
+        return companyName.toLowerCase().replace(/\s+/g, '-')
+    }
+
+    // Helper function to determine user's company category
+    const getUserCompanyCategory = (user) => {
+        const roles = Array.isArray(user.role) ? user.role : (user.role ? [user.role] : [])
+        
+        // Check if user is admin
+        if (roles.includes(USER_ROLES.ADMIN)) {
+            return 'administrators'
+        }
+        
+        // Get all companies from user's roles
+        const companies = new Set()
+        roles.forEach(role => {
+            const company = ROLE_TO_COMPANY[role]
+            if (company) {
+                companies.add(company)
+            }
+        })
+        
+        // If user has roles from multiple companies, they're multi-company
+        if (companies.size > 1) {
+            return 'multi-company'
+        }
+        
+        // If user has roles from one company, return normalized company key
+        if (companies.size === 1) {
+            return normalizeCompanyKey(Array.from(companies)[0])
+        }
+        
+        // No company assigned
+        return 'no-company'
+    }
+
+    // Group users by company
+    const groupUsersByCompany = () => {
+        const grouped = {
+            'tatco': [],
+            'fd-construction': [],
+            'on-the-mark': [],
+            'peak-civil': [],
+            'pier-companies': [],
+            'administrators': [],
+            'multi-company': [],
+            'no-company': []
+        }
+        
+        allUsers.forEach(user => {
+            const category = getUserCompanyCategory(user)
+            grouped[category] = grouped[category] || []
+            grouped[category].push(user)
+        })
+        
+        return grouped
+    }
+
+    // Filter users by search query
+    const filterUsersBySearch = (users) => {
+        if (!userSearchQuery.trim()) {
+            return users
+        }
+        
+        const query = userSearchQuery.toLowerCase().trim()
+        return users.filter(user => {
+            const name = `${user.firstName || ''} ${user.lastName || ''}`.trim().toLowerCase()
+            const email = (user.email || '').toLowerCase()
+            return name.includes(query) || email.includes(query)
+        })
+    }
+
+    // Get users for a specific company tab (without search filter - search is applied globally)
+    const getUsersForCompany = (companyKey) => {
+        const grouped = groupUsersByCompany()
+        const users = grouped[companyKey] || []
+        return users
+    }
+
+    // Get user count for a company (without search filter - search is applied globally)
+    const getUserCountForCompany = (companyKey) => {
+        const grouped = groupUsersByCompany()
+        const users = grouped[companyKey] || []
+        return users.length
+    }
+
+    // Get filtered users for active tab (applies search filter)
+    const getFilteredUsersForActiveTab = () => {
+        const usersForCompany = getUsersForCompany(activeCompanyTab)
+        return filterUsersBySearch(usersForCompany)
+    }
+
     const handleDeleteUser = async (userId, userEmail) => {
         if (!window.confirm(`Are you sure you want to delete ${userEmail}? This will permanently delete their account from Firebase Auth and Firestore.`)) {
             return
         }
 
+        setDeletingUserId(userId)
         try {
             // Step 1: Delete from Firebase Auth via Cloud Function
             try {
@@ -517,6 +615,8 @@ const AdvancedFeatures = () => {
                     {error.message || 'Failed to delete user. You may not have permission to delete users.'}
                 </Notification>
             )
+        } finally {
+            setDeletingUserId(null)
         }
     }
 
@@ -1003,7 +1103,7 @@ const AdvancedFeatures = () => {
                                 />
                             </div>
                             <div className="flex justify-end">
-                                <Button
+                <Button 
                                     onClick={handleInviteUser}
                                     loading={isInvitingUser}
                                     disabled={isInvitingUser}
@@ -1016,52 +1116,230 @@ const AdvancedFeatures = () => {
 
                     {/* User Role Management */}
                     <Card className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <div>
-                                <h3 className="text-lg font-semibold mb-1">User Role Management</h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    View and manage user roles. Changes take effect immediately.
-                                </p>
+                        <div className="mb-4">
+                            <h3 className="text-lg font-semibold mb-1">User Role Management</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                View and manage user roles organized by company. Changes take effect immediately.
+                            </p>
+                            
+                            {/* Search Bar */}
+                            <div className="relative mb-4">
+                                <PiMagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                                <Input
+                                    placeholder="Search users by name or email..."
+                                    value={userSearchQuery}
+                                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                                    className="pl-10"
+                                />
                             </div>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                    setUserRoleChanges({}) // Clear pending changes
-                                    loadAllUsers() // Reload users
-                                }}
-                                loading={loadingUsers}
-                            >
-                                Refresh
-                            </Button>
-                        </div>
 
-                        {loadingUsers ? (
-                            <div className="text-center py-8">
-                                <div className="text-gray-500">Loading users...</div>
-                            </div>
-                        ) : allUsers.length === 0 ? (
-                            <div className="text-center py-8">
-                                <div className="text-gray-500">No users found</div>
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-gray-200 dark:border-gray-700">
-                                            <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
-                                            <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
-                                            <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
-                                            <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
-                                            <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {allUsers.map((userItem) => (
-                                            <tr
-                                                key={userItem.id}
-                                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-                                            >
+                            {/* Company Tabs - Hide when searching, show all results */}
+                            {userSearchQuery.trim() ? (
+                                // Show all search results when searching
+                                <div>
+                                    <div className="mb-4">
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            Showing {filterUsersBySearch(allUsers).length} result(s) across all companies
+                                        </p>
+                                    </div>
+                                    {loadingUsers ? (
+                                        <div className="text-center py-8">
+                                            <div className="text-gray-500">Loading users...</div>
+                                        </div>
+                                    ) : (() => {
+                                        const searchResults = filterUsersBySearch(allUsers)
+                                        return searchResults.length === 0 ? (
+                                            <div className="text-center py-8">
+                                                <div className="text-gray-500">No users found matching your search</div>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead>
+                                                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Company</th>
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
+                                                            <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {searchResults.map((userItem) => {
+                                                            const userCompany = getUserCompanyCategory(userItem)
+                                                            const companyDisplayName = userCompany === 'administrators' ? 'Administrators' 
+                                                                : userCompany === 'multi-company' ? 'Multi-Company'
+                                                                : userCompany === 'no-company' ? 'No Company'
+                                                                : userCompany.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+                                                            return (
+                                                                <tr
+                                                                    key={userItem.id}
+                                                                    className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                                >
+                                                                    <td className="py-3 px-4">
+                                                                        {userItem.firstName || userItem.lastName
+                                                                            ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
+                                                                            : 'N/A'}
+                                                                    </td>
+                                                                    <td className="py-3 px-4">{userItem.email || 'N/A'}</td>
+                                                                    <td className="py-3 px-4">
+                                                                        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                                                                            {companyDisplayName}
+                                                                        </Badge>
+                                                                    </td>
+                                                                    <td className="py-3 px-4">
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            {(() => {
+                                                                                const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                                                if (roles.length === 0) {
+                                                                                    return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">No role assigned</Badge>
+                                                                                }
+                                                                                return roles.map((role, idx) => (
+                                                                                    <Badge key={idx} className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                                        {ROLE_DISPLAY_NAMES[role] || role}
+                                                                                    </Badge>
+                                                                                ))
+                                                                            })()}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="py-3 px-4">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Select
+                                                                                isMulti
+                                                                                isClearable
+                                                                                options={roleOptions}
+                                                                                value={(() => {
+                                                                                    const pendingRoles = userRoleChanges[userItem.id]
+                                                                                    if (pendingRoles !== undefined) {
+                                                                                        if (pendingRoles.length === 0) {
+                                                                                            return null
+                                                                                        }
+                                                                                        return roleOptions.filter(opt => pendingRoles.includes(opt.value))
+                                                                                    }
+                                                                                    const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                                                    if (roles.length === 0) {
+                                                                                        return null
+                                                                                    }
+                                                                                    return roleOptions.filter(opt => roles.includes(opt.value))
+                                                                                })()}
+                                                                                onChange={(selected) => {
+                                                                                    if (!selected || selected.length === 0) {
+                                                                                        setUserRoleChanges(prev => ({
+                                                                                            ...prev,
+                                                                                            [userItem.id]: []
+                                                                                        }))
+                                                                                    } else {
+                                                                                        const selectedRoles = selected.map(opt => opt.value)
+                                                                                        setUserRoleChanges(prev => ({
+                                                                                            ...prev,
+                                                                                            [userItem.id]: selectedRoles
+                                                                                        }))
+                                                                                    }
+                                                                                }}
+                                                                                size="sm"
+                                                                                className="min-w-[350px]"
+                                                                                disabled={updatingUserRole === userItem.id}
+                                                                                components={{
+                                                                                    ValueContainer: CustomValueContainer,
+                                                                                    MultiValue: CustomMultiValue,
+                                                                                    MenuList: CustomMenuList,
+                                                                                    Option: CustomOption,
+                                                                                    Placeholder: CustomPlaceholder,
+                                                                                }}
+                                                                                menuPortalTarget={document.body}
+                                                                                menuPosition="fixed"
+                                                                                styles={selectZIndexStyles}
+                                                                                controlShouldRenderValue={false}
+                                                                                hideSelectedOptions={false}
+                                                                                placeholder="Select role(s)..."
+                                                                            />
+                                                                            {updatingUserRole === userItem.id && (
+                                                                                <div className="text-xs text-gray-500">Updating...</div>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="py-3 px-4">
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="plain"
+                                                                            icon={<HiOutlineTrash />}
+                                                                            onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                                            className="text-red-500 hover:text-red-700"
+                                                                            loading={deletingUserId === userItem.id}
+                                                                            disabled={deletingUserId === userItem.id}
+                                                                        >
+                                                                            {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
+                                                                        </Button>
+                                                                    </td>
+                                                                </tr>
+                                                            )
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )
+                                    })()}
+                                </div>
+                            ) : (
+                                // Show company tabs when not searching
+                                <>
+                                <Tabs value={activeCompanyTab} onChange={setActiveCompanyTab} variant="underline" className="w-full">
+                                    <Tabs.TabList className="mb-4">
+                                        <Tabs.TabNav value="tatco">
+                                            Tatco ({getUserCountForCompany('tatco')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="fd-construction">
+                                            FD Construction ({getUserCountForCompany('fd-construction')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="on-the-mark">
+                                            On The Mark ({getUserCountForCompany('on-the-mark')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="peak-civil">
+                                            Peak Civil ({getUserCountForCompany('peak-civil')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="pier-companies">
+                                            Pier Companies ({getUserCountForCompany('pier-companies')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="administrators">
+                                            Administrators ({getUserCountForCompany('administrators')})
+                                        </Tabs.TabNav>
+                                        <Tabs.TabNav value="multi-company">
+                                            Multi-Company ({getUserCountForCompany('multi-company')})
+                                        </Tabs.TabNav>
+                                    </Tabs.TabList>
+
+                                    {/* User Table for each company tab */}
+                                    {['tatco', 'fd-construction', 'on-the-mark', 'peak-civil', 'pier-companies', 'administrators', 'multi-company'].map((companyKey) => (
+                                        <Tabs.TabContent key={companyKey} value={companyKey}>
+                                            {loadingUsers ? (
+                                                <div className="text-center py-8">
+                                                    <div className="text-gray-500">Loading users...</div>
+                                                </div>
+                                            ) : (() => {
+                                                const usersForTab = getUsersForCompany(companyKey)
+                                                return usersForTab.length === 0 ? (
+                                                <div className="text-center py-8">
+                                                    <div className="text-gray-500">No users found{userSearchQuery ? ' matching your search' : ''}</div>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full">
+                                                        <thead>
+                                                            <tr className="border-b border-gray-200 dark:border-gray-700">
+                                                                <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
+                                                                <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
+                                                                <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
+                                                                <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
+                                                                <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {usersForTab.map((userItem) => (
+                                                                <tr
+                                                                    key={userItem.id}
+                                                                    className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                                                >
                                                 <td className="py-3 px-4">
                                                     {userItem.firstName || userItem.lastName
                                                         ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
@@ -1144,23 +1422,32 @@ const AdvancedFeatures = () => {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="plain"
-                                                        icon={<HiOutlineTrash />}
-                                                        onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
-                                                        className="text-red-500 hover:text-red-700"
-                                                    >
-                                                        Remove
-                                                    </Button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                                                                    <td className="py-3 px-4">
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="plain"
+                                                                            icon={<HiOutlineTrash />}
+                                                                            onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                                            className="text-red-500 hover:text-red-700"
+                                                                            loading={deletingUserId === userItem.id}
+                                                                            disabled={deletingUserId === userItem.id}
+                                                                        >
+                                                                            {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
+                                                                        </Button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )
+                                        })()}
+                                    </Tabs.TabContent>
+                                ))}
+                            </Tabs>
+                            </>
+                            )}
+                        </div>
                         
                         {/* Save button for role changes */}
                         {Object.keys(userRoleChanges).length > 0 && (
@@ -1169,7 +1456,6 @@ const AdvancedFeatures = () => {
                                     variant="outline"
                                     onClick={() => {
                                         setUserRoleChanges({})
-                                        loadAllUsers() // Reload to reset changes
                                     }}
                                 >
                                     Cancel
@@ -1214,16 +1500,16 @@ const AdvancedFeatures = () => {
                                     </p>
                                 </div>
                                 <Button 
-                                    size="sm" 
+                    size="sm"
                                     onClick={cacheData}
                                     disabled={!isOnline}
-                                >
+                >
                                     Cache
-                                </Button>
-                            </div>
+                </Button>
+            </div>
                         </Card>
 
-                        <Card className="p-4">
+                <Card className="p-4">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h6 className="text-sm font-medium">Pending Changes</h6>
@@ -1242,7 +1528,7 @@ const AdvancedFeatures = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card className="p-4">
                             <h6 className="text-sm font-medium mb-3">Change History</h6>
-                            <div className="space-y-2">
+                    <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-gray-600">
                                         {changeHistory.length} recent changes
@@ -1255,8 +1541,8 @@ const AdvancedFeatures = () => {
                                         View History
                                     </Button>
                                 </div>
-                            </div>
-                        </Card>
+                    </div>
+                </Card>
 
                         <Card className="p-4">
                             <h6 className="text-sm font-medium mb-3">Conflict Resolution</h6>
@@ -1296,361 +1582,361 @@ const AdvancedFeatures = () => {
 
                 {/* Tab 3: Integration Tools */}
                 <Tabs.TabContent value="integrations" className="space-y-4">
-                    {/* Procore Templates Test */}
+            {/* Procore Templates Test */}
                     <Card className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Procore Templates Test</h3>
-                            <Button 
-                                onClick={() => setShowProcoreTemplates(!showProcoreTemplates)}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                {showProcoreTemplates ? 'Hide' : 'Show'} Templates Test
-                            </Button>
-                        </div>
-                        {showProcoreTemplates && (
-                            <div className="space-y-4">
-                                <p className="text-sm text-gray-600">
-                                    Test the Procore API to see what project templates are available in your Procore account.
-                                </p>
-                                <Button 
-                                    onClick={handleGetProcoreTemplates}
-                                    loading={isLoadingTemplates}
-                                    variant="solid"
-                                >
-                                    {isLoadingTemplates ? 'Loading...' : 'Fetch Project Templates'}
-                                </Button>
-                                {procoreTemplates && (
-                                    <div className="mt-4">
-                                        <h4 className="font-semibold mb-2">Available Templates:</h4>
-                                        {procoreTemplates.success && procoreTemplates.data && Array.isArray(procoreTemplates.data) ? (
-                                            <div className="space-y-2">
-                                                {procoreTemplates.data.length > 0 ? (
-                                                    <>
-                                                        <div className="text-sm text-gray-600 mb-2">
-                                                            Found {procoreTemplates.data.length} template(s)
-                                                            {procoreTemplates.pagination?.total && ` (Total: ${procoreTemplates.pagination.total})`}
-                                                        </div>
-                                                        <div className="border rounded-lg overflow-hidden">
-                                                            <table className="w-full text-sm">
-                                                                <thead className="bg-gray-50 dark:bg-gray-800">
-                                                                    <tr>
-                                                                        <th className="px-4 py-2 text-left font-semibold">ID</th>
-                                                                        <th className="px-4 py-2 text-left font-semibold">Name</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {procoreTemplates.data.map((template, idx) => (
-                                                                        <tr key={template.id || idx} className="border-t">
-                                                                            <td className="px-4 py-2">{template.id}</td>
-                                                                            <td className="px-4 py-2 font-medium">{template.name}</td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                                            <p className="text-sm text-blue-800 dark:text-blue-200">
-                                                                <strong>Note:</strong> Check the browser console for detailed API response data.
-                                                            </p>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <p className="text-sm text-gray-500">No templates found.</p>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                                                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                                    Unexpected response format. Check console for details.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </Card>
-
-                    {/* Azure SQL Project Investigation Tools */}
-                    <Card className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Azure SQL Project Management</h3>
-                            <Button 
-                                onClick={() => setShowAzureSqlTools(!showAzureSqlTools)}
-                                variant="twoTone"
-                                size="sm"
-                            >
-                                {showAzureSqlTools ? 'Hide' : 'Show'} Tools
-                            </Button>
-                        </div>
-                        
-                        {showAzureSqlTools && (
-                            <div className="space-y-4">
-                                <Alert type="warning">
-                                    <div>
-                                        <strong>⚠️ Warning:</strong> These tools allow you to investigate and delete projects from Azure SQL Database. 
-                                        Use with extreme caution. Deletions are permanent and cannot be undone.
-                                    </div>
-                                </Alert>
-
-                                {/* Investigation Section */}
-                                <div className="space-y-3">
-                                    <h4 className="font-semibold">Investigate Project</h4>
-                                    <p className="text-sm text-gray-600">
-                                        Enter a project number to see all records (across all archive dates) in Azure SQL.
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            placeholder="Enter project number (e.g., 135250002)"
-                                            value={investigationProjectNumber}
-                                            onChange={(e) => setInvestigationProjectNumber(e.target.value)}
-                                            onKeyPress={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    handleInvestigateProject()
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            onClick={handleInvestigateProject}
-                                            disabled={isInvestigating || !investigationProjectNumber.trim()}
-                                            loading={isInvestigating}
-                                        >
-                                            Investigate
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Investigation Results */}
-                                {investigationResults && (
-                                    <div className="mt-4 space-y-3">
-                                        <div>
-                                            <h4 className="font-semibold">
-                                                Most Recent Records ({investigationResults.totalRecords} record(s))
-                                            </h4>
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                These are the records that appear on Project Profitability page
-                                                {investigationResults.mostRecentArchiveDate && 
-                                                    ` (Archive Date: ${investigationResults.mostRecentArchiveDate})`
-                                                }
-                                            </p>
-                                        </div>
-                                        
-                                        {investigationResults.records.length === 0 ? (
-                                            <Alert type="warning">
-                                                <p className="text-sm">
-                                                    No records found on the most recent archive date. 
-                                                    If you delete any records, this project will disappear from Project Profitability.
-                                                </p>
-                                            </Alert>
-                                        ) : (
-                                            <div className="space-y-2 max-h-96 overflow-y-auto">
-                                                {investigationResults.records.map((record, index) => (
-                                                    <Card key={index} className="p-3 border border-blue-200">
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-start justify-between">
-                                                                <div className="flex-1">
-                                                                    <p className="font-medium">
-                                                                        {String(record.projectName || 'Unknown')}
-                                                                        {record.hasDeleteInName && (
-                                                                            <Badge className="ml-2 bg-red-100 text-red-800">
-                                                                                HAS "DELETE"
-                                                                            </Badge>
-                                                                        )}
-                                                                        <Badge className="ml-2 bg-blue-100 text-blue-800">
-                                                                            Most Recent
-                                                                        </Badge>
-                                                                    </p>
-                                                                    <p className="text-sm text-gray-600">
-                                                                        Project #: {String(record.projectNumber || 'N/A')}
-                                                                    </p>
-                                                                    {record.projectManager && (
-                                                                        <p className="text-sm text-gray-600">
-                                                                            Project Manager: {String(record.projectManager)}
-                                                                        </p>
-                                                                    )}
-                                                                    <p className="text-xs text-gray-500">
-                                                                        Archive Date: {(() => {
-                                                                            const date = record.archiveDateOnly;
-                                                                            if (!date) return 'N/A';
-                                                                            if (typeof date === 'string') return date;
-                                                                            if (date instanceof Date) return date.toISOString().split('T')[0];
-                                                                            return String(date);
-                                                                        })()}
-                                                                    </p>
-                                                                    <div className="flex gap-2 mt-1">
-                                                                        <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                                                            {record.isActive ? 'Active' : 'Inactive'}
-                                                                        </Badge>
-                                                                        {record.redTeamImport && (
-                                                                            <Badge className="bg-purple-100 text-purple-800">
-                                                                                Red Team
-                                                                            </Badge>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="solid"
-                                                                    color="red"
-                                                                    onClick={() => handleDeleteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
-                                                                    disabled={isDeleting}
-                                                                >
-                                                                    Delete This Record
-                                                                </Button>
-                                                            </div>
-                                                            <div className="text-xs text-gray-500 space-y-1">
-                                                                <div>
-                                                                    Contract Amount: ${(record.contractAmount || 0).toLocaleString()} | 
-                                                                    Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
-                                                                    Projected Profit: ${(record.projectedProfit || 0).toLocaleString()}
-                                                                </div>
-                                                                <div>
-                                                                    Status: {String(record.contractStatus || 'N/A')} | 
-                                                                    Stage: {String(record.projectStage || 'N/A')}
-                                                                    {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
-                                                                    {record.contractEndDate && ` | End: ${record.contractEndDate}`}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </Card>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {/* Other Records from Different Archive Dates */}
-                                        {investigationResults.otherRecords && investigationResults.otherRecords.length > 0 && (
-                                            <div className="mt-4">
-                                                <div>
-                                                    <h4 className="font-semibold">
-                                                        Other Records on Different Dates ({investigationResults.otherRecords.length} record(s))
-                                                    </h4>
-                                                    <p className="text-xs text-gray-500 mt-1">
-                                                        These records exist but are NOT on the most recent archive date, so they won't appear on Project Profitability.
-                                                        If you delete the most recent record, these older records will NOT automatically appear.
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Procore Templates Test</h3>
+                    <Button 
+                        onClick={() => setShowProcoreTemplates(!showProcoreTemplates)}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        {showProcoreTemplates ? 'Hide' : 'Show'} Templates Test
+                    </Button>
+                </div>
+                {showProcoreTemplates && (
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600">
+                            Test the Procore API to see what project templates are available in your Procore account.
+                        </p>
+                        <Button 
+                            onClick={handleGetProcoreTemplates}
+                            loading={isLoadingTemplates}
+                            variant="solid"
+                        >
+                            {isLoadingTemplates ? 'Loading...' : 'Fetch Project Templates'}
+                        </Button>
+                        {procoreTemplates && (
+                            <div className="mt-4">
+                                <h4 className="font-semibold mb-2">Available Templates:</h4>
+                                {procoreTemplates.success && procoreTemplates.data && Array.isArray(procoreTemplates.data) ? (
+                                    <div className="space-y-2">
+                                        {procoreTemplates.data.length > 0 ? (
+                                            <>
+                                                <div className="text-sm text-gray-600 mb-2">
+                                                    Found {procoreTemplates.data.length} template(s)
+                                                    {procoreTemplates.pagination?.total && ` (Total: ${procoreTemplates.pagination.total})`}
+                                                </div>
+                                                <div className="border rounded-lg overflow-hidden">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-50 dark:bg-gray-800">
+                                                            <tr>
+                                                                <th className="px-4 py-2 text-left font-semibold">ID</th>
+                                                                <th className="px-4 py-2 text-left font-semibold">Name</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {procoreTemplates.data.map((template, idx) => (
+                                                                <tr key={template.id || idx} className="border-t">
+                                                                    <td className="px-4 py-2">{template.id}</td>
+                                                                    <td className="px-4 py-2 font-medium">{template.name}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                                                        <strong>Note:</strong> Check the browser console for detailed API response data.
                                                     </p>
                                                 </div>
-                                                <div className="space-y-2 max-h-64 overflow-y-auto mt-2">
-                                                    {investigationResults.otherRecords.map((record, index) => (
-                                                        <Card key={`other-${index}`} className="p-3 border border-gray-200 opacity-75">
-                                                            <div className="space-y-2">
-                                                                <div className="flex items-start justify-between">
-                                                                    <div className="flex-1">
-                                                                        <p className="font-medium text-sm">
-                                                                            {String(record.projectName || 'Unknown')}
-                                                                            {record.hasDeleteInName && (
-                                                                                <Badge className="ml-2 bg-red-100 text-red-800">
-                                                                                    HAS "DELETE"
-                                                                                </Badge>
-                                                                            )}
-                                                                            <Badge className="ml-2 bg-gray-100 text-gray-800">
-                                                                                Older Date
-                                                                            </Badge>
-                                                                        </p>
-                                                                        <p className="text-xs text-gray-600">
-                                                                            Project #: {String(record.projectNumber || 'N/A')}
-                                                                        </p>
-                                                                        {record.projectManager && (
-                                                                            <p className="text-xs text-gray-600">
-                                                                                Project Manager: {String(record.projectManager)}
-                                                                            </p>
-                                                                        )}
-                                                                        <p className="text-xs text-gray-500">
-                                                                            Archive Date: {(() => {
-                                                                                const date = record.archiveDateOnly;
-                                                                                if (!date) return 'N/A';
-                                                                                if (typeof date === 'string') return date;
-                                                                                if (date instanceof Date) return date.toISOString().split('T')[0];
-                                                                                return String(date);
-                                                                            })()}
-                                                                        </p>
-                                                                        <div className="flex gap-2 mt-1">
-                                                                            <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                                                                {record.isActive ? 'Active' : 'Inactive'}
-                                                                            </Badge>
-                                                                        </div>
-                                                                        <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                                                                            <div>
-                                                                                Contract: ${(record.contractAmount || 0).toLocaleString()} | 
-                                                                                Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
-                                                                                Profit: ${(record.projectedProfit || 0).toLocaleString()}
-                                                                            </div>
-                                                                            <div>
-                                                                                {record.contractStatus && `Status: ${record.contractStatus} | `}
-                                                                                {record.projectStage && `Stage: ${record.projectStage}`}
-                                                                                {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
-                                                                                {record.contractEndDate && ` | End: ${record.contractEndDate}`}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="solid"
-                                                                        color="blue"
-                                                                        onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
-                                                                        disabled={isDeleting}
-                                                                    >
-                                                                        Promote to Recent
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        </Card>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                            </>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No templates found.</p>
                                         )}
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                            Unexpected response format. Check console for details.
+                                        </p>
                                     </div>
                                 )}
                             </div>
                         )}
-                    </Card>
+                    </div>
+                )}
+            </Card>
+
+            {/* Azure SQL Project Investigation Tools */}
+            <Card className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Azure SQL Project Management</h3>
+                    <Button 
+                        onClick={() => setShowAzureSqlTools(!showAzureSqlTools)}
+                        variant="twoTone"
+                        size="sm"
+                    >
+                        {showAzureSqlTools ? 'Hide' : 'Show'} Tools
+                    </Button>
+                </div>
+                
+                {showAzureSqlTools && (
+                    <div className="space-y-4">
+                        <Alert type="warning">
+                            <div>
+                                <strong>⚠️ Warning:</strong> These tools allow you to investigate and delete projects from Azure SQL Database. 
+                                Use with extreme caution. Deletions are permanent and cannot be undone.
+                            </div>
+                        </Alert>
+
+                        {/* Investigation Section */}
+                        <div className="space-y-3">
+                            <h4 className="font-semibold">Investigate Project</h4>
+                            <p className="text-sm text-gray-600">
+                                Enter a project number to see all records (across all archive dates) in Azure SQL.
+                            </p>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="Enter project number (e.g., 135250002)"
+                                    value={investigationProjectNumber}
+                                    onChange={(e) => setInvestigationProjectNumber(e.target.value)}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleInvestigateProject()
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    onClick={handleInvestigateProject}
+                                    disabled={isInvestigating || !investigationProjectNumber.trim()}
+                                    loading={isInvestigating}
+                                >
+                                    Investigate
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Investigation Results */}
+                        {investigationResults && (
+                            <div className="mt-4 space-y-3">
+                                <div>
+                                    <h4 className="font-semibold">
+                                        Most Recent Records ({investigationResults.totalRecords} record(s))
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        These are the records that appear on Project Profitability page
+                                        {investigationResults.mostRecentArchiveDate && 
+                                            ` (Archive Date: ${investigationResults.mostRecentArchiveDate})`
+                                        }
+                                    </p>
+                                </div>
+                                
+                                {investigationResults.records.length === 0 ? (
+                                    <Alert type="warning">
+                                        <p className="text-sm">
+                                                    No records found on the most recent archive date. 
+                                            If you delete any records, this project will disappear from Project Profitability.
+                                        </p>
+                                    </Alert>
+                                ) : (
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {investigationResults.records.map((record, index) => (
+                                            <Card key={index} className="p-3 border border-blue-200">
+                                                <div className="space-y-2">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <p className="font-medium">
+                                                                {String(record.projectName || 'Unknown')}
+                                                                {record.hasDeleteInName && (
+                                                                    <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                        HAS "DELETE"
+                                                                    </Badge>
+                                                                )}
+                                                                <Badge className="ml-2 bg-blue-100 text-blue-800">
+                                                                    Most Recent
+                                                                </Badge>
+                                                            </p>
+                                                            <p className="text-sm text-gray-600">
+                                                                Project #: {String(record.projectNumber || 'N/A')}
+                                                            </p>
+                                                            {record.projectManager && (
+                                                                <p className="text-sm text-gray-600">
+                                                                    Project Manager: {String(record.projectManager)}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-xs text-gray-500">
+                                                                Archive Date: {(() => {
+                                                                    const date = record.archiveDateOnly;
+                                                                    if (!date) return 'N/A';
+                                                                    if (typeof date === 'string') return date;
+                                                                    if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                    return String(date);
+                                                                })()}
+                                                            </p>
+                                                            <div className="flex gap-2 mt-1">
+                                                                <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                    {record.isActive ? 'Active' : 'Inactive'}
+                                                                </Badge>
+                                                                {record.redTeamImport && (
+                                                                    <Badge className="bg-purple-100 text-purple-800">
+                                                                        Red Team
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="solid"
+                                                            color="red"
+                                                            onClick={() => handleDeleteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
+                                                            disabled={isDeleting}
+                                                        >
+                                                            Delete This Record
+                                                        </Button>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 space-y-1">
+                                                        <div>
+                                                            Contract Amount: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                            Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                            Projected Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                        </div>
+                                                        <div>
+                                                            Status: {String(record.contractStatus || 'N/A')} | 
+                                                            Stage: {String(record.projectStage || 'N/A')}
+                                                            {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                            {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Other Records from Different Archive Dates */}
+                                {investigationResults.otherRecords && investigationResults.otherRecords.length > 0 && (
+                                    <div className="mt-4">
+                                        <div>
+                                            <h4 className="font-semibold">
+                                                Other Records on Different Dates ({investigationResults.otherRecords.length} record(s))
+                                            </h4>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                These records exist but are NOT on the most recent archive date, so they won't appear on Project Profitability.
+                                                If you delete the most recent record, these older records will NOT automatically appear.
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2 max-h-64 overflow-y-auto mt-2">
+                                            {investigationResults.otherRecords.map((record, index) => (
+                                                <Card key={`other-${index}`} className="p-3 border border-gray-200 opacity-75">
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <p className="font-medium text-sm">
+                                                                    {String(record.projectName || 'Unknown')}
+                                                                    {record.hasDeleteInName && (
+                                                                        <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                            HAS "DELETE"
+                                                                        </Badge>
+                                                                    )}
+                                                                    <Badge className="ml-2 bg-gray-100 text-gray-800">
+                                                                        Older Date
+                                                                    </Badge>
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Project #: {String(record.projectNumber || 'N/A')}
+                                                                </p>
+                                                                {record.projectManager && (
+                                                                    <p className="text-xs text-gray-600">
+                                                                        Project Manager: {String(record.projectManager)}
+                                                                    </p>
+                                                                )}
+                                                                <p className="text-xs text-gray-500">
+                                                                    Archive Date: {(() => {
+                                                                        const date = record.archiveDateOnly;
+                                                                        if (!date) return 'N/A';
+                                                                        if (typeof date === 'string') return date;
+                                                                        if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                        return String(date);
+                                                                    })()}
+                                                                </p>
+                                                                <div className="flex gap-2 mt-1">
+                                                                    <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                        {record.isActive ? 'Active' : 'Inactive'}
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                                                    <div>
+                                                                        Contract: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                                        Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                                        Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                                    </div>
+                                                                    <div>
+                                                                        {record.contractStatus && `Status: ${record.contractStatus} | `}
+                                                                        {record.projectStage && `Stage: ${record.projectStage}`}
+                                                                        {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                                        {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="solid"
+                                                                color="blue"
+                                                                onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
+                                                                disabled={isDeleting}
+                                                            >
+                                                                Promote to Recent
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Card>
                 </Tabs.TabContent>
 
                 {/* Tab 4: Developer Tools */}
                 <Tabs.TabContent value="developer" className="space-y-4">
                     <div className="flex flex-col gap-4">
-                        <Card className="p-4">
+                <Card className="p-4">
                             <div className="flex items-center justify-between mb-4">
-                                <div>
+                        <div>
                                     <h3 className="text-lg font-semibold mb-1">Developer Tools</h3>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
                                         Tools for debugging and development purposes
-                                    </p>
-                                </div>
-                                <Button 
+                            </p>
+                        </div>
+                        <Button 
                                     onClick={() => setShowDevTools(!showDevTools)}
                                     variant="twoTone"
-                                    size="sm"
-                                >
+                            size="sm" 
+                        >
                                     {showDevTools ? 'Hide Dev Tools' : 'Show Dev Tools'}
-                                </Button>
-                            </div>
+                        </Button>
+                    </div>
 
                             <div className="flex gap-2 mb-4">
-                                <Button 
+                            <Button 
                                     onClick={handleShowTatcoContact}
-                                    variant="outline"
+                                variant="outline"
                                     size="sm"
-                                >
+                            >
                                     Show Tatco Contact
-                                </Button>
-                            </div>
+                            </Button>
+                        </div>
 
                             {/* Development Tools - Hidden by default */}
                             {showDevTools && (
                                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                     <h4 className="text-md font-semibold mb-4">Column Debug Info</h4>
-                                    <div className="space-y-2">
+                    <div className="space-y-2">
                                         <p><strong>Current Type:</strong> {localStorage.getItem('crmCurrentType') || 'lead'}</p>
                                         <p><strong>Column Order (Lead):</strong> {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}</p>
                                         <p><strong>Visible Columns (Lead):</strong> {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}</p>
                                         <p><strong>Column Order (Client):</strong> {localStorage.getItem('crmColumnOrder_client') || 'Not set'}</p>
                                         <p><strong>Visible Columns (Client):</strong> {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}</p>
-                                    </div>
-                                </div>
-                            )}
-                        </Card>
+                        </div>
                     </div>
+                            )}
+                </Card>
+            </div>
                 </Tabs.TabContent>
             </Tabs>
 

@@ -63,8 +63,11 @@ const ValuationsTab = () => {
     // Load companies user has access to
     // IMPORTANT: This logic ensures correct company filtering for both admin and non-admin users:
     // - Admins: See ALL companies (they need full access for management)
-    // - Non-admins: See ONLY companies where they have actual stakeholder records with profitAwards
-    //   This prevents non-admins from seeing companies they're "added to" but have no awards in
+    // - Non-admins: See companies where they have:
+    //   1. Stakeholder records (even without awards - if manually added)
+    //   2. Access records (manually granted access)
+    //   3. Awards (existing logic)
+    //   This ensures users see companies they've been manually added to, even without awards
     useEffect(() => {
         if (loadingAccess) return
         
@@ -78,11 +81,19 @@ const ValuationsTab = () => {
                         setCompanies(result.data)
                     }
                 } else {
-                    // Non-admins: Only show companies where they have actual stakeholder records with awards
+                    // Non-admins: Show companies where they have:
+                    // 1. Stakeholder records (even without awards - if manually added)
+                    // 2. Access records (manually granted access)
+                    // 3. Awards (existing logic)
                     const currentUserId = user?.id || user?.uid
                     
-                    // Get company IDs from actual stakeholder records with awards
+                    // Get company IDs from stakeholder records (including those without awards)
+                    let stakeholderCompanyIds = []
+                    // Get company IDs from access records
+                    let accessRecordCompanyIds = accessRecords?.map(record => record.companyId).filter(Boolean) || []
+                    // Get company IDs from stakeholder records with awards (for backward compatibility)
                     let awardCompanyIds = []
+                    
                     if (currentUserId) {
                         try {
                             const stakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
@@ -92,8 +103,13 @@ const ValuationsTab = () => {
                                     sh => sh.linkedUserId === currentUserId
                                 )
                                 
-                                // Get unique company IDs from stakeholder records that have awards
+                                // Get unique company IDs from ALL stakeholder records (even without awards)
                                 userStakeholders.forEach(sh => {
+                                    if (sh.companyId && !stakeholderCompanyIds.includes(sh.companyId)) {
+                                        stakeholderCompanyIds.push(sh.companyId)
+                                    }
+                                    
+                                    // Also track companies with awards (for reference)
                                     if (sh.profitAwards && Array.isArray(sh.profitAwards) && sh.profitAwards.length > 0) {
                                         if (sh.companyId && !awardCompanyIds.includes(sh.companyId)) {
                                             awardCompanyIds.push(sh.companyId)
@@ -106,10 +122,10 @@ const ValuationsTab = () => {
                         }
                     }
                     
-                    // For non-admin users, ONLY show companies where they have actual awards
-                    // This ensures they don't see companies they're just "added to" but have no awards
-                    // Even if they have accessRecords for a company, if they have no awards there, don't show it
-                    const finalCompanyIds = awardCompanyIds
+                    // Combine all sources: stakeholder records, access records, and role-based company
+                    // This ensures users see companies they've been manually added to, even without awards
+                    const allCompanyIds = [...new Set([...stakeholderCompanyIds, ...accessRecordCompanyIds, ...awardCompanyIds])]
+                    const finalCompanyIds = allCompanyIds
                     
                     if (finalCompanyIds.length > 0) {
                         const allCompaniesResult = await FirebaseDbService.companies.getAll()
@@ -644,7 +660,7 @@ const ValuationsTab = () => {
 
     // Get accessible companies for dropdown (only show if user has multiple companies)
     // IMPORTANT: Do NOT re-filter here - the `companies` state is already correctly filtered:
-    // - For non-admin users: Only companies with actual awards (filtered in loadCompanies)
+    // - For non-admin users: Companies with stakeholder records, access records, or awards (filtered in loadCompanies)
     // - For admin users: All companies (loaded in loadCompanies)
     // Re-filtering here would undo the correct filtering logic above
     const accessibleCompanies = companies // Already filtered correctly in loadCompanies
@@ -667,7 +683,10 @@ const ValuationsTab = () => {
                             <Select
                                 className="w-64"
                                 placeholder="Select company"
-                                value={selectedCompanyId ? { value: selectedCompanyId, label: companies.find(c => c.id === selectedCompanyId)?.name || 'Unknown' } : null}
+                                value={selectedCompanyId ? (() => {
+                                    const selectedCompany = accessibleCompanies.find(c => c.id === selectedCompanyId)
+                                    return selectedCompany ? { value: selectedCompany.id, label: selectedCompany.name } : null
+                                })() : null}
                                 options={accessibleCompanies.map(company => ({
                                     value: company.id,
                                     label: company.name

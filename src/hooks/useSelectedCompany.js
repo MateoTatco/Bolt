@@ -111,14 +111,44 @@ export const useSelectedCompany = () => {
                             // Find company by name (with flexible matching)
                             const companiesResult = await FirebaseDbService.companies.getAll()
                             if (companiesResult.success && companiesResult.data.length > 0) {
-                                const roleCompany = companiesResult.data.find(c => {
-                                    const cName = (c.name || '').toLowerCase().trim()
-                                    const rName = roleCompanyName.toLowerCase().trim()
-                                    return cName === rName || 
-                                           cName.replace(/\s+/g, ' ') === rName.replace(/\s+/g, ' ') ||
-                                           cName.includes(rName) || 
-                                           rName.includes(cName)
-                                })
+                                // For Tatco roles, prioritize "Tatco Construction OKC" or "Tatco OKC"
+                                let roleCompany = null
+                                if (roleCompanyName.toLowerCase() === 'tatco') {
+                                    // First, try to find "Tatco Construction OKC" or "Tatco OKC"
+                                    roleCompany = companiesResult.data.find(c => {
+                                        const cName = (c.name || '').toLowerCase().trim()
+                                        return cName === 'tatco construction okc' || 
+                                               cName === 'tatco okc' ||
+                                               (cName.includes('tatco') && cName.includes('okc'))
+                                    })
+                                    
+                                    // If not found, fall back to any Tatco company (but exclude Florida)
+                                    if (!roleCompany) {
+                                        roleCompany = companiesResult.data.find(c => {
+                                            const cName = (c.name || '').toLowerCase().trim()
+                                            return (cName.includes('tatco') && !cName.includes('florida'))
+                                        })
+                                    }
+                                    
+                                    // Last resort: any Tatco company
+                                    if (!roleCompany) {
+                                        roleCompany = companiesResult.data.find(c => {
+                                            const cName = (c.name || '').toLowerCase().trim()
+                                            return cName.includes('tatco')
+                                        })
+                                    }
+                                } else {
+                                    // For other companies, use flexible matching
+                                    roleCompany = companiesResult.data.find(c => {
+                                        const cName = (c.name || '').toLowerCase().trim()
+                                        const rName = roleCompanyName.toLowerCase().trim()
+                                        return cName === rName || 
+                                               cName.replace(/\s+/g, ' ') === rName.replace(/\s+/g, ' ') ||
+                                               cName.includes(rName) || 
+                                               rName.includes(cName)
+                                    })
+                                }
+                                
                                 if (roleCompany) {
                                     companyId = roleCompany.id
                                     await setSelectedCompany(companyId)

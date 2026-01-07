@@ -258,7 +258,7 @@ const OverviewTab = () => {
                 return
             }
 
-            // Get company IDs from stakeholder records (where user has awards)
+            // Get company IDs from stakeholder records (including those without awards - if manually added)
             let companyIdsFromStakeholders = []
             try {
                 const stakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
@@ -267,12 +267,11 @@ const OverviewTab = () => {
                         sh => sh.linkedUserId === currentUserId
                     )
                     
-                    // Get unique company IDs from stakeholder records that have awards
+                    // Get unique company IDs from ALL stakeholder records (even without awards)
+                    // This ensures users see companies they've been manually added to
                     userStakeholders.forEach(sh => {
-                        if (sh.profitAwards && Array.isArray(sh.profitAwards) && sh.profitAwards.length > 0) {
-                            if (sh.companyId && !companyIdsFromStakeholders.includes(sh.companyId)) {
-                                companyIdsFromStakeholders.push(sh.companyId)
-                            }
+                        if (sh.companyId && !companyIdsFromStakeholders.includes(sh.companyId)) {
+                            companyIdsFromStakeholders.push(sh.companyId)
                         }
                     })
                 }
@@ -280,13 +279,13 @@ const OverviewTab = () => {
                 console.error('[OverviewTab] Error loading stakeholder records for plans:', stakeholderError)
             }
 
-            // Also get company IDs from accessRecords (fallback if no stakeholder records found)
+            // Also get company IDs from accessRecords (manually granted access)
             const accessRecordCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
             
-            // Use company IDs from stakeholder records (where user has awards)
-            const finalCompanyIds = companyIdsFromStakeholders.length > 0 
-                ? companyIdsFromStakeholders 
-                : accessRecordCompanyIds
+            // Combine all sources: stakeholder records and access records
+            // This ensures users see companies they've been manually added to, even without awards
+            const allCompanyIds = [...new Set([...companyIdsFromStakeholders, ...accessRecordCompanyIds])]
+            const finalCompanyIds = allCompanyIds
             
             if (finalCompanyIds.length === 0) {
                 setPlans([])
