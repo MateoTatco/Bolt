@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast } from '@/components/ui'
+import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast, Tabs } from '@/components/ui'
 import { HiOutlineTrash } from 'react-icons/hi'
+import { PiUsersDuotone, PiChartLineDuotone, PiPlugDuotone, PiCodeDuotone } from 'react-icons/pi'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
 import { useSessionUser } from '@/store/authStore'
@@ -913,454 +914,747 @@ const AdvancedFeatures = () => {
 
     return (
         <div className="space-y-4">
-            {/* Dev Tools Buttons */}
-            <div className="flex justify-end gap-2 mb-4">
-                <Button 
-                    onClick={() => setShowDevTools(!showDevTools)}
-                    variant="twoTone"
-                    size="sm"
-                    className="text-xs"
-                >
-                    {showDevTools ? 'Hide Dev Tools' : 'Dev Only'}
-                </Button>
-                <Button 
-                    onClick={handleShowTatcoContact}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                >
-                    Show Tatco Contact
-                </Button>
-            </div>
+            <Tabs defaultValue="userManagement" variant="underline" className="w-full">
+                <Tabs.TabList className="mb-6">
+                    <Tabs.TabNav value="userManagement" icon={<PiUsersDuotone />}>
+                        User Management
+                    </Tabs.TabNav>
+                    <Tabs.TabNav value="systemStatus" icon={<PiChartLineDuotone />}>
+                        System Status
+                    </Tabs.TabNav>
+                    <Tabs.TabNav value="integrations" icon={<PiPlugDuotone />}>
+                        Integration Tools
+                    </Tabs.TabNav>
+                    <Tabs.TabNav value="developer" icon={<PiCodeDuotone />}>
+                        Developer Tools
+                    </Tabs.TabNav>
+                </Tabs.TabList>
 
-            {/* Development Tools - Hidden by default */}
-            {showDevTools && (
-                <Card className="p-4">
-                    <h3 className="text-lg font-semibold mb-4">Column Debug Info</h3>
-                    <div className="space-y-2">
-                        <p><strong>Current Type:</strong> {localStorage.getItem('crmCurrentType') || 'lead'}</p>
-                        <p><strong>Column Order (Lead):</strong> {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}</p>
-                        <p><strong>Visible Columns (Lead):</strong> {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}</p>
-                        <p><strong>Column Order (Client):</strong> {localStorage.getItem('crmColumnOrder_client') || 'Not set'}</p>
-                        <p><strong>Visible Columns (Client):</strong> {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}</p>
-                    </div>
-                </Card>
-            )}
-
-            {/* Procore Templates Test */}
-            <Card className="p-4 mb-4">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Procore Templates Test</h3>
-                    <Button 
-                        onClick={() => setShowProcoreTemplates(!showProcoreTemplates)}
-                        variant="twoTone"
-                        size="sm"
-                    >
-                        {showProcoreTemplates ? 'Hide' : 'Show'} Templates Test
-                    </Button>
-                </div>
-                {showProcoreTemplates && (
-                    <div className="space-y-4">
-                        <p className="text-sm text-gray-600">
-                            Test the Procore API to see what project templates are available in your Procore account.
+                {/* Tab 1: User Management */}
+                <Tabs.TabContent value="userManagement" className="space-y-4">
+                    {/* Bolt User Invitations */}
+                    <Card className="p-4">
+                        <h3 className="text-lg font-semibold mb-2">Bolt User Invitations</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                            Create new Bolt users directly from here. Users will be registered in Firebase Auth and receive a password reset email to set their own password. They can sign in immediately after setting their password.
                         </p>
-                        <Button 
-                            onClick={handleGetProcoreTemplates}
-                            loading={isLoadingTemplates}
-                            variant="solid"
-                        >
-                            {isLoadingTemplates ? 'Loading...' : 'Fetch Project Templates'}
-                        </Button>
-                        {procoreTemplates && (
-                            <div className="mt-4">
-                                <h4 className="font-semibold mb-2">Available Templates:</h4>
-                                {procoreTemplates.success && procoreTemplates.data && Array.isArray(procoreTemplates.data) ? (
-                                    <div className="space-y-2">
-                                        {procoreTemplates.data.length > 0 ? (
-                                            <>
-                                                <div className="text-sm text-gray-600 mb-2">
-                                                    Found {procoreTemplates.data.length} template(s)
-                                                    {procoreTemplates.pagination?.total && ` (Total: ${procoreTemplates.pagination.total})`}
-                                                </div>
-                                                <div className="border rounded-lg overflow-hidden">
-                                                    <table className="w-full text-sm">
-                                                        <thead className="bg-gray-50 dark:bg-gray-800">
-                                                            <tr>
-                                                                <th className="px-4 py-2 text-left font-semibold">ID</th>
-                                                                <th className="px-4 py-2 text-left font-semibold">Name</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {procoreTemplates.data.map((template, idx) => (
-                                                                <tr key={template.id || idx} className="border-t">
-                                                                    <td className="px-4 py-2">{template.id}</td>
-                                                                    <td className="px-4 py-2 font-medium">{template.name}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                                    <p className="text-sm text-blue-800 dark:text-blue-200">
-                                                        <strong>Note:</strong> Check the browser console for detailed API response data.
-                                                    </p>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <p className="text-sm text-gray-500">No templates found.</p>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                                            Unexpected response format. Check console for details.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Card>
-
-            {/* Azure SQL Project Investigation Tools */}
-            <Card className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Azure SQL Project Management</h3>
-                    <Button 
-                        onClick={() => setShowAzureSqlTools(!showAzureSqlTools)}
-                        variant="twoTone"
-                        size="sm"
-                    >
-                        {showAzureSqlTools ? 'Hide' : 'Show'} Tools
-                    </Button>
-                </div>
-                
-                {showAzureSqlTools && (
-                    <div className="space-y-4">
-                        <Alert type="warning">
-                            <div>
-                                <strong>⚠️ Warning:</strong> These tools allow you to investigate and delete projects from Azure SQL Database. 
-                                Use with extreme caution. Deletions are permanent and cannot be undone.
-                            </div>
-                        </Alert>
-
-                        {/* Investigation Section */}
-                        <div className="space-y-3">
-                            <h4 className="font-semibold">Investigate Project</h4>
-                            <p className="text-sm text-gray-600">
-                                Enter a project number to see all records (across all archive dates) in Azure SQL.
-                            </p>
-                            <div className="flex gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium mb-1">Email *</label>
                                 <Input
-                                    placeholder="Enter project number (e.g., 135250002)"
-                                    value={investigationProjectNumber}
-                                    onChange={(e) => setInvestigationProjectNumber(e.target.value)}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleInvestigateProject()
+                                    value={inviteForm.email}
+                                    onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                                    placeholder="new.user@company.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">First Name</label>
+                                <Input
+                                    value={inviteForm.firstName}
+                                    onChange={(e) => setInviteForm(prev => ({ ...prev, firstName: e.target.value }))}
+                                    placeholder="First name"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Last Name</label>
+                                <Input
+                                    value={inviteForm.lastName}
+                                    onChange={(e) => setInviteForm(prev => ({ ...prev, lastName: e.target.value }))}
+                                    placeholder="Last name"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div className="min-w-[350px]">
+                                <label className="block text-sm font-medium mb-1">User Role(s)</label>
+                                <Select
+                                    isMulti
+                                    isClearable
+                                    options={roleOptions}
+                                    placeholder="Select role(s)..."
+                                    value={(() => {
+                                        const roles = Array.isArray(inviteForm.role) ? inviteForm.role : (inviteForm.role ? [inviteForm.role] : [])
+                                        if (roles.length === 0) {
+                                            return null // Show placeholder when empty
+                                        }
+                                        return roleOptions.filter(opt => roles.includes(opt.value))
+                                    })()}
+                                    onChange={(selected) => {
+                                        // Handle clear (null or empty array) - set to empty array to show placeholder
+                                        if (!selected || selected.length === 0) {
+                                            setInviteForm(prev => ({ ...prev, role: [] }))
+                                        } else {
+                                            const selectedRoles = selected.map(opt => opt.value)
+                                            setInviteForm(prev => ({ ...prev, role: selectedRoles }))
                                         }
                                     }}
+                                    components={{
+                                        ValueContainer: CustomValueContainer,
+                                        MultiValue: CustomMultiValue,
+                                        MenuList: CustomMenuList,
+                                        Option: CustomOption,
+                                        Placeholder: CustomPlaceholder,
+                                    }}
+                                    menuPortalTarget={document.body}
+                                    menuPosition="fixed"
+                                    styles={selectZIndexStyles}
+                                    controlShouldRenderValue={false}
+                                    hideSelectedOptions={false}
                                 />
+                            </div>
+                            <div className="flex justify-end">
                                 <Button
-                                    onClick={handleInvestigateProject}
-                                    disabled={isInvestigating || !investigationProjectNumber.trim()}
-                                    loading={isInvestigating}
+                                    onClick={handleInviteUser}
+                                    loading={isInvitingUser}
+                                    disabled={isInvitingUser}
                                 >
-                                    Investigate
+                                    Create User
                                 </Button>
                             </div>
                         </div>
+                    </Card>
 
-                        {/* Investigation Results */}
-                        {investigationResults && (
-                            <div className="mt-4 space-y-3">
+                    {/* User Role Management */}
+                    <Card className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 className="text-lg font-semibold mb-1">User Role Management</h3>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    View and manage user roles. Changes take effect immediately.
+                                </p>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                    setUserRoleChanges({}) // Clear pending changes
+                                    loadAllUsers() // Reload users
+                                }}
+                                loading={loadingUsers}
+                            >
+                                Refresh
+                            </Button>
+                        </div>
+
+                        {loadingUsers ? (
+                            <div className="text-center py-8">
+                                <div className="text-gray-500">Loading users...</div>
+                            </div>
+                        ) : allUsers.length === 0 ? (
+                            <div className="text-center py-8">
+                                <div className="text-gray-500">No users found</div>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                                            <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
+                                            <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
+                                            <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
+                                            <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
+                                            <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {allUsers.map((userItem) => (
+                                            <tr
+                                                key={userItem.id}
+                                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                            >
+                                                <td className="py-3 px-4">
+                                                    {userItem.firstName || userItem.lastName
+                                                        ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
+                                                        : 'N/A'}
+                                                </td>
+                                                <td className="py-3 px-4">{userItem.email || 'N/A'}</td>
+                                                <td className="py-3 px-4">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {(() => {
+                                                            const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                            if (roles.length === 0) {
+                                                                return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">No role assigned</Badge>
+                                                            }
+                                                            return roles.map((role, idx) => (
+                                                                <Badge key={idx} className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                    {ROLE_DISPLAY_NAMES[role] || role}
+                                                                </Badge>
+                                                            ))
+                                                        })()}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <Select
+                                                            isMulti
+                                                            isClearable
+                                                            options={roleOptions}
+                                                            value={(() => {
+                                                                // Use pending changes if available, otherwise use current role
+                                                                const pendingRoles = userRoleChanges[userItem.id]
+                                                                if (pendingRoles !== undefined) {
+                                                                    // If pendingRoles is empty array, return null (cleared)
+                                                                    if (pendingRoles.length === 0) {
+                                                                        return null
+                                                                    }
+                                                                    return roleOptions.filter(opt => pendingRoles.includes(opt.value))
+                                                                }
+                                                                const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
+                                                                if (roles.length === 0) {
+                                                                    return null
+                                                                }
+                                                                return roleOptions.filter(opt => roles.includes(opt.value))
+                                                            })()}
+                                                            onChange={(selected) => {
+                                                                // Handle clear (null or empty array)
+                                                                if (!selected || selected.length === 0) {
+                                                                    // Clear all selections - store empty array
+                                                                    setUserRoleChanges(prev => ({
+                                                                        ...prev,
+                                                                        [userItem.id]: []
+                                                                    }))
+                                                                } else {
+                                                                    const selectedRoles = selected.map(opt => opt.value)
+                                                                    // Store changes locally instead of immediately updating
+                                                                    setUserRoleChanges(prev => ({
+                                                                        ...prev,
+                                                                        [userItem.id]: selectedRoles
+                                                                    }))
+                                                                }
+                                                            }}
+                                                            size="sm"
+                                                            className="min-w-[350px]"
+                                                            disabled={updatingUserRole === userItem.id}
+                                                            components={{
+                                                                ValueContainer: CustomValueContainer,
+                                                                MultiValue: CustomMultiValue,
+                                                                MenuList: CustomMenuList,
+                                                                Option: CustomOption,
+                                                                Placeholder: CustomPlaceholder,
+                                                            }}
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
+                                                            styles={selectZIndexStyles}
+                                                            controlShouldRenderValue={false}
+                                                            hideSelectedOptions={false}
+                                                            placeholder="Select role(s)..."
+                                                        />
+                                                        {updatingUserRole === userItem.id && (
+                                                            <div className="text-xs text-gray-500">Updating...</div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="plain"
+                                                        icon={<HiOutlineTrash />}
+                                                        onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                        className="text-red-500 hover:text-red-700"
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        
+                        {/* Save button for role changes */}
+                        {Object.keys(userRoleChanges).length > 0 && (
+                            <div className="mt-4 flex justify-end gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setUserRoleChanges({})
+                                        loadAllUsers() // Reload to reset changes
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={handleSaveAllRoleChanges}
+                                    loading={Object.keys(userRoleChanges).some(id => updatingUserRole === id)}
+                                >
+                                    Save Role Changes ({Object.keys(userRoleChanges).length})
+                                </Button>
+                            </div>
+                        )}
+                    </Card>
+                </Tabs.TabContent>
+
+                {/* Tab 2: System Status */}
+                <Tabs.TabContent value="systemStatus" className="space-y-4">
+                    {/* Status Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="font-semibold">
-                                        Most Recent Records ({investigationResults.totalRecords} record(s))
-                                    </h4>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        These are the records that appear on Project Profitability page
-                                        {investigationResults.mostRecentArchiveDate && 
-                                            ` (Archive Date: ${investigationResults.mostRecentArchiveDate})`
-                                        }
+                                    <h6 className="text-sm font-medium">Connection Status</h6>
+                                    <p className="text-xs text-gray-500">
+                                        {isOnline ? 'Online' : 'Offline'}
                                     </p>
                                 </div>
-                                
-                                {investigationResults.records.length === 0 ? (
-                                    <Alert type="warning">
-                                        <p className="text-sm">
-                                            No records found on the most recent archive date. 
-                                            If you delete any records, this project will disappear from Project Profitability.
-                                        </p>
-                                    </Alert>
-                                ) : (
-                                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                                        {investigationResults.records.map((record, index) => (
-                                            <Card key={index} className="p-3 border border-blue-200">
-                                                <div className="space-y-2">
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex-1">
-                                                            <p className="font-medium">
-                                                                {String(record.projectName || 'Unknown')}
-                                                                {record.hasDeleteInName && (
-                                                                    <Badge className="ml-2 bg-red-100 text-red-800">
-                                                                        HAS "DELETE"
-                                                                    </Badge>
-                                                                )}
-                                                                <Badge className="ml-2 bg-blue-100 text-blue-800">
-                                                                    Most Recent
-                                                                </Badge>
-                                                            </p>
-                                                            <p className="text-sm text-gray-600">
-                                                                Project #: {String(record.projectNumber || 'N/A')}
-                                                            </p>
-                                                            {record.projectManager && (
-                                                                <p className="text-sm text-gray-600">
-                                                                    Project Manager: {String(record.projectManager)}
-                                                                </p>
-                                                            )}
-                                                            <p className="text-xs text-gray-500">
-                                                                Archive Date: {(() => {
-                                                                    const date = record.archiveDateOnly;
-                                                                    if (!date) return 'N/A';
-                                                                    if (typeof date === 'string') return date;
-                                                                    if (date instanceof Date) return date.toISOString().split('T')[0];
-                                                                    return String(date);
-                                                                })()}
-                                                            </p>
-                                                            <div className="flex gap-2 mt-1">
-                                                                <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                                                    {record.isActive ? 'Active' : 'Inactive'}
-                                                                </Badge>
-                                                                {record.redTeamImport && (
-                                                                    <Badge className="bg-purple-100 text-purple-800">
-                                                                        Red Team
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="solid"
-                                                            color="red"
-                                                            onClick={() => handleDeleteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
-                                                            disabled={isDeleting}
-                                                        >
-                                                            Delete This Record
-                                                        </Button>
-                                                    </div>
-                                                    <div className="text-xs text-gray-500 space-y-1">
-                                                        <div>
-                                                            Contract Amount: ${(record.contractAmount || 0).toLocaleString()} | 
-                                                            Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
-                                                            Projected Profit: ${(record.projectedProfit || 0).toLocaleString()}
-                                                        </div>
-                                                        <div>
-                                                            Status: {String(record.contractStatus || 'N/A')} | 
-                                                            Stage: {String(record.projectStage || 'N/A')}
-                                                            {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
-                                                            {record.contractEndDate && ` | End: ${record.contractEndDate}`}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </Card>
-                                        ))}
-                                    </div>
-                                )}
+                                <Badge 
+                                    className={isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
+                                >
+                                    {isOnline ? '🟢' : '🔴'}
+                                </Badge>
+                            </div>
+                        </Card>
 
-                                {/* Other Records from Different Archive Dates */}
-                                {investigationResults.otherRecords && investigationResults.otherRecords.length > 0 && (
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h6 className="text-sm font-medium">Last Sync</h6>
+                                    <p className="text-xs text-gray-500">
+                                        {lastSyncTime ? formatTime(lastSyncTime) : 'Never'}
+                                    </p>
+                                </div>
+                                <Button 
+                                    size="sm" 
+                                    onClick={cacheData}
+                                    disabled={!isOnline}
+                                >
+                                    Cache
+                                </Button>
+                            </div>
+                        </Card>
+
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h6 className="text-sm font-medium">Pending Changes</h6>
+                                    <p className="text-xs text-gray-500">
+                                        {pendingChanges.length} changes
+                                    </p>
+                                </div>
+                                <Badge className="bg-yellow-100 text-yellow-800">
+                                    {pendingChanges.length}
+                                </Badge>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Advanced Controls */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Card className="p-4">
+                            <h6 className="text-sm font-medium mb-3">Change History</h6>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-600">
+                                        {changeHistory.length} recent changes
+                                    </span>
+                                    <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => setShowHistory(true)}
+                                    >
+                                        View History
+                                    </Button>
+                                </div>
+                            </div>
+                        </Card>
+
+                        <Card className="p-4">
+                            <h6 className="text-sm font-medium mb-3">Conflict Resolution</h6>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-600">
+                                        {conflictResolution.conflicts.length} conflicts
+                                    </span>
+                                    <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => setShowConflicts(true)}
+                                        disabled={conflictResolution.conflicts.length === 0}
+                                    >
+                                        Resolve
+                                    </Button>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Offline Mode Alert */}
+                    {!isOnline && (
+                        <Alert type="warning">
+                            <div className="flex items-center">
+                                <span className="mr-2">⚠️</span>
+                                <div>
+                                    <strong>Offline Mode</strong>
+                                    <p className="text-sm mt-1">
+                                        You're working offline. Changes will be synced when you're back online.
+                                    </p>
+                                </div>
+                            </div>
+                        </Alert>
+                    )}
+                </Tabs.TabContent>
+
+                {/* Tab 3: Integration Tools */}
+                <Tabs.TabContent value="integrations" className="space-y-4">
+                    {/* Procore Templates Test */}
+                    <Card className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Procore Templates Test</h3>
+                            <Button 
+                                onClick={() => setShowProcoreTemplates(!showProcoreTemplates)}
+                                variant="twoTone"
+                                size="sm"
+                            >
+                                {showProcoreTemplates ? 'Hide' : 'Show'} Templates Test
+                            </Button>
+                        </div>
+                        {showProcoreTemplates && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-gray-600">
+                                    Test the Procore API to see what project templates are available in your Procore account.
+                                </p>
+                                <Button 
+                                    onClick={handleGetProcoreTemplates}
+                                    loading={isLoadingTemplates}
+                                    variant="solid"
+                                >
+                                    {isLoadingTemplates ? 'Loading...' : 'Fetch Project Templates'}
+                                </Button>
+                                {procoreTemplates && (
                                     <div className="mt-4">
-                                        <div>
-                                            <h4 className="font-semibold">
-                                                Other Records on Different Dates ({investigationResults.otherRecords.length} record(s))
-                                            </h4>
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                These records exist but are NOT on the most recent archive date, so they won't appear on Project Profitability.
-                                                If you delete the most recent record, these older records will NOT automatically appear.
-                                            </p>
-                                        </div>
-                                        <div className="space-y-2 max-h-64 overflow-y-auto mt-2">
-                                            {investigationResults.otherRecords.map((record, index) => (
-                                                <Card key={`other-${index}`} className="p-3 border border-gray-200 opacity-75">
-                                                    <div className="space-y-2">
-                                                        <div className="flex items-start justify-between">
-                                                            <div className="flex-1">
-                                                                <p className="font-medium text-sm">
-                                                                    {String(record.projectName || 'Unknown')}
-                                                                    {record.hasDeleteInName && (
-                                                                        <Badge className="ml-2 bg-red-100 text-red-800">
-                                                                            HAS "DELETE"
-                                                                        </Badge>
-                                                                    )}
-                                                                    <Badge className="ml-2 bg-gray-100 text-gray-800">
-                                                                        Older Date
-                                                                    </Badge>
-                                                                </p>
-                                                                <p className="text-xs text-gray-600">
-                                                                    Project #: {String(record.projectNumber || 'N/A')}
-                                                                </p>
-                                                                {record.projectManager && (
-                                                                    <p className="text-xs text-gray-600">
-                                                                        Project Manager: {String(record.projectManager)}
-                                                                    </p>
-                                                                )}
-                                                                <p className="text-xs text-gray-500">
-                                                                    Archive Date: {(() => {
-                                                                        const date = record.archiveDateOnly;
-                                                                        if (!date) return 'N/A';
-                                                                        if (typeof date === 'string') return date;
-                                                                        if (date instanceof Date) return date.toISOString().split('T')[0];
-                                                                        return String(date);
-                                                                    })()}
-                                                                </p>
-                                                                <div className="flex gap-2 mt-1">
-                                                                    <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                                                        {record.isActive ? 'Active' : 'Inactive'}
-                                                                    </Badge>
-                                                                </div>
-                                                                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                                                                    <div>
-                                                                        Contract: ${(record.contractAmount || 0).toLocaleString()} | 
-                                                                        Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
-                                                                        Profit: ${(record.projectedProfit || 0).toLocaleString()}
-                                                                    </div>
-                                                                    <div>
-                                                                        {record.contractStatus && `Status: ${record.contractStatus} | `}
-                                                                        {record.projectStage && `Stage: ${record.projectStage}`}
-                                                                        {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
-                                                                        {record.contractEndDate && ` | End: ${record.contractEndDate}`}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="solid"
-                                                                color="blue"
-                                                                onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
-                                                                disabled={isDeleting}
-                                                            >
-                                                                Promote to Recent
-                                                            </Button>
+                                        <h4 className="font-semibold mb-2">Available Templates:</h4>
+                                        {procoreTemplates.success && procoreTemplates.data && Array.isArray(procoreTemplates.data) ? (
+                                            <div className="space-y-2">
+                                                {procoreTemplates.data.length > 0 ? (
+                                                    <>
+                                                        <div className="text-sm text-gray-600 mb-2">
+                                                            Found {procoreTemplates.data.length} template(s)
+                                                            {procoreTemplates.pagination?.total && ` (Total: ${procoreTemplates.pagination.total})`}
                                                         </div>
-                                                    </div>
-                                                </Card>
-                                            ))}
-                                        </div>
+                                                        <div className="border rounded-lg overflow-hidden">
+                                                            <table className="w-full text-sm">
+                                                                <thead className="bg-gray-50 dark:bg-gray-800">
+                                                                    <tr>
+                                                                        <th className="px-4 py-2 text-left font-semibold">ID</th>
+                                                                        <th className="px-4 py-2 text-left font-semibold">Name</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {procoreTemplates.data.map((template, idx) => (
+                                                                        <tr key={template.id || idx} className="border-t">
+                                                                            <td className="px-4 py-2">{template.id}</td>
+                                                                            <td className="px-4 py-2 font-medium">{template.name}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                                            <p className="text-sm text-blue-800 dark:text-blue-200">
+                                                                <strong>Note:</strong> Check the browser console for detailed API response data.
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500">No templates found.</p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                                    Unexpected response format. Check console for details.
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         )}
-                    </div>
-                )}
-            </Card>
+                    </Card>
 
-            {/* Status Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h6 className="text-sm font-medium">Connection Status</h6>
-                            <p className="text-xs text-gray-500">
-                                {isOnline ? 'Online' : 'Offline'}
-                            </p>
-                        </div>
-                        <Badge 
-                            className={isOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
-                        >
-                            {isOnline ? '🟢' : '🔴'}
-                        </Badge>
-                    </div>
-                </Card>
-
-                <Card className="p-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h6 className="text-sm font-medium">Last Sync</h6>
-                            <p className="text-xs text-gray-500">
-                                {lastSyncTime ? formatTime(lastSyncTime) : 'Never'}
-                            </p>
-                        </div>
-                        <Button 
-                            size="sm" 
-                            onClick={cacheData}
-                            disabled={!isOnline}
-                        >
-                            Cache
-                        </Button>
-                    </div>
-                </Card>
-
-                <Card className="p-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h6 className="text-sm font-medium">Pending Changes</h6>
-                            <p className="text-xs text-gray-500">
-                                {pendingChanges.length} changes
-                            </p>
-                        </div>
-                        <Badge className="bg-yellow-100 text-yellow-800">
-                            {pendingChanges.length}
-                        </Badge>
-                    </div>
-                </Card>
-            </div>
-
-            {/* Advanced Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-4">
-                    <h6 className="text-sm font-medium mb-3">Change History</h6>
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">
-                                {changeHistory.length} recent changes
-                            </span>
+                    {/* Azure SQL Project Investigation Tools */}
+                    <Card className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold">Azure SQL Project Management</h3>
                             <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => setShowHistory(true)}
+                                onClick={() => setShowAzureSqlTools(!showAzureSqlTools)}
+                                variant="twoTone"
+                                size="sm"
                             >
-                                View History
+                                {showAzureSqlTools ? 'Hide' : 'Show'} Tools
                             </Button>
                         </div>
-                    </div>
-                </Card>
+                        
+                        {showAzureSqlTools && (
+                            <div className="space-y-4">
+                                <Alert type="warning">
+                                    <div>
+                                        <strong>⚠️ Warning:</strong> These tools allow you to investigate and delete projects from Azure SQL Database. 
+                                        Use with extreme caution. Deletions are permanent and cannot be undone.
+                                    </div>
+                                </Alert>
 
-                <Card className="p-4">
-                    <h6 className="text-sm font-medium mb-3">Conflict Resolution</h6>
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">
-                                {conflictResolution.conflicts.length} conflicts
-                            </span>
-                            <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => setShowConflicts(true)}
-                                disabled={conflictResolution.conflicts.length === 0}
-                            >
-                                Resolve
-                            </Button>
-                        </div>
-                    </div>
-                </Card>
-            </div>
+                                {/* Investigation Section */}
+                                <div className="space-y-3">
+                                    <h4 className="font-semibold">Investigate Project</h4>
+                                    <p className="text-sm text-gray-600">
+                                        Enter a project number to see all records (across all archive dates) in Azure SQL.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            placeholder="Enter project number (e.g., 135250002)"
+                                            value={investigationProjectNumber}
+                                            onChange={(e) => setInvestigationProjectNumber(e.target.value)}
+                                            onKeyPress={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    handleInvestigateProject()
+                                                }
+                                            }}
+                                        />
+                                        <Button
+                                            onClick={handleInvestigateProject}
+                                            disabled={isInvestigating || !investigationProjectNumber.trim()}
+                                            loading={isInvestigating}
+                                        >
+                                            Investigate
+                                        </Button>
+                                    </div>
+                                </div>
 
-            {/* Offline Mode Alert */}
-            {!isOnline && (
-                <Alert type="warning">
-                    <div className="flex items-center">
-                        <span className="mr-2">⚠️</span>
-                        <div>
-                            <strong>Offline Mode</strong>
-                            <p className="text-sm mt-1">
-                                You're working offline. Changes will be synced when you're back online.
-                            </p>
-                        </div>
+                                {/* Investigation Results */}
+                                {investigationResults && (
+                                    <div className="mt-4 space-y-3">
+                                        <div>
+                                            <h4 className="font-semibold">
+                                                Most Recent Records ({investigationResults.totalRecords} record(s))
+                                            </h4>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                These are the records that appear on Project Profitability page
+                                                {investigationResults.mostRecentArchiveDate && 
+                                                    ` (Archive Date: ${investigationResults.mostRecentArchiveDate})`
+                                                }
+                                            </p>
+                                        </div>
+                                        
+                                        {investigationResults.records.length === 0 ? (
+                                            <Alert type="warning">
+                                                <p className="text-sm">
+                                                    No records found on the most recent archive date. 
+                                                    If you delete any records, this project will disappear from Project Profitability.
+                                                </p>
+                                            </Alert>
+                                        ) : (
+                                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                                {investigationResults.records.map((record, index) => (
+                                                    <Card key={index} className="p-3 border border-blue-200">
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex-1">
+                                                                    <p className="font-medium">
+                                                                        {String(record.projectName || 'Unknown')}
+                                                                        {record.hasDeleteInName && (
+                                                                            <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                                HAS "DELETE"
+                                                                            </Badge>
+                                                                        )}
+                                                                        <Badge className="ml-2 bg-blue-100 text-blue-800">
+                                                                            Most Recent
+                                                                        </Badge>
+                                                                    </p>
+                                                                    <p className="text-sm text-gray-600">
+                                                                        Project #: {String(record.projectNumber || 'N/A')}
+                                                                    </p>
+                                                                    {record.projectManager && (
+                                                                        <p className="text-sm text-gray-600">
+                                                                            Project Manager: {String(record.projectManager)}
+                                                                        </p>
+                                                                    )}
+                                                                    <p className="text-xs text-gray-500">
+                                                                        Archive Date: {(() => {
+                                                                            const date = record.archiveDateOnly;
+                                                                            if (!date) return 'N/A';
+                                                                            if (typeof date === 'string') return date;
+                                                                            if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                            return String(date);
+                                                                        })()}
+                                                                    </p>
+                                                                    <div className="flex gap-2 mt-1">
+                                                                        <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                            {record.isActive ? 'Active' : 'Inactive'}
+                                                                        </Badge>
+                                                                        {record.redTeamImport && (
+                                                                            <Badge className="bg-purple-100 text-purple-800">
+                                                                                Red Team
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="solid"
+                                                                    color="red"
+                                                                    onClick={() => handleDeleteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
+                                                                    disabled={isDeleting}
+                                                                >
+                                                                    Delete This Record
+                                                                </Button>
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 space-y-1">
+                                                                <div>
+                                                                    Contract Amount: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                                    Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                                    Projected Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                                </div>
+                                                                <div>
+                                                                    Status: {String(record.contractStatus || 'N/A')} | 
+                                                                    Stage: {String(record.projectStage || 'N/A')}
+                                                                    {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                                    {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Other Records from Different Archive Dates */}
+                                        {investigationResults.otherRecords && investigationResults.otherRecords.length > 0 && (
+                                            <div className="mt-4">
+                                                <div>
+                                                    <h4 className="font-semibold">
+                                                        Other Records on Different Dates ({investigationResults.otherRecords.length} record(s))
+                                                    </h4>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        These records exist but are NOT on the most recent archive date, so they won't appear on Project Profitability.
+                                                        If you delete the most recent record, these older records will NOT automatically appear.
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-2 max-h-64 overflow-y-auto mt-2">
+                                                    {investigationResults.otherRecords.map((record, index) => (
+                                                        <Card key={`other-${index}`} className="p-3 border border-gray-200 opacity-75">
+                                                            <div className="space-y-2">
+                                                                <div className="flex items-start justify-between">
+                                                                    <div className="flex-1">
+                                                                        <p className="font-medium text-sm">
+                                                                            {String(record.projectName || 'Unknown')}
+                                                                            {record.hasDeleteInName && (
+                                                                                <Badge className="ml-2 bg-red-100 text-red-800">
+                                                                                    HAS "DELETE"
+                                                                                </Badge>
+                                                                            )}
+                                                                            <Badge className="ml-2 bg-gray-100 text-gray-800">
+                                                                                Older Date
+                                                                            </Badge>
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-600">
+                                                                            Project #: {String(record.projectNumber || 'N/A')}
+                                                                        </p>
+                                                                        {record.projectManager && (
+                                                                            <p className="text-xs text-gray-600">
+                                                                                Project Manager: {String(record.projectManager)}
+                                                                            </p>
+                                                                        )}
+                                                                        <p className="text-xs text-gray-500">
+                                                                            Archive Date: {(() => {
+                                                                                const date = record.archiveDateOnly;
+                                                                                if (!date) return 'N/A';
+                                                                                if (typeof date === 'string') return date;
+                                                                                if (date instanceof Date) return date.toISOString().split('T')[0];
+                                                                                return String(date);
+                                                                            })()}
+                                                                        </p>
+                                                                        <div className="flex gap-2 mt-1">
+                                                                            <Badge className={record.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                                                                {record.isActive ? 'Active' : 'Inactive'}
+                                                                            </Badge>
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                                                            <div>
+                                                                                Contract: ${(record.contractAmount || 0).toLocaleString()} | 
+                                                                                Est Cost: ${(record.estCostAtCompletion || 0).toLocaleString()} | 
+                                                                                Profit: ${(record.projectedProfit || 0).toLocaleString()}
+                                                                            </div>
+                                                                            <div>
+                                                                                {record.contractStatus && `Status: ${record.contractStatus} | `}
+                                                                                {record.projectStage && `Stage: ${record.projectStage}`}
+                                                                                {record.contractStartDate && ` | Start: ${record.contractStartDate}`}
+                                                                                {record.contractEndDate && ` | End: ${record.contractEndDate}`}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="solid"
+                                                                        color="blue"
+                                                                        onClick={() => handlePromoteProject(record.projectName, record.archiveDateOnly || record.archiveDate)}
+                                                                        disabled={isDeleting}
+                                                                    >
+                                                                        Promote to Recent
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </Card>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </Card>
+                </Tabs.TabContent>
+
+                {/* Tab 4: Developer Tools */}
+                <Tabs.TabContent value="developer" className="space-y-4">
+                    <div className="flex flex-col gap-4">
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-1">Developer Tools</h3>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        Tools for debugging and development purposes
+                                    </p>
+                                </div>
+                                <Button 
+                                    onClick={() => setShowDevTools(!showDevTools)}
+                                    variant="twoTone"
+                                    size="sm"
+                                >
+                                    {showDevTools ? 'Hide Dev Tools' : 'Show Dev Tools'}
+                                </Button>
+                            </div>
+
+                            <div className="flex gap-2 mb-4">
+                                <Button 
+                                    onClick={handleShowTatcoContact}
+                                    variant="outline"
+                                    size="sm"
+                                >
+                                    Show Tatco Contact
+                                </Button>
+                            </div>
+
+                            {/* Development Tools - Hidden by default */}
+                            {showDevTools && (
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                    <h4 className="text-md font-semibold mb-4">Column Debug Info</h4>
+                                    <div className="space-y-2">
+                                        <p><strong>Current Type:</strong> {localStorage.getItem('crmCurrentType') || 'lead'}</p>
+                                        <p><strong>Column Order (Lead):</strong> {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}</p>
+                                        <p><strong>Visible Columns (Lead):</strong> {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}</p>
+                                        <p><strong>Column Order (Client):</strong> {localStorage.getItem('crmColumnOrder_client') || 'Not set'}</p>
+                                        <p><strong>Visible Columns (Client):</strong> {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
                     </div>
-                </Alert>
-            )}
+                </Tabs.TabContent>
+            </Tabs>
+
+            {/* Dialogs - Available from any tab */}
 
             {/* Change History Dialog */}
             <Dialog
@@ -1449,258 +1743,6 @@ const AdvancedFeatures = () => {
                     </div>
                 </div>
             </Dialog>
-
-            {/* Bolt User Invitations */}
-            <Card className="p-4 mt-4">
-                <h3 className="text-lg font-semibold mb-2">Bolt User Invitations</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Create new Bolt users directly from here. Users will be registered in Firebase Auth and receive a password reset email to set their own password. They can sign in immediately after setting their password.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium mb-1">Email *</label>
-                        <Input
-                            value={inviteForm.email}
-                            onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
-                            placeholder="new.user@company.com"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">First Name</label>
-                        <Input
-                            value={inviteForm.firstName}
-                            onChange={(e) => setInviteForm(prev => ({ ...prev, firstName: e.target.value }))}
-                            placeholder="First name"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Last Name</label>
-                        <Input
-                            value={inviteForm.lastName}
-                            onChange={(e) => setInviteForm(prev => ({ ...prev, lastName: e.target.value }))}
-                            placeholder="Last name"
-                        />
-                    </div>
-                </div>
-                <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="min-w-[350px]">
-                        <label className="block text-sm font-medium mb-1">User Role(s)</label>
-                        <Select
-                            isMulti
-                            isClearable
-                            options={roleOptions}
-                            placeholder="Select role(s)..."
-                            value={(() => {
-                                const roles = Array.isArray(inviteForm.role) ? inviteForm.role : (inviteForm.role ? [inviteForm.role] : [])
-                                if (roles.length === 0) {
-                                    return null // Show placeholder when empty
-                                }
-                                return roleOptions.filter(opt => roles.includes(opt.value))
-                            })()}
-                            onChange={(selected) => {
-                                // Handle clear (null or empty array) - set to empty array to show placeholder
-                                if (!selected || selected.length === 0) {
-                                    setInviteForm(prev => ({ ...prev, role: [] }))
-                                } else {
-                                    const selectedRoles = selected.map(opt => opt.value)
-                                    setInviteForm(prev => ({ ...prev, role: selectedRoles }))
-                                }
-                            }}
-                            components={{
-                                ValueContainer: CustomValueContainer,
-                                MultiValue: CustomMultiValue,
-                                MenuList: CustomMenuList,
-                                Option: CustomOption,
-                                Placeholder: CustomPlaceholder,
-                            }}
-                            menuPortalTarget={document.body}
-                            menuPosition="fixed"
-                            styles={selectZIndexStyles}
-                            controlShouldRenderValue={false}
-                            hideSelectedOptions={false}
-                        />
-                    </div>
-                    <div className="flex justify-end">
-                        <Button
-                            onClick={handleInviteUser}
-                            loading={isInvitingUser}
-                            disabled={isInvitingUser}
-                        >
-                            Create User
-                        </Button>
-                    </div>
-                </div>
-            </Card>
-
-            {/* User Role Management */}
-            <Card className="p-4 mt-4">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h3 className="text-lg font-semibold mb-1">User Role Management</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            View and manage user roles. Changes take effect immediately.
-                        </p>
-                    </div>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                            setUserRoleChanges({}) // Clear pending changes
-                            loadAllUsers() // Reload users
-                        }}
-                        loading={loadingUsers}
-                    >
-                        Refresh
-                    </Button>
-                </div>
-
-                {loadingUsers ? (
-                    <div className="text-center py-8">
-                        <div className="text-gray-500">Loading users...</div>
-                    </div>
-                ) : allUsers.length === 0 ? (
-                    <div className="text-center py-8">
-                        <div className="text-gray-500">No users found</div>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-gray-200 dark:border-gray-700">
-                                    <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
-                                    <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
-                                    <th className="text-left py-3 px-4 font-semibold text-sm">Current Role</th>
-                                    <th className="text-left py-3 px-4 font-semibold text-sm">Change Role</th>
-                                    <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {allUsers.map((userItem) => (
-                                    <tr
-                                        key={userItem.id}
-                                        className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
-                                    >
-                                        <td className="py-3 px-4">
-                                            {userItem.firstName || userItem.lastName
-                                                ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
-                                                : 'N/A'}
-                                        </td>
-                                        <td className="py-3 px-4">{userItem.email || 'N/A'}</td>
-                                        <td className="py-3 px-4">
-                                            <div className="flex flex-wrap gap-1">
-                                                {(() => {
-                                                    const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
-                                                    if (roles.length === 0) {
-                                                        return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">No role assigned</Badge>
-                                                    }
-                                                    return roles.map((role, idx) => (
-                                                        <Badge key={idx} className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                            {ROLE_DISPLAY_NAMES[role] || role}
-                                                        </Badge>
-                                                    ))
-                                                })()}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-4">
-                                            <div className="flex items-center gap-2">
-                                                <Select
-                                                    isMulti
-                                                    isClearable
-                                                    options={roleOptions}
-                                                    value={(() => {
-                                                        // Use pending changes if available, otherwise use current role
-                                                        const pendingRoles = userRoleChanges[userItem.id]
-                                                        if (pendingRoles !== undefined) {
-                                                            // If pendingRoles is empty array, return null (cleared)
-                                                            if (pendingRoles.length === 0) {
-                                                                return null
-                                                            }
-                                                            return roleOptions.filter(opt => pendingRoles.includes(opt.value))
-                                                        }
-                                                        const roles = Array.isArray(userItem.role) ? userItem.role : (userItem.role ? [userItem.role] : [])
-                                                        if (roles.length === 0) {
-                                                            return null
-                                                        }
-                                                        return roleOptions.filter(opt => roles.includes(opt.value))
-                                                    })()}
-                                                    onChange={(selected) => {
-                                                        // Handle clear (null or empty array)
-                                                        if (!selected || selected.length === 0) {
-                                                            // Clear all selections - store empty array
-                                                            setUserRoleChanges(prev => ({
-                                                                ...prev,
-                                                                [userItem.id]: []
-                                                            }))
-                                                        } else {
-                                                            const selectedRoles = selected.map(opt => opt.value)
-                                                            // Store changes locally instead of immediately updating
-                                                            setUserRoleChanges(prev => ({
-                                                                ...prev,
-                                                                [userItem.id]: selectedRoles
-                                                            }))
-                                                        }
-                                                    }}
-                                                    size="sm"
-                                                    className="min-w-[350px]"
-                                                    disabled={updatingUserRole === userItem.id}
-                                                    components={{
-                                                        ValueContainer: CustomValueContainer,
-                                                        MultiValue: CustomMultiValue,
-                                                        MenuList: CustomMenuList,
-                                                        Option: CustomOption,
-                                                        Placeholder: CustomPlaceholder,
-                                                    }}
-                                                    menuPortalTarget={document.body}
-                                                    menuPosition="fixed"
-                                                    styles={selectZIndexStyles}
-                                                    controlShouldRenderValue={false}
-                                                    hideSelectedOptions={false}
-                                                    placeholder="Select role(s)..."
-                                                />
-                                                {updatingUserRole === userItem.id && (
-                                                    <div className="text-xs text-gray-500">Updating...</div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-4">
-                                            <Button
-                                                size="sm"
-                                                variant="plain"
-                                                icon={<HiOutlineTrash />}
-                                                onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
-                                                className="text-red-500 hover:text-red-700"
-                                            >
-                                                Remove
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-                
-                {/* Save button for role changes */}
-                {Object.keys(userRoleChanges).length > 0 && (
-                    <div className="mt-4 flex justify-end gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setUserRoleChanges({})
-                                loadAllUsers() // Reload to reset changes
-                            }}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveAllRoleChanges}
-                            loading={Object.keys(userRoleChanges).some(id => updatingUserRole === id)}
-                        >
-                            Save Role Changes ({Object.keys(userRoleChanges).length})
-                        </Button>
-                    </div>
-                )}
-            </Card>
         </div>
     )
 }
