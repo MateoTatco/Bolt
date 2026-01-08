@@ -1687,27 +1687,34 @@ const StakeholderDetail = () => {
                         let availablePlans = []
                         
                         if (isAdmin) {
-                            // Admins: show ALL plans from profitPlans (all companies globally)
-                            // This allows admins to quickly filter KPIs by any plan across all companies
-                            availablePlans = profitPlans.map(plan => ({
-                                value: plan.value,
-                                label: plan.label || 'Unknown Plan',
-                                companyId: plan.companyId
-                            }))
-                            
-                            // Also include plans from awards that might not be in profitPlans yet (edge case)
-                            uniquePlanIds.forEach(planId => {
-                                if (!availablePlans.find(p => p.value === planId)) {
+                            // Admins: show only plans that this user (stakeholder) has awards for
+                            // Filter profitPlans to only include plans from the stakeholder's awards
+                            availablePlans = uniquePlanIds
+                                .map(planId => {
+                                    // Try to find plan in profitPlans first
+                                    let plan = profitPlans.find(p => p.value === planId)
+                                    
+                                    if (plan) {
+                                        return {
+                                            value: plan.value,
+                                            label: plan.label || 'Unknown Plan',
+                                            companyId: plan.companyId
+                                        }
+                                    }
+                                    
+                                    // If not found in profitPlans, create entry from award data
                                     const award = stakeholder.profitAwards.find(a => a.planId === planId)
                                     if (award) {
-                                        availablePlans.push({
+                                        return {
                                             value: planId,
                                             label: award.planName || 'Unknown Plan',
                                             companyId: award._sourceCompanyId || stakeholder.companyId
-                                        })
+                                        }
                                     }
-                                }
-                            })
+                                    
+                                    return null
+                                })
+                                .filter(Boolean)
                         } else {
                             // Non-admins: show plans from awards that match their companies
                             availablePlans = uniquePlanIds

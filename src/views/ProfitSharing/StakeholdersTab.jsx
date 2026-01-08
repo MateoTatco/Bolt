@@ -412,6 +412,39 @@ const StakeholdersTab = ({ isAdmin = true }) => {
             )
             return false
         }
+
+        // Validate: If a user is linked, they must have profit sharing access for this company
+        if (stakeholderData.linkedUserId) {
+            try {
+                const accessResult = await FirebaseDbService.profitSharingAccess.getByUserId(stakeholderData.linkedUserId)
+                if (accessResult.success) {
+                    const hasAccessToCompany = accessResult.data.some(record => record.companyId === selectedCompanyId)
+                    if (!hasAccessToCompany) {
+                        toast.push(
+                            React.createElement(
+                                Notification,
+                                { type: "warning", duration: 4000, title: "User Not Added to Company" },
+                                `This user must first be added to this company in Settings → User Management before they can be added as a stakeholder.`
+                            )
+                        )
+                        return false
+                    }
+                } else {
+                    // If we can't check access, still allow but warn
+                    console.warn('Could not verify user access, proceeding anyway')
+                }
+            } catch (error) {
+                console.error('Error checking user access:', error)
+                // If there's an error checking, still allow but warn
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 3000, title: "Warning" },
+                        "Could not verify user access. Please ensure the user has been added to this company in Settings → User Management."
+                    )
+                )
+            }
+        }
         
         try {
             const stakeholderPayload = {
@@ -472,6 +505,39 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 )
             )
             return false
+        }
+
+        // Validate: If a user is linked, they must have profit sharing access for this company
+        if (stakeholderData.linkedUserId) {
+            try {
+                const accessResult = await FirebaseDbService.profitSharingAccess.getByUserId(stakeholderData.linkedUserId)
+                if (accessResult.success) {
+                    const hasAccessToCompany = accessResult.data.some(record => record.companyId === selectedCompanyId)
+                    if (!hasAccessToCompany) {
+                        toast.push(
+                            React.createElement(
+                                Notification,
+                                { type: "warning", duration: 4000, title: "User Not Added to Company" },
+                                `This user must first be added to this company in Settings → User Management before they can be added as a stakeholder.`
+                            )
+                        )
+                        return false
+                    }
+                } else {
+                    // If we can't check access, still allow but warn
+                    console.warn('Could not verify user access, proceeding anyway')
+                }
+            } catch (error) {
+                console.error('Error checking user access:', error)
+                // If there's an error checking, still allow but warn
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 3000, title: "Warning" },
+                        "Could not verify user access. Please ensure the user has been added to this company in Settings → User Management."
+                    )
+                )
+            }
         }
         
         try {
@@ -801,6 +867,7 @@ const StakeholdersTab = ({ isAdmin = true }) => {
                 onClose={() => setShowAddModal(false)}
                 onSave={handleAddStakeholder}
                 onSaveAndAddAnother={handleSaveAndAddAnother}
+                selectedCompanyId={selectedCompanyId}
             />
         </div>
     )

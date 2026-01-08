@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { Button, Card } from '@/components/ui'
-import { HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog } from 'react-icons/hi'
+import { Button, Card, Tag } from '@/components/ui'
+import { HiOutlineArrowLeft, HiOutlineHome, HiOutlineDocumentText, HiOutlineUsers, HiOutlineChartBar, HiOutlineFlag, HiOutlineCog, HiOutlineOfficeBuilding } from 'react-icons/hi'
 import { useSessionUser } from '@/store/authStore'
 import { useProfitSharingAccess } from '@/hooks/useProfitSharingAccess'
+import { useSelectedCompany } from '@/hooks/useSelectedCompany'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { USER_ROLES, hasModuleAccess, MODULES } from '@/constants/roles.constant'
 import OverviewTab from './ProfitSharing/OverviewTab'
 import PlansTab from './ProfitSharing/PlansTab'
@@ -23,6 +25,8 @@ const ProfitSharing = () => {
     const location = useLocation()
     const user = useSessionUser((state) => state.user)
     const { hasAccess, userRole, loading: loadingAccess, isSupervisor } = useProfitSharingAccess()
+    const { selectedCompanyId, loading: loadingSelectedCompany } = useSelectedCompany()
+    const [selectedCompanyName, setSelectedCompanyName] = useState(null)
 
     // Check if super admin
     const userEmail = user?.email?.toLowerCase() || ''
@@ -58,6 +62,23 @@ const ProfitSharing = () => {
     }
 
     const [activeTab, setActiveTab] = useState(getInitialTab)
+
+    // Load selected company name
+    useEffect(() => {
+        const loadCompanyName = async () => {
+            if (selectedCompanyId) {
+                const result = await FirebaseDbService.companies.getById(selectedCompanyId)
+                if (result.success) {
+                    setSelectedCompanyName(result.data.name)
+                } else {
+                    setSelectedCompanyName(null)
+                }
+            } else {
+                setSelectedCompanyName(null)
+            }
+        }
+        loadCompanyName()
+    }, [selectedCompanyId])
 
     // Check authorization on mount
     useEffect(() => {
@@ -161,8 +182,25 @@ const ProfitSharing = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
+                {/* Company Indicator - Show on all tabs for admins */}
+                {isAdmin && !loadingSelectedCompany && selectedCompanyId && (
+                    <div className="sticky top-0 z-30 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                        <div className="px-4 lg:px-8 py-3">
+                            <div className="flex items-center gap-2">
+                                <HiOutlineOfficeBuilding className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                                    Current Company:
+                                </span>
+                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 font-semibold">
+                                    {selectedCompanyName || 'Loading...'}
+                                </Tag>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Mobile Tab Navigation - Only visible on mobile */}
-                <div className="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                <div className={`lg:hidden sticky z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 ${isAdmin && selectedCompanyId ? 'top-[48px]' : 'top-0'}`}>
                     <div className="flex overflow-x-auto scrollbar-hide px-2 py-2">
                         {sidebarItems.map((item) => (
                             <button

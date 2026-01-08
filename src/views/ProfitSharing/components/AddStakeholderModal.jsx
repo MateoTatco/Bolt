@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Dialog, Input, Select, Button } from '@/components/ui'
+import { Dialog, Input, Select, Button, Notification, toast } from '@/components/ui'
 import { HiOutlineX, HiOutlineInformationCircle, HiOutlineUserAdd } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import React from 'react'
 
-const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) => {
+const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother, selectedCompanyId }) => {
     const [formData, setFormData] = useState({
         fullName: '',
         linkedUserId: null,
@@ -15,12 +16,16 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
     const [allUsers, setAllUsers] = useState([])
     const [loadingUsers, setLoadingUsers] = useState(true)
+    const [accessRecords, setAccessRecords] = useState([])
+    const [loadingAccess, setLoadingAccess] = useState(false)
 
-
-    // Load users on mount
+    // Load users and access records
     useEffect(() => {
-        loadUsers()
-    }, [])
+        if (isOpen && selectedCompanyId) {
+            loadUsers()
+            loadAccessRecords()
+        }
+    }, [isOpen, selectedCompanyId])
 
     const loadUsers = async () => {
         setLoadingUsers(true)
@@ -33,6 +38,25 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
             console.error('Error loading users:', error)
         } finally {
             setLoadingUsers(false)
+        }
+    }
+
+    const loadAccessRecords = async () => {
+        if (!selectedCompanyId) {
+            setAccessRecords([])
+            return
+        }
+        
+        setLoadingAccess(true)
+        try {
+            const result = await FirebaseDbService.profitSharingAccess.getByCompany(selectedCompanyId)
+            if (result.success) {
+                setAccessRecords(result.data)
+            }
+        } catch (error) {
+            console.error('Error loading access records:', error)
+        } finally {
+            setLoadingAccess(false)
         }
     }
 
@@ -56,8 +80,18 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         setHasUnsavedChanges(hasChanges)
     }, [formData])
 
+    // Get user IDs that have access to the selected company
+    const userIdsWithAccess = new Set(accessRecords.map(record => record.userId).filter(Boolean))
+    
+    // Filter users to only show those who have profit sharing access for the selected company
+    // If no company is selected, show all users (but validation will catch it)
+    const availableUsers = selectedCompanyId 
+        ? allUsers.filter(user => userIdsWithAccess.has(user.id))
+        : allUsers
+
     // User select options - Always show "First Name Last Name" format when available
-    const userSelectOptions = allUsers.map(u => {
+    // Only show users who have access to the selected company
+    const userSelectOptions = availableUsers.map(u => {
         let displayName = ''
         if (u.firstName && u.lastName) {
             displayName = `${u.firstName} ${u.lastName}`
@@ -108,27 +142,59 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
         setHasUnsavedChanges(false)
     }
 
-    const handleSave = async () => {
-        if (formData.fullName && formData.email) {
-            const success = await onSave({
-                ...formData,
-            })
-            // Only reset form if save was successful
-            if (success) {
-                resetForm()
+    const validateUserAccess = () => {
+        // If a user is selected (linkedUserId), check if they have access to the selected company
+        if (formData.linkedUserId && selectedCompanyId) {
+            const hasAccess = userIdsWithAccess.has(formData.linkedUserId)
+            if (!hasAccess) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: "warning", duration: 3000, title: "User Not Added to Company" },
+                        `This user must first be added to this company in Settings → User Management before they can be added as a stakeholder.`
+                    )
+                )
+                return false
             }
+        }
+        return true
+    }
+
+    const handleSave = async () => {
+        if (!formData.fullName || !formData.email) {
+            return
+        }
+
+        // Validate user access if a user is selected
+        if (!validateUserAccess()) {
+            return
+        }
+
+        const success = await onSave({
+            ...formData,
+        })
+        // Only reset form if save was successful
+        if (success) {
+            resetForm()
         }
     }
 
     const handleSaveAndAddAnother = async () => {
-        if (formData.fullName && formData.email) {
-            const success = await onSaveAndAddAnother({
-                ...formData,
-            })
-            // Reset form but keep modal open (only if save was successful)
-            if (success) {
-                resetForm()
-            }
+        if (!formData.fullName || !formData.email) {
+            return
+        }
+
+        // Validate user access if a user is selected
+        if (!validateUserAccess()) {
+            return
+        }
+
+        const success = await onSaveAndAddAnother({
+            ...formData,
+        })
+        // Reset form but keep modal open (only if save was successful)
+        if (success) {
+            resetForm()
         }
     }
 
@@ -169,6 +235,9 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-3">
                             <HiOutlineInformationCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                             <div className="flex-1">
+                                <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                                    <strong>Important:</strong> Users must first be added to this company in <strong>Settings → User Management</strong> before they can be added as a stakeholder.
+                                </p>
                                 <p className="text-sm text-blue-800 dark:text-blue-200">
                                     Adding a stakeholder does not notify them. Stakeholders are only notified after clicking "Finalize Award".
                                 </p>
@@ -190,18 +259,35 @@ const AddStakeholderModal = ({ isOpen, onClose, onSave, onSaveAndAddAnother }) =
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Select User (from Bolt)
                         </label>
-                        <Select
-                            options={userSelectOptions}
-                            value={userSelectOptions.find(opt => opt.value === formData.linkedUserId) || null}
-                            onChange={handleUserSelect}
-                            placeholder="Search and select a user..."
-                            isSearchable
-                            isLoading={loadingUsers}
-                            isClearable
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Select an existing Bolt user or enter name manually below
-                        </p>
+                        {!selectedCompanyId ? (
+                            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                    Please select a company in Settings first to add stakeholders.
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <Select
+                                    options={userSelectOptions}
+                                    value={userSelectOptions.find(opt => opt.value === formData.linkedUserId) || null}
+                                    onChange={handleUserSelect}
+                                    placeholder="Search and select a user..."
+                                    isSearchable
+                                    isLoading={loadingUsers || loadingAccess}
+                                    isClearable
+                                />
+                                {userSelectOptions.length === 0 && !loadingUsers && !loadingAccess && (
+                                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                            No users found with access to this company. Please add users to this company in <strong>Settings → User Management</strong> first.
+                                        </p>
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Only users who have been added to this company in Settings → User Management are shown. You can also enter name and email manually below.
+                                </p>
+                            </>
+                        )}
                     </div>
 
                     <div className="space-y-2">

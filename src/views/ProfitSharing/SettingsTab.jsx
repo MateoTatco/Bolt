@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import { Card, Button, Input, Table, Dialog, Notification, toast, Select, Tag, Avatar } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX, HiOutlineUserGroup } from 'react-icons/hi'
+import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX, HiOutlineUserGroup, HiOutlineSearch, HiOutlineEye, HiOutlineChartBar } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
@@ -192,6 +193,7 @@ const roleOptions = [
 ]
 
 const SettingsTab = () => {
+    const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, setSelectedCompany, loading: loadingSelected } = useSelectedCompany()
     const { refreshAccess } = useProfitSharingAccessContext()
@@ -220,9 +222,26 @@ const SettingsTab = () => {
         companyIds: [] // Multi-select companies
     })
 
+    // User Profit Sharing Overview state
+    const [userOverviewData, setUserOverviewData] = useState([])
+    const [loadingOverview, setLoadingOverview] = useState(false)
+    const [overviewSearchQuery, setOverviewSearchQuery] = useState('')
+    const [overviewCompanyFilter, setOverviewCompanyFilter] = useState(null)
+
     useEffect(() => {
         loadCompanies()
         loadAllUsers()
+        loadUserProfitSharingOverview()
+        
+        // Listen for stakeholder updates (when awards are added/updated/issued/accepted)
+        const handleStakeholdersUpdate = () => {
+            loadUserProfitSharingOverview()
+        }
+        window.addEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
+        
+        return () => {
+            window.removeEventListener('stakeholdersUpdated', handleStakeholdersUpdate)
+        }
     }, [])
 
     useEffect(() => {
@@ -823,6 +842,197 @@ const SettingsTab = () => {
     // Combine built-in admins with database records
     const allAccessRecords = [...SUPER_ADMINS, ...accessRecords]
 
+    // User Profit Sharing Overview functions
+    const loadUserProfitSharingOverview = async () => {
+        setLoadingOverview(true)
+        try {
+            // Load all access records (all users with profit sharing access)
+            const accessResult = await FirebaseDbService.profitSharingAccess.getAll()
+            if (!accessResult.success) {
+                console.error('Failed to load access records:', accessResult.error)
+                setUserOverviewData([])
+                setLoadingOverview(false)
+                return
+            }
+
+            // Load all stakeholders
+            const stakeholdersResult = await FirebaseDbService.stakeholders.getAll()
+            if (!stakeholdersResult.success) {
+                console.error('Failed to load stakeholders:', stakeholdersResult.error)
+                setUserOverviewData([])
+                setLoadingOverview(false)
+                return
+            }
+
+            // Load all companies for name mapping
+            const companiesResult = await FirebaseDbService.companies.getAll()
+            const companiesMap = new Map()
+            if (companiesResult.success) {
+                companiesResult.data.forEach(company => {
+                    companiesMap.set(company.id, company.name)
+                })
+            }
+
+            // Load all plans for name mapping
+            const plansRef = collection(db, 'profitSharingPlans')
+            const plansSnapshot = await getDocs(plansRef)
+            const plansMap = new Map()
+            plansSnapshot.docs.forEach(doc => {
+                const plan = { id: doc.id, ...doc.data() }
+                plansMap.set(plan.id, plan.name || 'Unknown Plan')
+            })
+
+            // Group access records by userId
+            const accessByUserId = new Map()
+            accessResult.data.forEach(access => {
+                if (!accessByUserId.has(access.userId)) {
+                    accessByUserId.set(access.userId, [])
+                }
+                accessByUserId.get(access.userId).push(access)
+            })
+
+            // Group stakeholders by linkedUserId
+            const stakeholdersByUserId = new Map()
+            stakeholdersResult.data.forEach(stakeholder => {
+                if (stakeholder.linkedUserId) {
+                    if (!stakeholdersByUserId.has(stakeholder.linkedUserId)) {
+                        stakeholdersByUserId.set(stakeholder.linkedUserId, [])
+                    }
+                    stakeholdersByUserId.get(stakeholder.linkedUserId).push(stakeholder)
+                }
+            })
+
+            // Build overview data for each user
+            const overviewData = []
+            
+            accessByUserId.forEach((accessRecords, userId) => {
+                // Get user info from first access record
+                const firstAccess = accessRecords[0]
+                const userName = firstAccess.userName || 'Unknown User'
+                const userEmail = firstAccess.userEmail || ''
+                
+                // Get all companies this user has access to
+                const userCompanyIds = [...new Set(accessRecords.map(a => a.companyId).filter(Boolean))]
+                const userCompanies = userCompanyIds.map(id => ({
+                    id,
+                    name: companiesMap.get(id) || 'Unknown Company'
+                }))
+
+                // Get all stakeholder records for this user
+                const userStakeholders = stakeholdersByUserId.get(userId) || []
+                
+                // Aggregate all awards across all stakeholder records
+                const allAwards = []
+                const planIds = new Set()
+                const companyIdsFromStakeholders = new Set()
+                
+                userStakeholders.forEach(stakeholder => {
+                    if (stakeholder.companyId) {
+                        companyIdsFromStakeholders.add(stakeholder.companyId)
+                    }
+                    
+                    if (stakeholder.profitAwards && Array.isArray(stakeholder.profitAwards)) {
+                        stakeholder.profitAwards.forEach(award => {
+                            allAwards.push({
+                                ...award,
+                                companyId: stakeholder.companyId,
+                                stakeholderId: stakeholder.id,
+                                companyName: companiesMap.get(stakeholder.companyId) || 'Unknown Company'
+                            })
+                            if (award.planId) {
+                                planIds.add(award.planId)
+                            }
+                        })
+                    }
+                })
+
+                // Get unique plan names
+                const planNames = Array.from(planIds).map(planId => plansMap.get(planId) || 'Unknown Plan')
+
+                // Count awards by status
+                const normalizeStatus = (status) => {
+                    if (!status) return 'draft'
+                    return String(status).toLowerCase().trim()
+                }
+
+                const draftCount = allAwards.filter(a => normalizeStatus(a.status) === 'draft').length
+                const issuedCount = allAwards.filter(a => normalizeStatus(a.status) === 'issued').length
+                const finalizedCount = allAwards.filter(a => normalizeStatus(a.status) === 'finalized').length
+
+                // Get primary stakeholder ID (for navigation) - prefer one with most awards
+                const primaryStakeholder = userStakeholders.reduce((prev, current) => {
+                    const prevAwards = (prev?.profitAwards?.length || 0)
+                    const currentAwards = (current?.profitAwards?.length || 0)
+                    return currentAwards > prevAwards ? current : prev
+                }, userStakeholders[0])
+
+                // Combine company IDs from access records and stakeholder records
+                const allCompanyIds = [...new Set([...userCompanyIds, ...Array.from(companyIdsFromStakeholders)])]
+                const allCompanies = allCompanyIds.map(id => ({
+                    id,
+                    name: companiesMap.get(id) || 'Unknown Company'
+                }))
+
+                overviewData.push({
+                    userId,
+                    userName,
+                    userEmail,
+                    companies: allCompanies,
+                    planNames,
+                    totalAwards: allAwards.length,
+                    draftCount,
+                    issuedCount,
+                    finalizedCount,
+                    pendingAcceptance: issuedCount, // Awards that are issued but not yet finalized
+                    primaryStakeholderId: primaryStakeholder?.id || null,
+                    allAwards,
+                    accessRecords
+                })
+            })
+
+            // Sort by user name
+            overviewData.sort((a, b) => (a.userName || '').localeCompare(b.userName || ''))
+            
+            setUserOverviewData(overviewData)
+        } catch (error) {
+            console.error('Error loading user profit sharing overview:', error)
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    Failed to load user profit sharing overview: {error.message}
+                </Notification>
+            )
+            setUserOverviewData([])
+        } finally {
+            setLoadingOverview(false)
+        }
+    }
+
+    // Filter overview data based on search and company filter
+    const filteredOverviewData = userOverviewData.filter(userData => {
+        // Search filter
+        if (overviewSearchQuery) {
+            const query = overviewSearchQuery.toLowerCase()
+            const matchesName = userData.userName?.toLowerCase().includes(query)
+            const matchesEmail = userData.userEmail?.toLowerCase().includes(query)
+            const matchesCompany = userData.companies.some(c => c.name.toLowerCase().includes(query))
+            const matchesPlan = userData.planNames.some(p => p.toLowerCase().includes(query))
+            
+            if (!matchesName && !matchesEmail && !matchesCompany && !matchesPlan) {
+                return false
+            }
+        }
+
+        // Company filter
+        if (overviewCompanyFilter) {
+            const hasCompany = userData.companies.some(c => c.id === overviewCompanyFilter)
+            if (!hasCompany) {
+                return false
+            }
+        }
+
+        return true
+    })
+
     const accessColumns = [
         {
             header: 'User',
@@ -1082,6 +1292,205 @@ const SettingsTab = () => {
                         <DataTable
                             columns={accessColumns}
                             data={allAccessRecords}
+                            loading={false}
+                        />
+                    </div>
+                )}
+            </Card>
+
+            {/* User Profit Sharing Overview Section */}
+            <Card className="p-6">
+                <div className="mb-4">
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                        <HiOutlineChartBar className="w-5 h-5" />
+                        User Profit Sharing Overview
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                        View all users in profit sharing with their companies, profit plans, awards, and acceptance status across all companies.
+                    </p>
+                </div>
+
+                {/* Search and Filter Controls */}
+                <div className="mb-4 flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                        <Input
+                            placeholder="Search by name, email, company, or plan..."
+                            value={overviewSearchQuery}
+                            onChange={(e) => setOverviewSearchQuery(e.target.value)}
+                            prefix={<HiOutlineSearch className="text-gray-400" />}
+                        />
+                    </div>
+                    <div className="w-full sm:w-48">
+                        <Select
+                            placeholder="Filter by company..."
+                            options={companies.map(c => ({ value: c.id, label: c.name }))}
+                            value={overviewCompanyFilter ? companies.find(c => c.id === overviewCompanyFilter) ? { value: overviewCompanyFilter, label: companies.find(c => c.id === overviewCompanyFilter).name } : null : null}
+                            onChange={(opt) => setOverviewCompanyFilter(opt?.value || null)}
+                            isClearable
+                        />
+                    </div>
+                </div>
+
+                {loadingOverview ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        Loading user profit sharing overview...
+                    </div>
+                ) : filteredOverviewData.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        {overviewSearchQuery || overviewCompanyFilter 
+                            ? 'No users found matching your filters'
+                            : 'No users found in profit sharing'}
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <DataTable
+                            columns={[
+                                {
+                                    header: 'User',
+                                    accessorKey: 'userName',
+                                    cell: ({ row }) => (
+                                        <div className="flex items-center gap-3">
+                                            <Avatar
+                                                size={32}
+                                                icon={<span className="text-xs font-semibold">{getInitials(row.original.userName)}</span>}
+                                            />
+                                            <div>
+                                                <div className="font-medium">{row.original.userName}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">{row.original.userEmail}</div>
+                                            </div>
+                                        </div>
+                                    )
+                                },
+                                {
+                                    header: 'Companies',
+                                    accessorKey: 'companies',
+                                    cell: ({ row }) => {
+                                        const companies = row.original.companies || []
+                                        if (companies.length === 0) {
+                                            return <span className="text-gray-400 text-sm">No companies</span>
+                                        }
+                                        return (
+                                            <div className="flex flex-wrap gap-1">
+                                                {companies.slice(0, 3).map(company => (
+                                                    <Tag
+                                                        key={company.id}
+                                                        className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs"
+                                                    >
+                                                        {company.name}
+                                                    </Tag>
+                                                ))}
+                                                {companies.length > 3 && (
+                                                    <Tag className="bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                                                        +{companies.length - 3} more
+                                                    </Tag>
+                                                )}
+                                            </div>
+                                        )
+                                    }
+                                },
+                                {
+                                    header: 'Profit Plans',
+                                    accessorKey: 'planNames',
+                                    cell: ({ row }) => {
+                                        const plans = row.original.planNames || []
+                                        if (plans.length === 0) {
+                                            return <span className="text-gray-400 text-sm">No plans</span>
+                                        }
+                                        return (
+                                            <div className="flex flex-wrap gap-1">
+                                                {plans.slice(0, 2).map((plan, idx) => (
+                                                    <Tag
+                                                        key={idx}
+                                                        className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs"
+                                                    >
+                                                        {plan}
+                                                    </Tag>
+                                                ))}
+                                                {plans.length > 2 && (
+                                                    <Tag className="bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 text-xs">
+                                                        +{plans.length - 2} more
+                                                    </Tag>
+                                                )}
+                                            </div>
+                                        )
+                                    }
+                                },
+                                {
+                                    header: 'Total Awards',
+                                    accessorKey: 'totalAwards',
+                                    cell: ({ row }) => (
+                                        <div className="font-medium">{row.original.totalAwards}</div>
+                                    )
+                                },
+                                {
+                                    header: 'Award Status',
+                                    accessorKey: 'awardStatus',
+                                    cell: ({ row }) => {
+                                        const { draftCount, issuedCount, finalizedCount } = row.original
+                                        return (
+                                            <div className="flex flex-col gap-1">
+                                                {draftCount > 0 && (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="w-2 h-2 rounded-full bg-gray-500"></span>
+                                                        <span className="text-xs text-gray-600 dark:text-gray-400">Draft: {draftCount}</span>
+                                                    </div>
+                                                )}
+                                                {issuedCount > 0 && (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                                        <span className="text-xs text-blue-600 dark:text-blue-400">Issued: {issuedCount}</span>
+                                                    </div>
+                                                )}
+                                                {finalizedCount > 0 && (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                                        <span className="text-xs text-green-600 dark:text-green-400">Finalized: {finalizedCount}</span>
+                                                    </div>
+                                                )}
+                                                {draftCount === 0 && issuedCount === 0 && finalizedCount === 0 && (
+                                                    <span className="text-xs text-gray-400">No awards</span>
+                                                )}
+                                            </div>
+                                        )
+                                    }
+                                },
+                                {
+                                    header: 'Pending Acceptance',
+                                    accessorKey: 'pendingAcceptance',
+                                    cell: ({ row }) => {
+                                        const pending = row.original.pendingAcceptance || 0
+                                        if (pending === 0) {
+                                            return <span className="text-xs text-gray-400">None</span>
+                                        }
+                                        return (
+                                            <Tag className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs">
+                                                {pending} pending
+                                            </Tag>
+                                        )
+                                    }
+                                },
+                                {
+                                    header: 'Actions',
+                                    accessorKey: 'actions',
+                                    cell: ({ row }) => {
+                                        const primaryStakeholderId = row.original.primaryStakeholderId
+                                        if (!primaryStakeholderId) {
+                                            return <span className="text-xs text-gray-400">No details</span>
+                                        }
+                                        return (
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                icon={<HiOutlineEye />}
+                                                onClick={() => navigate(`/profit-sharing/stakeholders/${primaryStakeholderId}`)}
+                                            >
+                                                View Details
+                                            </Button>
+                                        )
+                                    }
+                                }
+                            ]}
+                            data={filteredOverviewData}
                             loading={false}
                         />
                     </div>
