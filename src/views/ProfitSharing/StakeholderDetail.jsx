@@ -502,20 +502,48 @@ const StakeholderDetail = () => {
         
         try {
             // Get all companies user belongs to (for non-admin users)
+            // IMPORTANT: Check both accessRecords AND stakeholder records to ensure
+            // users see valuations for all companies where they have awards
             let companyIdsToLoad = [selectedCompanyId]
-            if (!isAdmin && accessRecords && accessRecords.length > 0) {
-                const userCompanyIds = accessRecords.map(record => record.companyId).filter(Boolean)
-                if (userCompanyIds.length > 0) {
-                    companyIdsToLoad = [...new Set([...userCompanyIds, selectedCompanyId])]
+            if (!isAdmin) {
+                const currentUserId = user?.id || user?.uid
+                const accessRecordCompanyIds = accessRecords?.map(record => record.companyId).filter(Boolean) || []
+                let stakeholderCompanyIds = []
+                
+                // Also get company IDs from stakeholder records (where user has awards)
+                if (currentUserId) {
+                    try {
+                        const stakeholdersResponse = await FirebaseDbService.stakeholders.getAll()
+                        if (stakeholdersResponse.success) {
+                            const userStakeholders = stakeholdersResponse.data.filter(
+                                sh => sh.linkedUserId === currentUserId
+                            )
+                            
+                            // Get unique company IDs from ALL stakeholder records (even without awards)
+                            userStakeholders.forEach(sh => {
+                                if (sh.companyId && !stakeholderCompanyIds.includes(sh.companyId)) {
+                                    stakeholderCompanyIds.push(sh.companyId)
+                                }
+                            })
+                        }
+                    } catch (stakeholderError) {
+                        console.error('[StakeholderDetail] Error loading stakeholder records for valuations:', stakeholderError)
+                    }
                 }
+                
+                // Combine all sources: access records, stakeholder records, and selected company
+                const allCompanyIds = [...new Set([...accessRecordCompanyIds, ...stakeholderCompanyIds, selectedCompanyId])]
+                companyIdsToLoad = allCompanyIds
             }
             
             const valuationsRef = collection(db, 'valuations')
             const q = query(valuationsRef, orderBy('valuationDate', 'desc'))
             const querySnapshot = await getDocs(q)
             const valuationsData = []
+            
             querySnapshot.forEach((doc) => {
                 const data = doc.data()
+                
                 // For admins, load all valuations; for non-admins, filter by company
                 if (isAdmin || (companyIdsToLoad && companyIdsToLoad.includes(data.companyId))) {
                     valuationsData.push({
@@ -531,7 +559,7 @@ const StakeholderDetail = () => {
             console.error('Error loading valuations:', error)
             setValuations([])
         }
-    }, [selectedCompanyId, isAdmin, accessRecords])
+    }, [selectedCompanyId, isAdmin, accessRecords, user])
     
     // Load valuations when selectedCompanyId changes
     useEffect(() => {
@@ -1846,8 +1874,27 @@ const StakeholderDetail = () => {
                                                 
                                                 // Filter valuations by selected plan
                                                 let filteredValuations = valuations
+                                                let usingCompanyFallback = false
                                                 if (selectedPlanForKPIs) {
                                                     filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
+                                                    
+                                                // If no valuations match the selected plan, but stakeholder has an award for that plan,
+                                                // it likely means valuations have old plan IDs. Use all valuations for the stakeholder's company.
+                                                if (filteredValuations.length === 0 && relevantAwards.length > 0) {
+                                                    // For admins, use selectedCompanyId (the company they're viewing)
+                                                    // For non-admins, use the award's company
+                                                    const companyIdToUse = isAdmin 
+                                                        ? selectedCompanyId 
+                                                        : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                                                    if (companyIdToUse) {
+                                                        // Filter valuations by the company
+                                                        const companyValuations = valuations.filter(v => v.companyId === companyIdToUse)
+                                                        if (companyValuations.length > 0) {
+                                                            filteredValuations = companyValuations
+                                                            usingCompanyFallback = true
+                                                        }
+                                                    }
+                                                }
                                                 }
                                                 
                                                 // Get latest valuation for calculation
@@ -1875,9 +1922,17 @@ const StakeholderDetail = () => {
                                                         : 0)
                                                 
                                                 // Calculate total estimated payout
+                                                // If using company fallback, don't check planId matches (we know they won't match)
                                                 const totalEstimatedPayout = relevantAwards.reduce((sum, award) => {
                                                     if (!award.sharesIssued || award.sharesIssued === 0) return sum
-                                                    return sum + ((award.sharesIssued || 0) * pricePerShare)
+                                                    
+                                                    // Only check planId match if not using company fallback
+                                                    if (!usingCompanyFallback && award.planId !== latestValuation.planId) {
+                                                        return sum
+                                                    }
+                                                    
+                                                    const payout = (award.sharesIssued || 0) * pricePerShare
+                                                    return sum + payout
                                                 }, 0)
                                             
                                                 return (
@@ -1906,8 +1961,14 @@ const StakeholderDetail = () => {
                                                         filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                                                     }
                                                     
+                                                    // Filter awards by selected plan (need to do this before checking actualValuations)
+                                                    let relevantAwards = stakeholder?.profitAwards || []
+                                                    if (selectedPlanForKPIs) {
+                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
                                                     // Find the most recent actual profit entry (not based on date range)
-                                                    const actualValuations = filteredValuations
+                                                    let actualValuations = filteredValuations
                                                         .filter(v => {
                                                             if (v.profitType !== 'actual') return false
                                                             if (!v.valuationDate) return false
@@ -1919,6 +1980,29 @@ const StakeholderDetail = () => {
                                                             const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
                                                             return bDate - aDate // Most recent first
                                                         })
+                                                    
+                                                    // If no actual valuations match the selected plan, but stakeholder has an award for that plan,
+                                                    // it likely means valuations have old plan IDs. Use all actual valuations for the stakeholder's company.
+                                                    let usingCompanyFallback = false
+                                                    if (selectedPlanForKPIs && actualValuations.length === 0 && relevantAwards.length > 0) {
+                                                        // For admins, use selectedCompanyId (the company they're viewing)
+                                                        // For non-admins, use the award's company
+                                                        const companyIdToUse = isAdmin 
+                                                            ? selectedCompanyId 
+                                                            : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                                                        if (companyIdToUse) {
+                                                            // Filter valuations by the company
+                                                            const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
+                                                            if (companyValuations.length > 0) {
+                                                                actualValuations = companyValuations.sort((a, b) => {
+                                                                    const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                                    const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                                                    return bDate - aDate
+                                                                })
+                                                                usingCompanyFallback = true
+                                                            }
+                                                        }
+                                                    }
                                                     
                                                     if (actualValuations.length === 0) {
                                                         return (
@@ -1932,12 +2016,6 @@ const StakeholderDetail = () => {
                                                     // Get the most recent actual valuation (last entered payout)
                                                     const lastPeriodValuation = actualValuations[0]
                                                     
-                                                    // Filter awards by selected plan
-                                                    let relevantAwards = stakeholder?.profitAwards || []
-                                                    if (selectedPlanForKPIs) {
-                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                                    }
-                                                    
                                                     // Calculate payout based on the single most recent actual valuation
                                                     const pricePerShare = lastPeriodValuation.pricePerShare || 
                                                         (lastPeriodValuation.profitAmount && lastPeriodValuation.totalShares && lastPeriodValuation.totalShares > 0
@@ -1946,15 +2024,17 @@ const StakeholderDetail = () => {
                                                     
                                                     let totalPayout = 0
                                                     
-                                                    // Only calculate for awards that match this valuation's plan
-                                                    relevantAwards
-                                                        .filter(award => award.planId === lastPeriodValuation.planId)
-                                                        .forEach(award => {
-                                                            if (award.sharesIssued && award.sharesIssued > 0) {
-                                                                const payout = award.sharesIssued * pricePerShare
-                                                                totalPayout += payout
-                                                            }
-                                                        })
+                                                    // Calculate for awards - if using company fallback, don't check planId matches
+                                                    relevantAwards.forEach(award => {
+                                                        const hasShares = award.sharesIssued && award.sharesIssued > 0
+                                                        // Only check planId match if not using company fallback
+                                                        const planMatches = usingCompanyFallback || award.planId === lastPeriodValuation.planId
+                                                        
+                                                        if (hasShares && planMatches) {
+                                                            const payout = award.sharesIssued * pricePerShare
+                                                            totalPayout += payout
+                                                        }
+                                                    })
                                                     
                                                     // Format the date for display
                                                     const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
@@ -1992,8 +2072,14 @@ const StakeholderDetail = () => {
                                                         filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                                                     }
                                                     
+                                                    // Filter awards by selected plan (need to do this before checking actualValuations)
+                                                    let relevantAwards = stakeholder?.profitAwards || []
+                                                    if (selectedPlanForKPIs) {
+                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                    }
+                                                    
                                                     // Find the most recent actual profit entry (not based on date range)
-                                                    const actualValuations = filteredValuations
+                                                    let actualValuations = filteredValuations
                                                         .filter(v => {
                                                             if (v.profitType !== 'actual') return false
                                                             if (!v.valuationDate) return false
@@ -2005,6 +2091,29 @@ const StakeholderDetail = () => {
                                                             const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
                                                             return bDate - aDate // Most recent first
                                                         })
+                                                    
+                                                    // If no actual valuations match the selected plan, but stakeholder has an award for that plan,
+                                                    // it likely means valuations have old plan IDs. Use all actual valuations for the stakeholder's company.
+                                                    let usingCompanyFallback = false
+                                                    if (selectedPlanForKPIs && actualValuations.length === 0 && relevantAwards.length > 0) {
+                                                        // For admins, use selectedCompanyId (the company they're viewing)
+                                                        // For non-admins, use the award's company
+                                                        const companyIdToUse = isAdmin 
+                                                            ? selectedCompanyId 
+                                                            : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                                                        if (companyIdToUse) {
+                                                            // Filter valuations by the company
+                                                            const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
+                                                            if (companyValuations.length > 0) {
+                                                                actualValuations = companyValuations.sort((a, b) => {
+                                                                    const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                                                    const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                                                    return bDate - aDate
+                                                                })
+                                                                usingCompanyFallback = true
+                                                            }
+                                                        }
+                                                    }
                                                     
                                                     if (actualValuations.length === 0) {
                                                         return (
@@ -2018,12 +2127,6 @@ const StakeholderDetail = () => {
                                                     // Get the most recent actual valuation (last entered payout)
                                                     const lastPeriodValuation = actualValuations[0]
                                                     
-                                                    // Filter awards by selected plan
-                                                    let relevantAwards = stakeholder?.profitAwards || []
-                                                    if (selectedPlanForKPIs) {
-                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                                    }
-                                                    
                                                     // Calculate payout based on the single most recent actual valuation
                                                     const pricePerShare = lastPeriodValuation.pricePerShare || 
                                                         (lastPeriodValuation.profitAmount && lastPeriodValuation.totalShares && lastPeriodValuation.totalShares > 0
@@ -2032,15 +2135,17 @@ const StakeholderDetail = () => {
                                                     
                                                     let totalPayout = 0
                                                     
-                                                    // Only calculate for awards that match this valuation's plan
-                                                    relevantAwards
-                                                        .filter(award => award.planId === lastPeriodValuation.planId)
-                                                        .forEach(award => {
-                                                            if (award.sharesIssued && award.sharesIssued > 0) {
-                                                                const payout = award.sharesIssued * pricePerShare
-                                                                totalPayout += payout
-                                                            }
-                                                        })
+                                                    // Calculate for awards - if using company fallback, don't check planId matches
+                                                    relevantAwards.forEach(award => {
+                                                        const hasShares = award.sharesIssued && award.sharesIssued > 0
+                                                        // Only check planId match if not using company fallback
+                                                        const planMatches = usingCompanyFallback || award.planId === lastPeriodValuation.planId
+                                                        
+                                                        if (hasShares && planMatches) {
+                                                            const payout = award.sharesIssued * pricePerShare
+                                                            totalPayout += payout
+                                                        }
+                                                    })
                                                     
                                                     // Format the date for display
                                                     const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
@@ -2075,7 +2180,32 @@ const StakeholderDetail = () => {
                                                 }
                                                 
                                                 // Get all actual profit entries (not estimated)
-                                                const actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
+                                                let actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
+                                                
+                                                // Filter awards by selected plan (need to do this before checking actualValuations)
+                                                let relevantAwards = stakeholder?.profitAwards || []
+                                                if (selectedPlanForKPIs) {
+                                                    relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                }
+                                                
+                                                // If no actual valuations match the selected plan, but stakeholder has an award for that plan,
+                                                // it likely means valuations have old plan IDs. Use all actual valuations for the stakeholder's company.
+                                                let usingCompanyFallback = false
+                                                if (selectedPlanForKPIs && actualValuations.length === 0 && relevantAwards.length > 0) {
+                                                    // For admins, use selectedCompanyId (the company they're viewing)
+                                                    // For non-admins, use the award's company
+                                                    const companyIdToUse = isAdmin 
+                                                        ? selectedCompanyId 
+                                                        : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                                                    if (companyIdToUse) {
+                                                        // Filter valuations by the company
+                                                        const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
+                                                        if (companyValuations.length > 0) {
+                                                            actualValuations = companyValuations
+                                                            usingCompanyFallback = true
+                                                        }
+                                                    }
+                                                }
                                                 
                                                 if (actualValuations.length === 0) {
                                                     return (
@@ -2086,13 +2216,8 @@ const StakeholderDetail = () => {
                                                     )
                                                 }
                                                 
-                                                // Filter awards by selected plan
-                                                let relevantAwards = stakeholder?.profitAwards || []
-                                                if (selectedPlanForKPIs) {
-                                                    relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                                }
-                                                
                                                 // Calculate total payout from all actual valuations
+                                                // If using company fallback, don't check planId matches (we know they won't match)
                                                 let totalPayout = 0
                                                 actualValuations.forEach(valuation => {
                                                     const pricePerShare = valuation.pricePerShare || 
@@ -2101,8 +2226,14 @@ const StakeholderDetail = () => {
                                                             : 0)
                                                     
                                                     relevantAwards.forEach(award => {
-                                                        if (award.sharesIssued && award.sharesIssued > 0 && award.planId === valuation.planId) {
-                                                            totalPayout += (award.sharesIssued * pricePerShare)
+                                                        const hasShares = award.sharesIssued && award.sharesIssued > 0
+                                                        
+                                                        // Only check planId match if not using company fallback
+                                                        const planMatches = usingCompanyFallback || award.planId === valuation.planId
+                                                        
+                                                        if (hasShares && planMatches) {
+                                                            const payout = award.sharesIssued * pricePerShare
+                                                            totalPayout += payout
                                                         }
                                                     })
                                                 })
