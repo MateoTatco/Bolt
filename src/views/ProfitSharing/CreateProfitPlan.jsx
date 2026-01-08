@@ -167,18 +167,31 @@ const CreateProfitPlan = () => {
         return []
     }
 
-    const isFormComplete = () => {
-        // Check all required fields are filled
+    // Validation for saving as draft (less strict - trigger amount not required)
+    const canSaveDraft = () => {
+        // Minimum required fields to save as draft
         return (
             formData.name &&
+            formData.name !== 'Profit Plan' && // Must have a custom name
+            formData.companyId // Must have a company selected
+        )
+    }
+
+    // Validation for finalizing (strict - all fields including trigger amount required)
+    const isFormComplete = () => {
+        // Check all required fields are filled (including trigger amount for finalizing)
+        return (
+            formData.name &&
+            formData.name !== 'Profit Plan' &&
             formData.schedule &&
             formData.startDate &&
             formData.profitDescription &&
-            formData.triggerAmount > 0 &&
+            formData.triggerAmount > 0 && // Required for finalizing
             formData.totalShares > 0 &&
             Array.isArray(formData.paymentScheduleDates) &&
             formData.paymentScheduleDates.length > 0 &&
-            formData.paymentTerms
+            formData.paymentTerms &&
+            formData.companyId
         )
     }
 
@@ -1015,7 +1028,7 @@ const CreateProfitPlan = () => {
                                 <Button
                                     variant="solid"
                                     size="lg"
-                                    disabled={!isFormComplete()}
+                                    disabled={!canSaveDraft()}
                                     onClick={async () => {
                                         await savePlan('draft')
                                         // Navigate after save
