@@ -169,6 +169,7 @@ const ValuationsTab = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedCompanyId, loadingCompany])
 
+
     const loadPlans = async () => {
         if (!selectedCompanyId) {
             setPlans([])
@@ -667,9 +668,17 @@ const ValuationsTab = () => {
     const showCompanyDropdown = accessibleCompanies.length > 1
 
     // Filter valuations by selected plan
-    const filteredValuations = selectedPlanId 
+    // If a plan is selected but no valuations match, check if there's only one plan for the company
+    // In that case, show all valuations (they're all for this company anyway)
+    let filteredValuations = selectedPlanId 
         ? valuations.filter(v => v.planId === selectedPlanId)
         : valuations
+    
+    // If filtering by plan results in 0 valuations, but there's only 1 plan for the company,
+    // it likely means the valuations have old plan IDs. Show all valuations for the company.
+    if (selectedPlanId && filteredValuations.length === 0 && plans.length === 1) {
+        filteredValuations = valuations // Show all valuations since there's only one plan
+    }
 
     return (
         <>
