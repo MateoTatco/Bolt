@@ -81,6 +81,7 @@ export const useSelectedCompany = () => {
                     const companiesResult = await FirebaseDbService.companies.getAll()
                     if (companiesResult.success && companiesResult.data.length > 0) {
                         const selectedCompany = companiesResult.data.find(c => c.id === companyId)
+                        
                         const roleCompany = companiesResult.data.find(c => {
                             const cName = (c.name || '').toLowerCase().trim()
                             const rName = roleCompanyName.toLowerCase().trim()
@@ -90,11 +91,35 @@ export const useSelectedCompany = () => {
                                    rName.includes(cName)
                         })
                         
+                        // For Tatco roles, prioritize OKC over Florida
+                        if (roleCompanyName.toLowerCase() === 'tatco' && selectedCompany) {
+                            const selectedName = (selectedCompany.name || '').toLowerCase()
+                            const isFlorida = selectedName.includes('florida')
+                            const isOKC = selectedName.includes('okc')
+                            
+                            if (isFlorida && !isOKC) {
+                                // User has Florida selected but should have OKC - find OKC company
+                                const okcCompany = companiesResult.data.find(c => {
+                                    const cName = (c.name || '').toLowerCase().trim()
+                                    return (cName.includes('tatco') && cName.includes('okc') && !cName.includes('florida'))
+                                })
+                                
+                                if (okcCompany) {
+                                    companyId = okcCompany.id
+                                    await setSelectedCompany(companyId)
+                                    setSelectedCompanyIdState(companyId)
+                                }
+                            }
+                        }
+                        
                         // If selected company doesn't match role company, update it
                         if (roleCompany && (!selectedCompany || selectedCompany.id !== roleCompany.id)) {
-                            companyId = roleCompany.id
-                            await setSelectedCompany(companyId)
-                            setSelectedCompanyIdState(companyId)
+                            // Skip if we already fixed it above
+                            if (companyId !== roleCompany.id) {
+                                companyId = roleCompany.id
+                                await setSelectedCompany(companyId)
+                                setSelectedCompanyIdState(companyId)
+                            }
                         } else if (!roleCompany) {
                             // Role company not found, but user has a role - clear selection to force fallback
                             companyId = null
@@ -165,10 +190,36 @@ export const useSelectedCompany = () => {
                         try {
                             const accessResult = await FirebaseDbService.profitSharingAccess.getByUserId(currentUser.uid)
                             if (accessResult.success && accessResult.data.length > 0) {
-                                // Get the first company from their access records
-                                const firstAccessRecord = accessResult.data[0]
-                                if (firstAccessRecord.companyId) {
-                                    companyId = firstAccessRecord.companyId
+                                // Get all companies to match names
+                                const companiesResult = await FirebaseDbService.companies.getAll()
+                                const companiesMap = new Map()
+                                if (companiesResult.success) {
+                                    companiesResult.data.forEach(c => {
+                                        companiesMap.set(c.id, c.name)
+                                    })
+                                }
+                                
+                                // For Tatco roles, prioritize OKC over Florida
+                                let selectedAccessRecord = null
+                                if (roleCompanyName && roleCompanyName.toLowerCase() === 'tatco') {
+                                    // Find OKC company first
+                                    const okcRecord = accessResult.data.find(r => {
+                                        const companyName = companiesMap.get(r.companyId) || ''
+                                        return companyName.toLowerCase().includes('okc') && !companyName.toLowerCase().includes('florida')
+                                    })
+                                    if (okcRecord) {
+                                        selectedAccessRecord = okcRecord
+                                    } else {
+                                        // Fallback to first record
+                                        selectedAccessRecord = accessResult.data[0]
+                                    }
+                                } else {
+                                    // For non-Tatco, use first record
+                                    selectedAccessRecord = accessResult.data[0]
+                                }
+                                
+                                if (selectedAccessRecord && selectedAccessRecord.companyId) {
+                                    companyId = selectedAccessRecord.companyId
                                     await setSelectedCompany(companyId)
                                     setSelectedCompanyIdState(companyId)
                                 }
