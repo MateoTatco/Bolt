@@ -5755,7 +5755,11 @@ export const sendWelcomeEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMA
 
     try {
         // Generate password reset link using Firebase Admin SDK
-        const passwordResetLink = await admin.auth().generatePasswordResetLink(email);
+        // Include continueUrl to redirect users to Bolt after password reset
+        const passwordResetLink = await admin.auth().generatePasswordResetLink(email, {
+            url: 'https://www.mybolt.pro',
+            handleCodeInApp: false
+        });
 
         // Configure email transporter
         // Using Gmail SMTP - you can configure this via environment variables
@@ -5893,7 +5897,7 @@ export const sendWelcomeEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMA
             <ol>
                 <li>Click the button below to set your password</li>
                 <li>You'll be redirected to a secure page to create your password</li>
-                <li>Once your password is set, you can sign in to Bolt</li>
+                <li>Once your password is set, you'll be automatically redirected to Bolt to sign in</li>
             </ol>
         </div>
         
@@ -5926,7 +5930,7 @@ We're excited to have you join the Bolt platform! Your account has been created 
 Getting Started:
 1. Click the link below to set your password
 2. You'll be redirected to a secure page to create your password
-3. Once your password is set, you can sign in to Bolt
+3. Once your password is set, you'll be automatically redirected to Bolt to sign in
 
 Set Your Password: ${passwordResetLink}
 
