@@ -796,53 +796,53 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
 
                 {/* Footer */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 mt-auto">
-                    {/* Sign Document Button - Only show for finalized awards without signature */}
+                                {/* Sign Document Button - Only show for finalized awards without signature */}
                     {award && award?.status === 'Finalized' && 
-                     !award?.signatureMetadata && 
-                     !award?.signedDocumentPdfUrl && 
-                     !award?.signedDocumentDocxUrl && 
+                                 !award?.signatureMetadata && 
+                                 !award?.signedDocumentPdfUrl && 
+                                 !award?.signedDocumentDocxUrl && 
                      !award?.signedDocumentUrl && 
                      pdfUrl && (
-                        <Button
-                            variant="solid"
-                            icon={<HiOutlinePencil />}
-                            onClick={() => {
-                                if (!showSignatureModal) {
-                                    setShowSignatureModal(true)
-                                }
-                            }}
-                            loading={signing}
-                            disabled={signing || showSignatureModal}
-                        >
-                            Sign Document
-                        </Button>
-                    )}
+                                    <Button
+                                        variant="solid"
+                                        icon={<HiOutlinePencil />}
+                                        onClick={() => {
+                                            if (!showSignatureModal) {
+                                                setShowSignatureModal(true)
+                                            }
+                                        }}
+                                        loading={signing}
+                                        disabled={signing || showSignatureModal}
+                                    >
+                                        Sign Document
+                                    </Button>
+                                )}
                     {/* Download Button */}
                     {award && (pdfUrl || award.documentPdfUrl || award.documentUrl || award.documentDocxUrl) && (
-                        <Button
-                            variant="plain"
-                            icon={<HiOutlineDownload />}
-                            onClick={() => {
+                                <Button
+                                    variant="plain"
+                                    icon={<HiOutlineDownload />}
+                                    onClick={() => {
                                 // Prefer signed document URL if available
                                 if (award.signedDocumentPdfUrl || award.signedDocumentUrl) {
                                     const downloadUrl = award.signedDocumentPdfUrl || award.signedDocumentUrl
-                                    const link = document.createElement('a')
+                                            const link = document.createElement('a')
                                     link.href = downloadUrl
                                     link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
                                     link.target = '_blank'
-                                    document.body.appendChild(link)
-                                    link.click()
-                                    document.body.removeChild(link)
+                                            document.body.appendChild(link)
+                                            link.click()
+                                            document.body.removeChild(link)
                                 } else if (award.documentPdfUrl || award.documentUrl) {
                                     // Use PDF URL
                                     const downloadUrl = award.documentPdfUrl || award.documentUrl
-                                    const link = document.createElement('a')
-                                    link.href = downloadUrl
+                                            const link = document.createElement('a')
+                                            link.href = downloadUrl
                                     link.download = (award.documentFileName || 'award-document').replace('.docx', '.pdf') || 'award-document.pdf'
-                                    link.target = '_blank'
-                                    document.body.appendChild(link)
-                                    link.click()
-                                    document.body.removeChild(link)
+                                            link.target = '_blank'
+                                            document.body.appendChild(link)
+                                            link.click()
+                                            document.body.removeChild(link)
                                 } else if (award.documentDocxUrl) {
                                     // Fallback to DOCX
                                     const link = document.createElement('a')
@@ -862,10 +862,10 @@ const AwardDocumentModal = ({ isOpen, onClose, award, stakeholderId, onDocumentU
                                     link.click()
                                     document.body.removeChild(link)
                                 }
-                            }}
-                        >
+                                }}
+                            >
                             {award.documentPdfUrl || award.documentUrl || pdfUrl ? 'Download PDF' : 'Download .docx'}
-                        </Button>
+                            </Button>
                     )}
                     <Button
                         variant="solid"

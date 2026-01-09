@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Alert, Badge, Dialog, Input, Select, Notification, toast, Tabs } from '@/components/ui'
-import { HiOutlineTrash } from 'react-icons/hi'
+import { HiOutlineTrash, HiOutlineMail } from 'react-icons/hi'
 import { PiUsersDuotone, PiChartLineDuotone, PiPlugDuotone, PiCodeDuotone, PiMagnifyingGlass } from 'react-icons/pi'
 import { useCrmStore } from '@/store/crmStore'
 import { ProcoreService } from '@/services/ProcoreService'
@@ -249,6 +249,7 @@ const AdvancedFeatures = () => {
     const [userSearchQuery, setUserSearchQuery] = useState('') // Search query for users
     const [activeCompanyTab, setActiveCompanyTab] = useState('tatco') // Active company tab
     const [deletingUserId, setDeletingUserId] = useState(null) // Track which user is being deleted
+    const [resendingInvitationUserId, setResendingInvitationUserId] = useState(null) // Track which user is having invitation resent
 
     const roleOptions = getAllRoleOptions()
 
@@ -576,6 +577,50 @@ const AdvancedFeatures = () => {
         return filterUsersBySearch(usersForCompany)
     }
 
+    const handleResendInvitation = async (userId, userEmail, userDisplayName) => {
+        setResendingInvitationUserId(userId)
+        try {
+            const functions = getFunctions()
+            const sendWelcomeEmailFunction = httpsCallable(functions, 'sendWelcomeEmail')
+            
+            // Get user's display name from Firestore if available
+            let displayName = userDisplayName
+            if (!displayName) {
+                try {
+                    const userResult = await FirebaseDbService.users.getById(userId)
+                    if (userResult.success && userResult.data) {
+                        const userData = userResult.data
+                        displayName = userData.firstName || userData.lastName 
+                            ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim()
+                            : userData.userName || userData.email?.split('@')[0] || ''
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch user details:', error)
+                }
+            }
+            
+            await sendWelcomeEmailFunction({ 
+                email: userEmail, 
+                displayName: displayName || userEmail.split('@')[0] 
+            })
+            
+            toast.push(
+                <Notification type="success" duration={3000} title="Invitation Sent">
+                    A password reset link has been sent to {userEmail}. The link will expire in 48 hours.
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Error resending invitation:', error)
+            toast.push(
+                <Notification type="danger" duration={3000} title="Error">
+                    {error.message || 'Failed to resend invitation. Please try again.'}
+                </Notification>
+            )
+        } finally {
+            setResendingInvitationUserId(null)
+        }
+    }
+
     const handleDeleteUser = async (userId, userEmail) => {
         if (!window.confirm(`Are you sure you want to delete ${userEmail}? This will permanently delete their account from Firebase Auth and Firestore.`)) {
             return
@@ -584,13 +629,22 @@ const AdvancedFeatures = () => {
         setDeletingUserId(userId)
         try {
             // Step 1: Delete from Firebase Auth via Cloud Function
+            let authDeleted = false
             try {
                 const functions = getFunctions()
                 const deleteUserFunction = httpsCallable(functions, 'deleteUser')
                 await deleteUserFunction({ userId })
+                authDeleted = true
             } catch (authError) {
-                console.warn('Failed to delete from Auth (user may not exist in Auth):', authError)
-                // Continue with Firestore deletion even if Auth deletion fails
+                console.error('Failed to delete from Firebase Auth:', authError)
+                // If user doesn't exist in Auth, that's okay - continue with Firestore deletion
+                if (authError.code === 'functions/not-found' || authError.message?.includes('not found')) {
+                    console.warn('User not found in Firebase Auth, continuing with Firestore deletion')
+                    authDeleted = true // Treat as success since user doesn't exist
+                } else {
+                    // For other errors, show warning but continue
+                    console.warn('Auth deletion failed, but continuing with Firestore deletion:', authError)
+                }
             }
 
             // Step 2: Delete from Firestore
@@ -600,9 +654,13 @@ const AdvancedFeatures = () => {
                 // Remove from local state
                 setAllUsers(prevUsers => prevUsers.filter(u => u.id !== userId))
                 
+                const message = authDeleted 
+                    ? 'User has been permanently deleted from Firebase Auth and Firestore.'
+                    : 'User has been deleted from Firestore, but there was an issue deleting from Firebase Auth. You may need to delete them manually from Firebase Console.'
+                
                 toast.push(
-                    <Notification type="success" duration={2500} title="User Deleted">
-                        User has been permanently deleted from Firebase Auth and Firestore.
+                    <Notification type={authDeleted ? "success" : "warning"} duration={3000} title={authDeleted ? "User Deleted" : "Partial Deletion"}>
+                        {message}
                     </Notification>
                 )
             } else {
@@ -771,6 +829,7 @@ const AdvancedFeatures = () => {
                 }
             } else {
                 userId = authResult.userId
+                // Email is sent automatically by the Cloud Function
             }
 
             // Step 2: Create or update user profile in Firestore with role(s)
@@ -1260,17 +1319,39 @@ const AdvancedFeatures = () => {
                                                                         </div>
                                                                     </td>
                                                                     <td className="py-3 px-4">
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="plain"
-                                                                            icon={<HiOutlineTrash />}
-                                                                            onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
-                                                                            className="text-red-500 hover:text-red-700"
-                                                                            loading={deletingUserId === userItem.id}
-                                                                            disabled={deletingUserId === userItem.id}
-                                                                        >
-                                                                            {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
-                                                                        </Button>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlineMail />}
+                                                                                onClick={() => {
+                                                                                    const displayName = userItem.firstName || userItem.lastName
+                                                                                        ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
+                                                                                        : userItem.userName || ''
+                                                                                    handleResendInvitation(
+                                                                                        userItem.id, 
+                                                                                        userItem.email || '', 
+                                                                                        displayName
+                                                                                    )
+                                                                                }}
+                                                                                className="text-blue-500 hover:text-blue-700"
+                                                                                loading={resendingInvitationUserId === userItem.id}
+                                                                                disabled={resendingInvitationUserId === userItem.id || deletingUserId === userItem.id}
+                                                                            >
+                                                                                {resendingInvitationUserId === userItem.id ? 'Sending...' : 'Resend Invitation'}
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlineTrash />}
+                                                                                onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                                                className="text-red-500 hover:text-red-700"
+                                                                                loading={deletingUserId === userItem.id}
+                                                                                disabled={deletingUserId === userItem.id || resendingInvitationUserId === userItem.id}
+                                                                            >
+                                                                                {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
+                                                                            </Button>
+                                                                        </div>
                                                                     </td>
                                                                 </tr>
                                                             )
@@ -1421,19 +1502,41 @@ const AdvancedFeatures = () => {
                                                             <div className="text-xs text-gray-500">Updating...</div>
                                                         )}
                                                     </div>
-                                                </td>
+                                                                    </td>
                                                                     <td className="py-3 px-4">
-                                                                        <Button
-                                                                            size="sm"
-                                                                            variant="plain"
-                                                                            icon={<HiOutlineTrash />}
-                                                                            onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
-                                                                            className="text-red-500 hover:text-red-700"
-                                                                            loading={deletingUserId === userItem.id}
-                                                                            disabled={deletingUserId === userItem.id}
-                                                                        >
-                                                                            {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
-                                                                        </Button>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlineMail />}
+                                                                                onClick={() => {
+                                                                                    const displayName = userItem.firstName || userItem.lastName
+                                                                                        ? `${userItem.firstName || ''} ${userItem.lastName || ''}`.trim()
+                                                                                        : userItem.userName || ''
+                                                                                    handleResendInvitation(
+                                                                                        userItem.id, 
+                                                                                        userItem.email || '', 
+                                                                                        displayName
+                                                                                    )
+                                                                                }}
+                                                                                className="text-blue-500 hover:text-blue-700"
+                                                                                loading={resendingInvitationUserId === userItem.id}
+                                                                                disabled={resendingInvitationUserId === userItem.id || deletingUserId === userItem.id}
+                                                                            >
+                                                                                {resendingInvitationUserId === userItem.id ? 'Sending...' : 'Resend Invitation'}
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="plain"
+                                                                                icon={<HiOutlineTrash />}
+                                                                                onClick={() => handleDeleteUser(userItem.id, userItem.email || 'this user')}
+                                                                                className="text-red-500 hover:text-red-700"
+                                                                                loading={deletingUserId === userItem.id}
+                                                                                disabled={deletingUserId === userItem.id || resendingInvitationUserId === userItem.id}
+                                                                            >
+                                                                                {deletingUserId === userItem.id ? 'Deleting...' : 'Remove'}
+                                                                            </Button>
+                                                                        </div>
                                                                     </td>
                                                                 </tr>
                                                             ))}

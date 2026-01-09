@@ -140,40 +140,35 @@ export const FirebaseAuthService = {
 
     // Create user with email and send welcome email with password reset link
     // This is used for admin-created users who need to set their own password
+    // Uses Cloud Function to avoid authentication issues
     createUserWithPasswordReset: async (email, displayName) => {
         try {
-            // Generate a secure temporary password
-            const tempPassword = generateSecurePassword()
+            // Call Cloud Function to create user and send welcome email
+            // This uses Admin SDK so admin stays authenticated
+            const functions = getFunctions()
+            const createUserFunction = httpsCallable(functions, 'createUser')
+            const result = await createUserFunction({ email, displayName })
             
-            // Create the user with temporary password
-            const userCredential = await createUserWithEmailAndPassword(auth, email, tempPassword)
-            
-            // Update display name if provided
-            if (displayName) {
-                await updateProfile(userCredential.user, { displayName })
-            }
-            
-            // Call Cloud Function to send welcome email with password reset link
-            try {
-                const functions = getFunctions()
-                const sendWelcomeEmailFunction = httpsCallable(functions, 'sendWelcomeEmail')
-                await sendWelcomeEmailFunction({ email, displayName })
-            } catch (emailError) {
-                // If Cloud Function fails, fall back to default password reset email
-                console.warn('Failed to send welcome email via Cloud Function, falling back to default:', emailError)
-                await sendPasswordResetEmail(auth, email)
-            }
-            
-            return {
-                success: true,
-                user: userCredential.user,
-                userId: userCredential.user.uid
+            if (result.data && result.data.success) {
+                return {
+                    success: true,
+                    userId: result.data.userId,
+                    email: result.data.email
+                }
+            } else {
+                throw new Error(result.data?.message || 'Failed to create user')
             }
         } catch (error) {
+            // Handle specific error codes
+            let errorCode = error.code
+            if (error.code === 'functions/already-exists' || error.code === 'functions/already-exists') {
+                errorCode = 'auth/email-already-in-use'
+            }
+            
             return {
                 success: false,
-                error: error.message,
-                errorCode: error.code
+                error: error.message || 'Failed to create user',
+                errorCode: errorCode
             }
         }
     }

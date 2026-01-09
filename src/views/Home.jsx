@@ -4,7 +4,7 @@ import { shouldShowWelcomePage, USER_ROLES } from '@/constants/roles.constant'
 
 // Welcome page component for users without CRM access
 const WelcomePage = () => {
-    return (
+            return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
             <div className="text-center space-y-6 max-w-2xl">
                 <h1 className="text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
@@ -21,10 +21,10 @@ const WelcomePage = () => {
                         </span>
                     </div>
                 </div>
-            </div>
-        </div>
-    )
-}
+                    </div>
+                </div>
+            )
+        }
 
 // Dashboard/home page for Tatco users
 const TatcoHomePage = () => {
@@ -43,10 +43,10 @@ const TatcoHomePage = () => {
                         <span className="text-sm text-gray-600 dark:text-gray-400">
                             We're building something amazing for you
                         </span>
-                    </div>
-                </div>
-            </div>
         </div>
+                        </div>
+                        </div>
+                            </div>
     )
 }
 

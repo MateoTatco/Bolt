@@ -5754,31 +5754,83 @@ export const sendWelcomeEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMA
     }
 
     try {
-        // Generate password reset link using Firebase Admin SDK
-        // Include continueUrl to redirect users to Bolt after password reset
-        const passwordResetLink = await admin.auth().generatePasswordResetLink(email, {
-            url: 'https://www.mybolt.pro',
-            handleCodeInApp: false
-        });
+        // Get user by email to verify they exist
+        let userRecord;
+        try {
+            userRecord = await admin.auth().getUserByEmail(email);
+        } catch (error: any) {
+            if (error.code === 'auth/user-not-found') {
+                throw new functions.https.HttpsError('not-found', 'User not found');
+            }
+            throw error;
+        }
+        
+        // Generate a secure random token for password reset (48-hour expiration)
+        const resetToken = require('crypto').randomBytes(32).toString('hex');
+        
+        // Calculate expiration: 48 hours from now
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 48);
+        
+        console.log(`Generating password reset token for ${email}, expires at: ${expiresAt.toISOString()}`);
+        
+        // Store token in Firestore with expiration
+        await admin.firestore()
+            .collection('passwordResetTokens')
+            .doc(resetToken)
+            .set({
+                email: email,
+                userId: userRecord.uid,
+                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                used: false
+            });
+        
+        console.log(`Password reset token stored in Firestore: ${resetToken.substring(0, 10)}...`);
+        
+        // Create custom password reset link with our token
+        const passwordResetLink = `https://www.mybolt.pro/reset-password?token=${resetToken}`;
+        
+        console.log(`Custom password reset link generated for ${email} (expires in 48 hours)`);
 
         // Configure email transporter
-        // Using Gmail SMTP - you can configure this via environment variables
-        // For production, use environment variables: EMAIL_USER and EMAIL_PASSWORD
+        // Using Gmail SMTP - secrets are accessed via process.env in Firebase Functions v1
+        // Make sure secrets are set: firebase functions:secrets:set EMAIL_USER
+        // and: firebase functions:secrets:set EMAIL_PASSWORD
         const emailUser = process.env.EMAIL_USER;
         const emailPassword = process.env.EMAIL_PASSWORD;
 
+        console.log('Email configuration check:', {
+            hasEmailUser: !!emailUser,
+            emailUserLength: emailUser?.length || 0,
+            hasEmailPassword: !!emailPassword,
+            emailPasswordLength: emailPassword?.length || 0
+        });
+
         if (!emailUser || !emailPassword) {
-            console.error('Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD environment variables.');
-            throw new functions.https.HttpsError('failed-precondition', 'Email service not configured');
+            console.error('Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD secrets.');
+            console.error('Set them using: firebase functions:secrets:set EMAIL_USER');
+            console.error('and: firebase functions:secrets:set EMAIL_PASSWORD');
+            throw new functions.https.HttpsError('failed-precondition', 'Email service not configured. Please set EMAIL_USER and EMAIL_PASSWORD secrets.');
         }
 
+        // Create transporter with explicit host and port for Gmail
+        // This ensures the email is sent from the configured address
+        // The 'from' address must match the authenticated Gmail account
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // true for 465, false for other ports
             auth: {
                 user: emailUser,
                 pass: emailPassword,
             },
+            tls: {
+                rejectUnauthorized: false
+            }
         });
+
+        console.log(`Sending welcome email from: ${emailUser} to: ${email}`);
 
         // Create welcome email HTML template
         const emailHtml = `
@@ -5901,14 +5953,14 @@ export const sendWelcomeEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMA
             </ol>
         </div>
         
-        <div class="button-container">
-            <a href="${passwordResetLink}" class="button">Set Your Password</a>
+        <div style="text-align: center;">
+            <a href="${passwordResetLink}" class="button" style="display: inline-block; padding: 12px 30px; background-color: #4F46E5; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 600;">Set Your Password</a>
         </div>
         
         <p>Or copy and paste this link into your browser:</p>
         <p><a href="${passwordResetLink}" class="link">${passwordResetLink}</a></p>
         
-        <p><strong>Important:</strong> This link will expire in 1 hour. If you didn't request this account, you can safely ignore this email.</p>
+        <p><strong>Important:</strong> This link will expire in 48 hours. If you didn't request this account, you can safely ignore this email.</p>
         
         <div class="footer">
             <p>If you have any questions, please contact your administrator.</p>
@@ -5934,7 +5986,7 @@ Getting Started:
 
 Set Your Password: ${passwordResetLink}
 
-Important: This link will expire in 1 hour. If you didn't request this account, you can safely ignore this email.
+Important: This link will expire in 48 hours. If you didn't request this account, you can safely ignore this email.
 
 If you have any questions, please contact your administrator.
 
@@ -5942,8 +5994,11 @@ If you have any questions, please contact your administrator.
         `;
 
         // Send email
+        // Important: The 'from' address must match the authenticated Gmail account (emailUser)
+        // Gmail will rewrite the sender if it doesn't match, which can cause emails to go to spam
         const mailOptions = {
-            from: `"Bolt" <${emailUser}>`,
+            from: `"Bolt" <${emailUser}>`, // Must match the authenticated Gmail account
+            replyTo: emailUser, // Set reply-to to the same address
             to: email,
             subject: 'Welcome to Bolt',
             text: emailText,
@@ -5971,6 +6026,376 @@ If you have any questions, please contact your administrator.
         }
 
         throw new functions.https.HttpsError('internal', 'Failed to send welcome email', error.message);
+    }
+});
+
+// Custom Password Reset Function
+// Validates custom reset token and resets user password
+export const resetPasswordWithToken = functions.runWith({ secrets: [] }).https.onCall(async (data, context) => {
+    const { token, newPassword } = data;
+
+    console.log('resetPasswordWithToken called:', { 
+        hasToken: !!token, 
+        tokenLength: token?.length,
+        hasPassword: !!newPassword,
+        passwordLength: newPassword?.length 
+    });
+
+    if (!token || !newPassword) {
+        console.error('Missing token or password');
+        throw new functions.https.HttpsError('invalid-argument', 'Token and new password are required');
+    }
+
+    if (newPassword.length < 6) {
+        console.error('Password too short:', newPassword.length);
+        throw new functions.https.HttpsError('invalid-argument', 'Password must be at least 6 characters long');
+    }
+
+    try {
+        console.log('🔍 Step 1: Looking up token in Firestore...');
+        // Get token document from Firestore
+        const tokenDoc = await admin.firestore()
+            .collection('passwordResetTokens')
+            .doc(token)
+            .get();
+
+        console.log('Token document exists:', tokenDoc.exists);
+
+        if (!tokenDoc.exists) {
+            console.error('❌ Token not found in Firestore collection "passwordResetTokens"');
+            throw new functions.https.HttpsError('not-found', 'Invalid or expired reset token. The link may have expired or been used already.');
+        }
+
+        const tokenData = tokenDoc.data();
+        
+        if (!tokenData) {
+            console.error('❌ Token document exists but has no data');
+            throw new functions.https.HttpsError('not-found', 'Invalid reset token. Please request a new password reset link.');
+        }
+
+        console.log('✅ Token found. Token data:', { 
+            email: tokenData.email, 
+            userId: tokenData.userId,
+            used: tokenData.used || false,
+            expiresAt: tokenData.expiresAt?.toDate()?.toISOString() || 'MISSING',
+            createdAt: tokenData.createdAt?.toDate()?.toISOString() || 'MISSING'
+        });
+
+        // Check if token has been used
+        if (tokenData.used) {
+            console.error('❌ Token already used');
+            throw new functions.https.HttpsError('failed-precondition', 'This reset link has already been used. Please request a new password reset link.');
+        }
+
+        // Check if token has expired
+        console.log('🔍 Step 2: Checking token expiration...');
+        const expiresAt = tokenData.expiresAt?.toDate();
+        const now = new Date();
+        if (!expiresAt) {
+            console.error('❌ Token has no expiration date');
+            throw new functions.https.HttpsError('not-found', 'Invalid reset token. Please request a new password reset link.');
+        }
+        
+        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+        const hoursUntilExpiry = Math.floor(timeUntilExpiry / (1000 * 60 * 60));
+        console.log(`Token expires in: ${hoursUntilExpiry} hours (${expiresAt.toISOString()})`);
+        
+        if (expiresAt < now) {
+            console.error('❌ Token expired:', { 
+                expiresAt: expiresAt.toISOString(), 
+                now: now.toISOString(),
+                expiredBy: Math.floor((now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60)) + ' hours'
+            });
+            throw new functions.https.HttpsError('deadline-exceeded', 'This reset link has expired. Please request a new password reset link.');
+        }
+
+        console.log('✅ Token is valid and not expired');
+        console.log('🔍 Step 3: Resetting password for user:', tokenData.userId);
+
+        // Reset password using Firebase Admin SDK
+        try {
+            await admin.auth().updateUser(tokenData.userId, {
+                password: newPassword
+            });
+            console.log('✅ Password updated successfully in Firebase Auth');
+        } catch (authError: any) {
+            console.error('❌ Error updating password in Firebase Auth:', {
+                code: authError.code,
+                message: authError.message,
+                stack: authError.stack
+            });
+            if (authError.code === 'auth/user-not-found') {
+                throw new functions.https.HttpsError('not-found', 'User account not found. Please contact support.');
+            }
+            throw new functions.https.HttpsError('internal', `Failed to update password: ${authError.message}`);
+        }
+
+        console.log('🔍 Step 4: Marking token as used...');
+        // Mark token as used
+        await admin.firestore()
+            .collection('passwordResetTokens')
+            .doc(token)
+            .update({
+                used: true,
+                usedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+        console.log(`✅ Password reset successful for user ${tokenData.email}`);
+        console.log('=== resetPasswordWithToken completed successfully ===');
+
+        return {
+            success: true,
+            message: 'Password reset successfully'
+        };
+    } catch (error: any) {
+        console.error('❌❌❌ ERROR in resetPasswordWithToken ❌❌❌');
+        console.error('Error type:', error.constructor.name);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        
+        if (error instanceof functions.https.HttpsError) {
+            // Re-throw HttpsError as-is (it already has proper error codes and messages)
+            throw error;
+        }
+
+        // Wrap unknown errors
+        throw new functions.https.HttpsError('internal', `Failed to reset password: ${error.message || 'Unknown error'}`);
+    }
+});
+
+// Create User Function
+// Creates a user in Firebase Auth and sends welcome email
+// Uses Admin SDK so admin stays authenticated
+export const createUser = functions.runWith({ secrets: ['EMAIL_USER', 'EMAIL_PASSWORD'] }).https.onCall(async (data, context) => {
+    // Verify the caller is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to create users');
+    }
+
+    const { email, displayName } = data;
+
+    if (!email) {
+        throw new functions.https.HttpsError('invalid-argument', 'Email is required');
+    }
+
+    try {
+        // Check if user already exists
+        let userRecord;
+        try {
+            userRecord = await admin.auth().getUserByEmail(email);
+            // User exists - just send welcome email
+            console.log(`User ${email} already exists, sending welcome email`);
+        } catch (error: any) {
+            if (error.code === 'auth/user-not-found') {
+                // User doesn't exist - create them
+                userRecord = await admin.auth().createUser({
+                    email: email,
+                    displayName: displayName || email.split('@')[0],
+                    emailVerified: false,
+                });
+                console.log(`User ${email} created successfully`);
+            } else {
+                throw error;
+            }
+        }
+
+        // Generate a secure random token for password reset (48-hour expiration)
+        const resetToken = require('crypto').randomBytes(32).toString('hex');
+        
+        // Calculate expiration: 48 hours from now
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 48);
+        
+        console.log(`Generating password reset token for ${email}, expires at: ${expiresAt.toISOString()}`);
+        
+        // Store token in Firestore with expiration
+        await admin.firestore()
+            .collection('passwordResetTokens')
+            .doc(resetToken)
+            .set({
+                email: email,
+                userId: userRecord.uid,
+                expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                used: false
+            });
+        
+        console.log(`Password reset token stored in Firestore: ${resetToken.substring(0, 10)}...`);
+        
+        // Create custom password reset link with our token
+        const passwordResetLink = `https://www.mybolt.pro/reset-password?token=${resetToken}`;
+        
+        console.log(`Custom password reset link generated for ${email} (expires in 48 hours)`);
+
+        // Configure email transporter
+        const emailUser = process.env.EMAIL_USER;
+        const emailPassword = process.env.EMAIL_PASSWORD;
+
+        console.log('Email configuration check:', {
+            hasEmailUser: !!emailUser,
+            emailUserLength: emailUser?.length || 0,
+            hasEmailPassword: !!emailPassword,
+            emailPasswordLength: emailPassword?.length || 0
+        });
+
+        if (!emailUser || !emailPassword) {
+            console.error('Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD secrets.');
+            throw new functions.https.HttpsError('failed-precondition', 'Email service not configured. Please set EMAIL_USER and EMAIL_PASSWORD secrets.');
+        }
+
+        // Create transporter with explicit host and port for Gmail
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: emailUser,
+                pass: emailPassword,
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        });
+
+        console.log(`Sending welcome email from: ${emailUser} to: ${email}`);
+
+        // Create welcome email HTML template
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Bolt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #4F46E5;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f9fafb;
+            padding: 30px;
+            border-radius: 0 0 5px 5px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background-color: #4F46E5;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: 600;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Welcome to Bolt!</h1>
+    </div>
+    <div class="content">
+        <p>Hello${displayName ? ` ${displayName}` : ''},</p>
+        
+        <p>We're excited to have you join the Bolt platform! Your account has been created and you're ready to get started.</p>
+        
+        <h3>Getting Started:</h3>
+        <ol>
+            <li>Click the button below to set your password</li>
+            <li>You'll be redirected to a secure page to create your password</li>
+            <li>Once your password is set, you'll be automatically redirected to Bolt to sign in</li>
+        </ol>
+        
+        <div style="text-align: center;">
+            <a href="${passwordResetLink}" class="button" style="display: inline-block; padding: 12px 30px; background-color: #4F46E5; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 600;">Set Your Password</a>
+        </div>
+        
+        <p><strong>Important:</strong> This link will expire in 48 hours. If you didn't request this account, you can safely ignore this email.</p>
+        
+        <p>If you have any questions, please contact your administrator.</p>
+    </div>
+    <div class="footer">
+        <p>© ${new Date().getFullYear()} Bolt. All rights reserved.</p>
+    </div>
+</body>
+</html>
+        `;
+
+        // Plain text version for email clients that don't support HTML
+        const emailText = `
+Welcome to Bolt!
+
+Hello${displayName ? ` ${displayName}` : ''},
+
+We're excited to have you join the Bolt platform! Your account has been created and you're ready to get started.
+
+Getting Started:
+1. Click the link below to set your password
+2. You'll be redirected to a secure page to create your password
+3. Once your password is set, you'll be automatically redirected to Bolt to sign in
+
+Set Your Password: ${passwordResetLink}
+
+Important: This link will expire in 48 hours. If you didn't request this account, you can safely ignore this email.
+
+If you have any questions, please contact your administrator.
+
+© ${new Date().getFullYear()} Bolt. All rights reserved.
+        `;
+
+        // Send email
+        const mailOptions = {
+            from: `"Bolt" <${emailUser}>`,
+            replyTo: emailUser,
+            to: email,
+            subject: 'Welcome to Bolt',
+            text: emailText,
+            html: emailHtml,
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        console.log(`Welcome email sent successfully to ${email}`);
+
+        return {
+            success: true,
+            userId: userRecord.uid,
+            email: email,
+            message: userRecord.metadata.creationTime === userRecord.metadata.lastSignInTime 
+                ? 'User created and welcome email sent successfully'
+                : 'Welcome email sent to existing user',
+        };
+    } catch (error: any) {
+        console.error('Error creating user or sending welcome email:', error);
+        
+        // Handle specific Firebase Auth errors
+        if (error.code === 'auth/email-already-exists') {
+            throw new functions.https.HttpsError('already-exists', 'User with this email already exists');
+        }
+        
+        if (error.code === 'auth/invalid-email') {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid email address');
+        }
+
+        throw new functions.https.HttpsError('internal', 'Failed to create user or send welcome email', error.message);
     }
 });
 
