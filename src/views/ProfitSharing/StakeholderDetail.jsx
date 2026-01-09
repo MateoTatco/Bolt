@@ -1803,16 +1803,38 @@ const StakeholderDetail = () => {
                         )
                     })()}
 
-                    {/* KPI Cards - Dynamic grid (2x2 if 4 cards, 2x1 if 3 cards) */}
+                    {/* KPI Cards - Always 2x2 layout */}
                     {(() => {
-                        // Check if estimated profit exists
+                        // Check if estimated profit exists - use company fallback logic like other KPIs
                         let filteredValuations = valuations
                         if (selectedPlanForKPIs) {
                             filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                         }
                         
+                        // Get relevant awards for company fallback logic
+                        let relevantAwards = stakeholder?.profitAwards || []
+                        if (selectedPlanForKPIs) {
+                            relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                        }
+                        
+                        // If no valuations match the selected plan, but stakeholder has an award for that plan,
+                        // use company fallback logic (same as other KPIs)
+                        let usingCompanyFallback = false
+                        if (selectedPlanForKPIs && filteredValuations.length === 0 && relevantAwards.length > 0) {
+                            const companyIdToUse = isAdmin 
+                                ? selectedCompanyId 
+                                : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                            if (companyIdToUse) {
+                                const companyValuations = valuations.filter(v => v.companyId === companyIdToUse)
+                                if (companyValuations.length > 0) {
+                                    filteredValuations = companyValuations
+                                    usingCompanyFallback = true
+                                }
+                            }
+                        }
+                        
                         const now = new Date()
-                        const futureEstimates = filteredValuations
+                        let futureEstimates = filteredValuations
                             .filter(v => {
                                 if (v.profitType !== 'estimated') return false
                                 const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
@@ -1824,6 +1846,27 @@ const StakeholderDetail = () => {
                                 return aDate - bDate // Earliest first
                             })
                         
+                        // If no estimated profits found in plan-level valuations, try company fallback
+                        if (futureEstimates.length === 0 && selectedPlanForKPIs && relevantAwards.length > 0 && !usingCompanyFallback) {
+                            const companyIdToUse = isAdmin 
+                                ? selectedCompanyId 
+                                : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
+                            if (companyIdToUse) {
+                                const companyValuations = valuations.filter(v => v.companyId === companyIdToUse)
+                                futureEstimates = companyValuations
+                                    .filter(v => {
+                                        if (v.profitType !== 'estimated') return false
+                                        const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                        return valDate > now
+                                    })
+                                    .sort((a, b) => {
+                                        const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
+                                        const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
+                                        return aDate - bDate // Earliest first
+                                    })
+                            }
+                        }
+                        
                         const hasEstimatedProfit = !!futureEstimates[0]
                         const nextEstimate = futureEstimates[0]
                         
@@ -1831,25 +1874,41 @@ const StakeholderDetail = () => {
                             <div className="space-y-6">
                                 {/* First Row */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Estimated Profit - Only show if there are estimated profits */}
-                                    {hasEstimatedProfit && nextEstimate && (() => {
-                                        const estimateDate = nextEstimate.valuationDate instanceof Date 
-                                            ? nextEstimate.valuationDate 
-                                            : new Date(nextEstimate.valuationDate)
-                                        
-                                        return (
-                                            <Card className="p-6">
-                                                <div className="space-y-2">
-                                                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
-                                                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                        {formatCurrency(nextEstimate.profitAmount || 0)}
+                                    {/* Estimated Profit - Always show */}
+                                    {(() => {
+                                        if (hasEstimatedProfit && nextEstimate) {
+                                            const estimateDate = nextEstimate.valuationDate instanceof Date 
+                                                ? nextEstimate.valuationDate 
+                                                : new Date(nextEstimate.valuationDate)
+                                            
+                                            return (
+                                                <Card className="p-6">
+                                                    <div className="space-y-2">
+                                                        <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
+                                                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                            {formatCurrency(nextEstimate.profitAmount || 0)}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {estimateDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                </Card>
+                                            )
+                                        } else {
+                                            return (
+                                                <Card className="p-6">
+                                                    <div className="space-y-2">
+                                                        <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Next Period Estimated Profit</div>
+                                                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                                                            $0.00
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                            No estimated profit
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </Card>
-                                        )
+                                                </Card>
+                                            )
+                                        }
                                     })()}
 
                                     {/* Estimated Payout */}
@@ -1948,121 +2007,12 @@ const StakeholderDetail = () => {
                                             })()}
                                         </div>
                                     </Card>
-
-                                    {/* If no estimated profit, show Last Period Payout in first row (2x1 layout) */}
-                                    {!hasEstimatedProfit && (
-                                        <Card className="p-6">
-                                            <div className="space-y-2">
-                                                <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Period Payout</div>
-                                                {(() => {
-                                                    // Filter valuations by selected plan
-                                                    let filteredValuations = valuations
-                                                    if (selectedPlanForKPIs) {
-                                                        filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
-                                                    }
-                                                    
-                                                    // Filter awards by selected plan (need to do this before checking actualValuations)
-                                                    let relevantAwards = stakeholder?.profitAwards || []
-                                                    if (selectedPlanForKPIs) {
-                                                        relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                                    }
-                                                    
-                                                    // Find the most recent actual profit entry (not based on date range)
-                                                    let actualValuations = filteredValuations
-                                                        .filter(v => {
-                                                            if (v.profitType !== 'actual') return false
-                                                            if (!v.valuationDate) return false
-                                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                                            return !isNaN(valDate.getTime())
-                                                        })
-                                                        .sort((a, b) => {
-                                                            const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                                            const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                                            return bDate - aDate // Most recent first
-                                                        })
-                                                    
-                                                    // If no actual valuations match the selected plan, but stakeholder has an award for that plan,
-                                                    // it likely means valuations have old plan IDs. Use all actual valuations for the stakeholder's company.
-                                                    let usingCompanyFallback = false
-                                                    if (selectedPlanForKPIs && actualValuations.length === 0 && relevantAwards.length > 0) {
-                                                        // For admins, use selectedCompanyId (the company they're viewing)
-                                                        // For non-admins, use the award's company
-                                                        const companyIdToUse = isAdmin 
-                                                            ? selectedCompanyId 
-                                                            : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
-                                                        if (companyIdToUse) {
-                                                            // Filter valuations by the company
-                                                            const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
-                                                            if (companyValuations.length > 0) {
-                                                                actualValuations = companyValuations.sort((a, b) => {
-                                                                    const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
-                                                                    const bDate = b.valuationDate instanceof Date ? b.valuationDate : new Date(b.valuationDate)
-                                                                    return bDate - aDate
-                                                                })
-                                                                usingCompanyFallback = true
-                                                            }
-                                                        }
-                                                    }
-                                                    
-                                                    if (actualValuations.length === 0) {
-                                                        return (
-                                                            <>
-                                                                <div className="text-3xl font-bold text-gray-900 dark:text-white">$0.00</div>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">No actual payouts</div>
-                                                            </>
-                                                        )
-                                                    }
-                                                    
-                                                    // Get the most recent actual valuation (last entered payout)
-                                                    const lastPeriodValuation = actualValuations[0]
-                                                    
-                                                    // Calculate payout based on the single most recent actual valuation
-                                                    const pricePerShare = lastPeriodValuation.pricePerShare || 
-                                                        (lastPeriodValuation.profitAmount && lastPeriodValuation.totalShares && lastPeriodValuation.totalShares > 0
-                                                            ? lastPeriodValuation.profitAmount / lastPeriodValuation.totalShares 
-                                                            : 0)
-                                                    
-                                                    let totalPayout = 0
-                                                    
-                                                    // Calculate for awards - if using company fallback, don't check planId matches
-                                                    relevantAwards.forEach(award => {
-                                                        const hasShares = award.sharesIssued && award.sharesIssued > 0
-                                                        // Only check planId match if not using company fallback
-                                                        const planMatches = usingCompanyFallback || award.planId === lastPeriodValuation.planId
-                                                        
-                                                        if (hasShares && planMatches) {
-                                                            const payout = award.sharesIssued * pricePerShare
-                                                            totalPayout += payout
-                                                        }
-                                                    })
-                                                    
-                                                    // Format the date for display
-                                                    const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
-                                                        ? lastPeriodValuation.valuationDate 
-                                                        : new Date(lastPeriodValuation.valuationDate)
-                                                    const formattedDate = valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                                
-                                                    return (
-                                                        <>
-                                                            <div className="text-3xl font-bold text-gray-900 dark:text-white">
-                                                                {formatCurrency(totalPayout)}
-                                                            </div>
-                                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                                Last period: {formattedDate}
-                                                            </div>
-                                                        </>
-                                                    )
-                                                })()}
-                                            </div>
-                                        </Card>
-                                    )}
                                 </div>
 
-                                {/* Second Row */}
+                                {/* Second Row - Always 2x2 layout */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Last Period Payout - Only show in second row if estimated profit exists (2x2 layout) */}
-                                    {hasEstimatedProfit && (
-                                        <Card className="p-6">
+                                    {/* Last Period Payout - Always show in second row */}
+                                    <Card className="p-6">
                                             <div className="space-y-2">
                                                 <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Period Payout</div>
                                                 {(() => {
@@ -2078,13 +2028,29 @@ const StakeholderDetail = () => {
                                                         relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
                                                     }
                                                     
-                                                    // Find the most recent actual profit entry (not based on date range)
+                                                    // Find the most recent actual profit entry that:
+                                                    // 1. Is in the past (not future dates)
+                                                    // 2. Falls within at least one award's date range
+                                                    const now = new Date()
                                                     let actualValuations = filteredValuations
                                                         .filter(v => {
                                                             if (v.profitType !== 'actual') return false
                                                             if (!v.valuationDate) return false
                                                             const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
-                                                            return !isNaN(valDate.getTime())
+                                                            if (isNaN(valDate.getTime())) return false
+                                                            
+                                                            // Only consider past dates
+                                                            if (valDate > now) return false
+                                                            
+                                                            // Check if this valuation falls within any award's date range
+                                                            const fallsWithinAwardRange = relevantAwards.some(award => {
+                                                                if (!award.awardStartDate || !award.awardEndDate) return false
+                                                                const awardStart = new Date(award.awardStartDate)
+                                                                const awardEnd = new Date(award.awardEndDate)
+                                                                return valDate >= awardStart && valDate <= awardEnd
+                                                            })
+                                                            
+                                                            return fallsWithinAwardRange
                                                         })
                                                         .sort((a, b) => {
                                                             const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
@@ -2102,8 +2068,21 @@ const StakeholderDetail = () => {
                                                             ? selectedCompanyId 
                                                             : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
                                                         if (companyIdToUse) {
-                                                            // Filter valuations by the company
-                                                            const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
+                                                            // Filter valuations by the company, past dates only, and within award ranges
+                                                            const companyValuations = valuations.filter(v => {
+                                                                if (v.companyId !== companyIdToUse || v.profitType !== 'actual') return false
+                                                                if (!v.valuationDate) return false
+                                                                const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                                if (isNaN(valDate.getTime()) || valDate > now) return false
+                                                                
+                                                                // Check if this valuation falls within any award's date range
+                                                                return relevantAwards.some(award => {
+                                                                    if (!award.awardStartDate || !award.awardEndDate) return false
+                                                                    const awardStart = new Date(award.awardStartDate)
+                                                                    const awardEnd = new Date(award.awardEndDate)
+                                                                    return valDate >= awardStart && valDate <= awardEnd
+                                                                })
+                                                            })
                                                             if (companyValuations.length > 0) {
                                                                 actualValuations = companyValuations.sort((a, b) => {
                                                                     const aDate = a.valuationDate instanceof Date ? a.valuationDate : new Date(a.valuationDate)
@@ -2135,22 +2114,30 @@ const StakeholderDetail = () => {
                                                     
                                                     let totalPayout = 0
                                                     
-                                                    // Calculate for awards - if using company fallback, don't check planId matches
+                                                    // Calculate for awards - only count awards that were active during this valuation date
+                                                    const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
+                                                        ? lastPeriodValuation.valuationDate 
+                                                        : new Date(lastPeriodValuation.valuationDate)
+                                                    
                                                     relevantAwards.forEach(award => {
                                                         const hasShares = award.sharesIssued && award.sharesIssued > 0
-                                                        // Only check planId match if not using company fallback
+                                                        if (!hasShares) return
+                                                        
+                                                        // Check if award was active during this valuation date
+                                                        const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
+                                                        const awardEnd = award.awardEndDate ? new Date(award.awardEndDate) : null
+                                                        const awardWasActive = awardStart && awardEnd && valuationDate >= awardStart && valuationDate <= awardEnd
+                                                        
+                                                        // Also check planId match (unless using company fallback)
                                                         const planMatches = usingCompanyFallback || award.planId === lastPeriodValuation.planId
                                                         
-                                                        if (hasShares && planMatches) {
+                                                        if (awardWasActive && planMatches) {
                                                             const payout = award.sharesIssued * pricePerShare
                                                             totalPayout += payout
                                                         }
                                                     })
                                                     
                                                     // Format the date for display
-                                                    const valuationDate = lastPeriodValuation.valuationDate instanceof Date 
-                                                        ? lastPeriodValuation.valuationDate 
-                                                        : new Date(lastPeriodValuation.valuationDate)
                                                     const formattedDate = valuationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                                                 
                                                     return (
@@ -2166,7 +2153,6 @@ const StakeholderDetail = () => {
                                                 })()}
                                             </div>
                                         </Card>
-                                    )}
 
                                     {/* Total Payout */}
                                     <Card className="p-6">
@@ -2179,8 +2165,22 @@ const StakeholderDetail = () => {
                                                     filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                                                 }
                                                 
-                                                // Get all actual profit entries (not estimated)
-                                                let actualValuations = filteredValuations.filter(v => v.profitType === 'actual')
+                                                // Get all actual profit entries (not estimated) that fall within award date ranges
+                                                const now = new Date()
+                                                let actualValuations = filteredValuations.filter(v => {
+                                                    if (v.profitType !== 'actual') return false
+                                                    if (!v.valuationDate) return false
+                                                    const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                    if (isNaN(valDate.getTime())) return false
+                                                    
+                                                    // Check if this valuation falls within any award's date range
+                                                    return relevantAwards.some(award => {
+                                                        if (!award.awardStartDate || !award.awardEndDate) return false
+                                                        const awardStart = new Date(award.awardStartDate)
+                                                        const awardEnd = new Date(award.awardEndDate)
+                                                        return valDate >= awardStart && valDate <= awardEnd
+                                                    })
+                                                })
                                                 
                                                 // Filter awards by selected plan (need to do this before checking actualValuations)
                                                 let relevantAwards = stakeholder?.profitAwards || []
@@ -2198,8 +2198,21 @@ const StakeholderDetail = () => {
                                                         ? selectedCompanyId 
                                                         : (relevantAwards[0]._sourceCompanyId || stakeholder?.companyId)
                                                     if (companyIdToUse) {
-                                                        // Filter valuations by the company
-                                                        const companyValuations = valuations.filter(v => v.companyId === companyIdToUse && v.profitType === 'actual')
+                                                        // Filter valuations by the company, and within award ranges
+                                                        const companyValuations = valuations.filter(v => {
+                                                            if (v.companyId !== companyIdToUse || v.profitType !== 'actual') return false
+                                                            if (!v.valuationDate) return false
+                                                            const valDate = v.valuationDate instanceof Date ? v.valuationDate : new Date(v.valuationDate)
+                                                            if (isNaN(valDate.getTime())) return false
+                                                            
+                                                            // Check if this valuation falls within any award's date range
+                                                            return relevantAwards.some(award => {
+                                                                if (!award.awardStartDate || !award.awardEndDate) return false
+                                                                const awardStart = new Date(award.awardStartDate)
+                                                                const awardEnd = new Date(award.awardEndDate)
+                                                                return valDate >= awardStart && valDate <= awardEnd
+                                                            })
+                                                        })
                                                         if (companyValuations.length > 0) {
                                                             actualValuations = companyValuations
                                                             usingCompanyFallback = true
@@ -2217,7 +2230,7 @@ const StakeholderDetail = () => {
                                                 }
                                                 
                                                 // Calculate total payout from all actual valuations
-                                                // If using company fallback, don't check planId matches (we know they won't match)
+                                                // Only count payouts for awards that were active during each valuation's date
                                                 let totalPayout = 0
                                                 actualValuations.forEach(valuation => {
                                                     const pricePerShare = valuation.pricePerShare || 
@@ -2225,13 +2238,23 @@ const StakeholderDetail = () => {
                                                             ? valuation.profitAmount / valuation.totalShares 
                                                             : 0)
                                                     
+                                                    const valuationDate = valuation.valuationDate instanceof Date 
+                                                        ? valuation.valuationDate 
+                                                        : new Date(valuation.valuationDate)
+                                                    
                                                     relevantAwards.forEach(award => {
                                                         const hasShares = award.sharesIssued && award.sharesIssued > 0
+                                                        if (!hasShares) return
                                                         
-                                                        // Only check planId match if not using company fallback
+                                                        // Check if award was active during this valuation date
+                                                        const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
+                                                        const awardEnd = award.awardEndDate ? new Date(award.awardEndDate) : null
+                                                        const awardWasActive = awardStart && awardEnd && valuationDate >= awardStart && valuationDate <= awardEnd
+                                                        
+                                                        // Also check planId match (unless using company fallback)
                                                         const planMatches = usingCompanyFallback || award.planId === valuation.planId
                                                         
-                                                        if (hasShares && planMatches) {
+                                                        if (awardWasActive && planMatches) {
                                                             const payout = award.sharesIssued * pricePerShare
                                                             totalPayout += payout
                                                         }
