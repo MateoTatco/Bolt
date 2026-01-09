@@ -2165,6 +2165,12 @@ const StakeholderDetail = () => {
                                                     filteredValuations = valuations.filter(v => v.planId === selectedPlanForKPIs)
                                                 }
                                                 
+                                                // Filter awards by selected plan (need to do this BEFORE filtering valuations)
+                                                let relevantAwards = stakeholder?.profitAwards || []
+                                                if (selectedPlanForKPIs) {
+                                                    relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
+                                                }
+                                                
                                                 // Get all actual profit entries (not estimated) that fall within award date ranges
                                                 const now = new Date()
                                                 let actualValuations = filteredValuations.filter(v => {
@@ -2181,12 +2187,6 @@ const StakeholderDetail = () => {
                                                         return valDate >= awardStart && valDate <= awardEnd
                                                     })
                                                 })
-                                                
-                                                // Filter awards by selected plan (need to do this before checking actualValuations)
-                                                let relevantAwards = stakeholder?.profitAwards || []
-                                                if (selectedPlanForKPIs) {
-                                                    relevantAwards = relevantAwards.filter(a => a.planId === selectedPlanForKPIs)
-                                                }
                                                 
                                                 // If no actual valuations match the selected plan, but stakeholder has an award for that plan,
                                                 // it likely means valuations have old plan IDs. Use all actual valuations for the stakeholder's company.
