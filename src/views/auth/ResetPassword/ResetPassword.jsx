@@ -10,13 +10,6 @@ import { signOut as firebaseSignOut } from 'firebase/auth'
 import { auth } from '@/configs/firebase.config'
 
 export const ResetPasswordBase = ({ signInUrl = '/sign-in' }) => {
-    // DEBUG: Log when component mounts
-    useEffect(() => {
-        console.error('🔵 ResetPasswordBase component mounted');
-        console.error('🔵 URL:', window.location.href);
-        console.error('🔵 Token in URL:', new URLSearchParams(window.location.search).get('token') ? 'YES' : 'NO');
-    }, []);
-    
     const [resetComplete, setResetComplete] = useState(false)
     const [message, setMessage] = useTimeOutMessage()
     const navigate = useNavigate()

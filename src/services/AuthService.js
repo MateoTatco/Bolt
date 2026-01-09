@@ -130,52 +130,24 @@ export async function apiForgotPassword(data) {
 
 export async function apiResetPassword(data) {
     // Custom password reset using Firestore tokens with 48-hour expiration
-    console.error('🚨🚨🚨 apiResetPassword CALLED 🚨🚨🚨');
-    console.error('🚨 Input data:', { hasPassword: !!data.password, hasToken: !!data.token });
-    
     const { password, token } = data;
     
     if (!token) {
-        console.error('❌ No token provided');
         throw new Error('Reset token is required');
     }
     
     if (!password) {
-        console.error('❌ No password provided');
         throw new Error('New password is required');
     }
     
     try {
-        console.error('🔍🔍🔍 STARTING PASSWORD RESET PROCESS 🔍🔍🔍');
-        console.error('🔍 Token present:', !!token);
-        console.error('🔍 Token length:', token?.length || 0);
-        console.error('🔍 Token preview:', token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'MISSING');
-        console.error('🔍 Password present:', !!password);
-        console.error('🔍 Password length:', password?.length || 0);
-        
         const { getFunctions, httpsCallable } = await import('firebase/functions');
-        console.error('🔍 Firebase functions imported');
         
         // Specify region to match deployed functions (us-central1)
         const functions = getFunctions(undefined, 'us-central1');
-        console.error('🔍 Functions instance created for region: us-central1');
-        
         const resetPasswordFunction = httpsCallable(functions, 'resetPasswordWithToken');
-        console.error('🔍 Callable function created: resetPasswordWithToken');
-        
-        console.error('🔍 About to call resetPasswordWithToken with:', {
-            tokenLength: token?.length,
-            passwordLength: password?.length,
-            hasToken: !!token,
-            hasPassword: !!password
-        });
         
         const result = await resetPasswordFunction({ token, newPassword: password });
-        
-        console.error('✅✅✅ FUNCTION CALL SUCCEEDED ✅✅✅');
-        console.error('✅ Result object:', result);
-        console.error('✅ Result data:', result.data);
-        console.error('✅ Result data type:', typeof result.data);
         
         // Cloud Functions return data in result.data
         if (result && result.data) {
@@ -190,13 +162,6 @@ export async function apiResetPassword(data) {
             throw new Error('No response from server. Please try again.');
         }
     } catch (error) {
-        console.error('❌ Password reset error:', error);
-        console.error('❌ Error code:', error.code);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error details:', error.details);
-        console.error('❌ Full error object:', JSON.stringify(error, null, 2));
-        console.error('❌ Error stack:', error.stack);
-        
         // Extract error message - Firebase Functions errors can have message in details or message property
         // Firebase Functions errors have the message in error.details, not error.message
         let errorMessage = error.details || error.message || 'Failed to reset password';
