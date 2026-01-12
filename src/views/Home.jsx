@@ -10,9 +10,6 @@ const WelcomePage = () => {
                 <h1 className="text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
                     Welcome To Bolt
                 </h1>
-                <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 font-medium">
-                    App under construction
-                </p>
                 <div className="pt-8">
                     <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 dark:bg-primary/20 rounded-full">
                         <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
@@ -34,9 +31,6 @@ const TatcoHomePage = () => {
                 <h1 className="text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
                     Welcome To Bolt
                 </h1>
-                <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 font-medium">
-                    App under construction
-                </p>
                 <div className="pt-8">
                     <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 dark:bg-primary/20 rounded-full">
                         <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
