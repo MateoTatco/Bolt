@@ -227,6 +227,8 @@ const SettingsTab = () => {
     const [loadingOverview, setLoadingOverview] = useState(false)
     const [overviewSearchQuery, setOverviewSearchQuery] = useState('')
     const [overviewCompanyFilter, setOverviewCompanyFilter] = useState(null)
+    const [overviewPageIndex, setOverviewPageIndex] = useState(1)
+    const [overviewPageSize, setOverviewPageSize] = useState(1000) // Large default to show all users
 
     useEffect(() => {
         loadCompanies()
@@ -1492,6 +1494,16 @@ const SettingsTab = () => {
                             ]}
                             data={filteredOverviewData}
                             loading={false}
+                            pagingData={{
+                                total: filteredOverviewData.length,
+                                pageIndex: overviewPageIndex,
+                                pageSize: overviewPageSize,
+                            }}
+                            onPaginationChange={(page) => setOverviewPageIndex(page)}
+                            onSelectChange={(size) => {
+                                setOverviewPageSize(size)
+                                setOverviewPageIndex(1)
+                            }}
                         />
                     </div>
                 )}
