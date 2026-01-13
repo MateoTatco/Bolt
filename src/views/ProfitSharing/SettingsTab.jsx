@@ -1322,13 +1322,19 @@ const SettingsTab = () => {
                             prefix={<HiOutlineSearch className="text-gray-400" />}
                         />
                     </div>
-                    <div className="w-full sm:w-48">
+                    <div className="w-full sm:w-56">
                         <Select
                             placeholder="Filter by company..."
                             options={companies.map(c => ({ value: c.id, label: c.name }))}
                             value={overviewCompanyFilter ? companies.find(c => c.id === overviewCompanyFilter) ? { value: overviewCompanyFilter, label: companies.find(c => c.id === overviewCompanyFilter).name } : null : null}
                             onChange={(opt) => setOverviewCompanyFilter(opt?.value || null)}
                             isClearable
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={{
+                                menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                                menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                            }}
                         />
                     </div>
                 </div>
