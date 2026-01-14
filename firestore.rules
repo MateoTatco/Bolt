@@ -1,81 +1,158 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAuthed() { return request.auth != null; }
     
-    // Helper function to check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
+    // Helper function to check if user is assigned to warranty
+    function isAssignedToWarranty() {
+      return isAuthed() && 
+        request.auth.uid in resource.data.assignedTo;
     }
     
-    // Helper function to check if user is the owner
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // Helper function to check if user created the warranty
+    function isWarrantyCreator() {
+      return isAuthed() && 
+        request.auth.uid == resource.data.createdBy;
     }
     
-    // USERS COLLECTION
-    // Allow authenticated users to read all users (for user management)
-    // Allow users to update their own profile
-    // Allow authenticated users to update any user document (for admin role management)
-    // Note: Advanced Features Dashboard access is controlled by email check in the app
+    // Users collection - allow role management for admins
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      // Allow authenticated users to update any user document
-      // The Advanced Features Dashboard already restricts access to authorized emails
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow read: if true;
+      // Users can update their own profile
+      // Authenticated users can update any user document (for role management)
+      // Access is already restricted by Advanced Features Dashboard to authorized emails
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
     }
     
-    // LEADS COLLECTION
     match /leads/{leadId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthed();
+      match /{subcollection=**}/{docId} {
+        allow read: if true;
+        allow write: if isAuthed();
+      }
     }
     
-    // CLIENTS COLLECTION
     match /clients/{clientId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthed();
+      match /{subcollection=**}/{docId} {
+        allow read: if true;
+        allow write: if isAuthed();
+      }
     }
     
-    // PROJECTS COLLECTION
+    //New block for projects
     match /projects/{projectId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthed();
+      match /{subcollection=**}/{docId} {
+        allow read: if true;
+        allow write: if isAuthed();
+      }
     }
     
-    // STAKEHOLDERS COLLECTION
-    match /stakeholders/{stakeholderId} {
-      allow read, write: if isAuthenticated();
+    // WARRANTIES COLLECTION
+    // Access is restricted to Tatco roles at the application level (navigation/module system)
+    // Rules here provide additional security at the database level
+    match /warranties/{warrantyId} {
+      // Read: Authenticated users can read warranties
+      // (UI already restricts to Tatco roles via module access)
+      allow read: if isAuthed();
+      
+      // Create: Authenticated users can create warranties
+      // (UI restricts to Tatco roles only)
+      allow create: if isAuthed();
+      
+      // Update: User must be the creator OR assigned to the warranty
+      allow update: if isAuthed() && 
+        (isWarrantyCreator() || isAssignedToWarranty());
+      
+      // Delete: Only the creator can delete warranties
+      // (Admins can delete via UI if needed, but this adds an extra layer)
+      allow delete: if isAuthed() && isWarrantyCreator();
+      
+      // Subcollections: updates and attachments
+      match /updates/{updateId} {
+        // Read: Authenticated users can read updates
+        allow read: if isAuthed();
+        // Create: Authenticated users can add updates
+        // (UI restricts to Tatco roles)
+        allow create: if isAuthed();
+        // Update/Delete: Only creator of the update can modify it
+        allow update, delete: if isAuthed() && 
+          request.auth.uid == resource.data.createdBy;
+      }
+      
+      match /attachments/{attachmentId} {
+        // Use same rules as other entity attachments (files/folders)
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+        match /{subcollection=**}/{docId} {
+          allow read: if isAuthed();
+          allow write: if isAuthed();
+        }
+      }
+      
+      // Files subcollection (for attachments)
+      match /files/{fileId} {
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+      }
     }
     
-    // PROFIT PLANS COLLECTION
-    match /profitPlans/{planId} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // VALUATIONS COLLECTION
-    match /valuations/{valuationId} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // NOTIFICATIONS COLLECTION
+    // Notifications collection
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated();
+      // Users can only read their own notifications
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      
+      // Authenticated users can create notifications (for themselves or others)
+      allow create: if request.auth != null;
+      
+      // Users can only update their own notifications (mark as read, etc.)
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.userId == resource.data.userId;
+      
+      // Users can only delete their own notifications
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
     }
     
-    // USER INVITATIONS COLLECTION (optional - may fail due to permissions)
-    match /userInvitations/{invitationId} {
-      allow read, write: if isAuthenticated();
+    // Profit Sharing agreement settings
+    match /profitSharing/{document=**} {
+      allow read: if true;
+      allow write: if isAuthed();
     }
     
-    // PROFIT SHARING ACCESS COLLECTION
+    // Profit Sharing Plans collection
+    match /profitSharingPlans/{planId} {
+      allow read: if true;
+      allow write: if isAuthed();
+    }
+    
+    // Stakeholders collection
+    match /stakeholders/{stakeholderId} {
+      allow read: if true;
+      allow write: if isAuthed();
+    }
+    // Valuations collection
+    match /valuations/{valuationId} {
+      allow read: if true;
+      allow write: if isAuthed();
+    }
+    // Companies collection
+    match /companies/{companyId} {
+      allow read: if true;
+      allow write: if isAuthed();
+    }
+    // Access To Profit Sharing
     match /profitSharingAccess/{accessId} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // Default: deny all other access
-    match /{document=**} {
-      allow read, write: if false;
+      allow read: if true;
+      allow write: if isAuthed();
     }
   }
 }
-

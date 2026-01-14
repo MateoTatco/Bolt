@@ -68,6 +68,17 @@ const baseNavigationConfig = [
         module: MODULES.PROFIT_SHARING,
     },
     {
+        key: 'warrantyTracker',
+        path: '/warranty-tracker',
+        title: 'Warranty Tracker',
+        translateKey: 'nav.warrantyTracker',
+        icon: 'warrantyTracker',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+        module: MODULES.WARRANTY_TRACKER,
+    },
+    {
         key: 'advancedFeatures',
         path: '/advanced-features',
         title: 'Advanced Features Dashboard',

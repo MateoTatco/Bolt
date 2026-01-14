@@ -34,6 +34,7 @@ export const MODULES = {
     MASTER_TRACKER: 'masterTracker',
     PROJECT_PROFITABILITY: 'projectProfitability',
     PROFIT_SHARING: 'profitSharing',
+    WARRANTY_TRACKER: 'warrantyTracker',
 }
 
 // Role to modules mapping
@@ -42,12 +43,14 @@ export const ROLE_MODULES = {
         MODULES.CRM,
         MODULES.MASTER_TRACKER,
         MODULES.PROJECT_PROFITABILITY,
+        MODULES.WARRANTY_TRACKER,
     ],
     [USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING]: [
         MODULES.CRM,
         MODULES.MASTER_TRACKER,
         MODULES.PROJECT_PROFITABILITY,
         MODULES.PROFIT_SHARING,
+        MODULES.WARRANTY_TRACKER,
     ],
     [USER_ROLES.FD_CONSTRUCTION_USER]: [
         // Currently only profit sharing, but structure allows for future modules
@@ -84,6 +87,7 @@ export const ROLE_MODULES = {
         MODULES.MASTER_TRACKER,
         MODULES.PROJECT_PROFITABILITY,
         MODULES.PROFIT_SHARING,
+        MODULES.WARRANTY_TRACKER,
     ],
 }
 

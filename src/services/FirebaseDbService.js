@@ -1816,6 +1816,193 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // WARRANTIES COLLECTION
+    warranties: {
+        // Get all warranties
+        getAll: async (filters = {}) => {
+            try {
+                await ensureAuthUser()
+                let q = query(collection(db, 'warranties'))
+                
+                // Filter by status if provided
+                if (filters.status) {
+                    q = query(q, where('status', '==', filters.status))
+                }
+                
+                // Filter by companyId (for multi-company support)
+                if (filters.companyId) {
+                    q = query(q, where('companyId', '==', filters.companyId))
+                }
+                
+                // Filter by assignedTo if provided
+                if (filters.assignedTo) {
+                    q = query(q, where('assignedTo', 'array-contains', filters.assignedTo))
+                }
+                
+                // Order by createdAt descending (newest first)
+                try {
+                    q = query(q, orderBy('createdAt', 'desc'))
+                } catch (error) {
+                    // If orderBy fails, fall back to unsorted
+                    console.warn('Warranty orderBy error, using unsorted:', error)
+                }
+                
+                const snapshot = await getDocs(q)
+                const warranties = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                
+                return { success: true, data: warranties }
+            } catch (error) {
+                console.error('Firebase get all warranties error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single warranty
+        getById: async (id) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const warrantyRef = doc(db, 'warranties', stringId)
+                const warrantySnap = await getDoc(warrantyRef)
+                if (warrantySnap.exists()) {
+                    return { success: true, data: { id: warrantySnap.id, ...warrantySnap.data() } }
+                } else {
+                    return { success: false, error: 'Warranty not found' }
+                }
+            } catch (error) {
+                console.error('Firebase get warranty by id error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new warranty
+        create: async (warrantyData) => {
+            try {
+                await ensureAuthUser()
+                const warrantiesRef = collection(db, 'warranties')
+                const docRef = await addDoc(warrantiesRef, {
+                    ...warrantyData,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...warrantyData } }
+            } catch (error) {
+                console.error('Firebase create warranty error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update warranty
+        update: async (id, warrantyData) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const warrantyRef = doc(db, 'warranties', stringId)
+                const updateData = { ...warrantyData }
+                delete updateData.id
+                await updateDoc(warrantyRef, {
+                    ...updateData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: stringId, ...warrantyData } }
+            } catch (error) {
+                console.error('Firebase update warranty error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete warranty
+        delete: async (id) => {
+            try {
+                await ensureAuthUser()
+                const stringId = String(id)
+                const warrantyRef = doc(db, 'warranties', stringId)
+                await deleteDoc(warrantyRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete warranty error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Real-time listener for warranties
+        subscribe: (callback, filters = {}) => {
+            try {
+                let q = query(collection(db, 'warranties'))
+                
+                if (filters.status) {
+                    q = query(q, where('status', '==', filters.status))
+                }
+                
+                if (filters.companyId) {
+                    q = query(q, where('companyId', '==', filters.companyId))
+                }
+                
+                try {
+                    q = query(q, orderBy('createdAt', 'desc'))
+                } catch (error) {
+                    console.warn('Warranty subscribe orderBy error:', error)
+                }
+                
+                return onSnapshot(
+                    q,
+                    (snapshot) => {
+                        const warranties = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }))
+                        callback(warranties)
+                    },
+                    (error) => {
+                        console.error('Warranties listener error:', error)
+                        callback([])
+                    }
+                )
+            } catch (error) {
+                console.error('Warranty subscribe setup error:', error)
+                // Return a no-op unsubscribe function
+                return () => {}
+            }
+        },
+
+        // Get warranty updates (subcollection)
+        getUpdates: async (warrantyId) => {
+            try {
+                await ensureAuthUser()
+                const updatesRef = collection(db, 'warranties', warrantyId, 'updates')
+                const q = query(updatesRef, orderBy('createdAt', 'desc'))
+                const snapshot = await getDocs(q)
+                const updates = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                return { success: true, data: updates }
+            } catch (error) {
+                console.error('Firebase get warranty updates error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Add update to warranty (subcollection)
+        addUpdate: async (warrantyId, updateData) => {
+            try {
+                await ensureAuthUser()
+                const updatesRef = collection(db, 'warranties', warrantyId, 'updates')
+                const docRef = await addDoc(updatesRef, {
+                    ...updateData,
+                    createdAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...updateData } }
+            } catch (error) {
+                console.error('Firebase add warranty update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing

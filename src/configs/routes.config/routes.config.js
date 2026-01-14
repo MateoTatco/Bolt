@@ -60,6 +60,12 @@ export const protectedRoutes = [
         authority: [],
     },
     {
+        key: 'warrantyTracker',
+        path: '/warranty-tracker',
+        component: lazy(() => import('@/views/WarrantyTracker')),
+        authority: [],
+    },
+    {
         key: 'createProfitPlan',
         path: '/profit-sharing/create-plan',
         component: lazy(() => import('@/views/ProfitSharing/CreateProfitPlan')),

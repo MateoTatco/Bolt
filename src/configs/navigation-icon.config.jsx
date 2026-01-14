@@ -18,6 +18,7 @@ const navigationIcon = {
     masterTracker: <PiClipboardTextDuotone />,
     projectProfitability: <PiCurrencyDollarDuotone />,
     profitSharing: <PiGiftDuotone />,
+    warrantyTracker: <PiClipboardTextDuotone />,
     singleMenu: <PiAcornDuotone />,
     collapseMenu: <PiArrowsInDuotone />,
     groupSingleMenu: <PiBookOpenUserDuotone />,
