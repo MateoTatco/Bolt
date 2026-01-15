@@ -10,6 +10,7 @@ import {
     PiCurrencyDollarDuotone,
     PiGiftDuotone,
     PiAddressBookDuotone,
+    PiShieldCheckDuotone,
 } from 'react-icons/pi'
 
 const navigationIcon = {
@@ -18,7 +19,7 @@ const navigationIcon = {
     masterTracker: <PiClipboardTextDuotone />,
     projectProfitability: <PiCurrencyDollarDuotone />,
     profitSharing: <PiGiftDuotone />,
-    warrantyTracker: <PiClipboardTextDuotone />,
+    warrantyTracker: <PiShieldCheckDuotone />,
     singleMenu: <PiAcornDuotone />,
     collapseMenu: <PiArrowsInDuotone />,
     groupSingleMenu: <PiBookOpenUserDuotone />,

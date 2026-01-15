@@ -1825,38 +1825,90 @@ export const FirebaseDbService = {
                 await ensureAuthUser()
                 let q = query(collection(db, 'warranties'))
                 
+                // Filter by companyId (for multi-company support) - always apply this first
+                if (filters.companyId) {
+                    q = query(q, where('companyId', '==', filters.companyId))
+                }
+                
                 // Filter by status if provided
                 if (filters.status) {
                     q = query(q, where('status', '==', filters.status))
                 }
                 
-                // Filter by companyId (for multi-company support)
-                if (filters.companyId) {
-                    q = query(q, where('companyId', '==', filters.companyId))
-                }
-                
-                // Filter by assignedTo if provided
-                if (filters.assignedTo) {
+                // Filter by assignedTo if provided (note: can't combine with status filter without index)
+                if (filters.assignedTo && !filters.status) {
                     q = query(q, where('assignedTo', 'array-contains', filters.assignedTo))
                 }
                 
                 // Order by createdAt descending (newest first)
+                // This requires a composite index if both companyId and status filters are used
                 try {
                     q = query(q, orderBy('createdAt', 'desc'))
                 } catch (error) {
-                    // If orderBy fails, fall back to unsorted
+                    // If orderBy fails (index not ready), fall back to unsorted
                     console.warn('Warranty orderBy error, using unsorted:', error)
                 }
                 
                 const snapshot = await getDocs(q)
-                const warranties = snapshot.docs.map(doc => ({
+                let warranties = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }))
                 
+                // Client-side filtering for assignedTo if status filter is also used
+                if (filters.assignedTo && filters.status) {
+                    warranties = warranties.filter(w => 
+                        w.assignedTo && w.assignedTo.includes(filters.assignedTo)
+                    )
+                }
+                
+                // Client-side sorting if orderBy failed
+                if (!filters.status || !filters.companyId) {
+                    warranties.sort((a, b) => {
+                        const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || a.createdAt || 0
+                        const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || b.createdAt || 0
+                        return bTime - aTime // Descending (newest first)
+                    })
+                }
+                
                 return { success: true, data: warranties }
             } catch (error) {
                 console.error('Firebase get all warranties error:', error)
+                // If index error, try without orderBy and sort client-side
+                if (error.message && error.message.includes('index')) {
+                    try {
+                        let q = query(collection(db, 'warranties'))
+                        if (filters.companyId) {
+                            q = query(q, where('companyId', '==', filters.companyId))
+                        }
+                        if (filters.status) {
+                            q = query(q, where('status', '==', filters.status))
+                        }
+                        const snapshot = await getDocs(q)
+                        let warranties = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }))
+                        
+                        // Client-side filtering for assignedTo
+                        if (filters.assignedTo) {
+                            warranties = warranties.filter(w => 
+                                w.assignedTo && w.assignedTo.includes(filters.assignedTo)
+                            )
+                        }
+                        
+                        // Client-side sorting
+                        warranties.sort((a, b) => {
+                            const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || a.createdAt || 0
+                            const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || b.createdAt || 0
+                            return bTime - aTime
+                        })
+                        
+                        return { success: true, data: warranties }
+                    } catch (fallbackError) {
+                        return { success: false, error: error.message }
+                    }
+                }
                 return { success: false, error: error.message }
             }
         },
@@ -1934,31 +1986,51 @@ export const FirebaseDbService = {
             try {
                 let q = query(collection(db, 'warranties'))
                 
-                if (filters.status) {
-                    q = query(q, where('status', '==', filters.status))
-                }
-                
+                // Filter by companyId first (required for index)
                 if (filters.companyId) {
                     q = query(q, where('companyId', '==', filters.companyId))
                 }
                 
+                // Filter by status if provided
+                if (filters.status) {
+                    q = query(q, where('status', '==', filters.status))
+                }
+                
+                // Order by createdAt (requires composite index)
                 try {
                     q = query(q, orderBy('createdAt', 'desc'))
                 } catch (error) {
-                    console.warn('Warranty subscribe orderBy error:', error)
+                    console.warn('Warranty subscribe orderBy error (index may not be ready):', error)
+                    // Continue without orderBy - will sort client-side
                 }
                 
                 return onSnapshot(
                     q,
                     (snapshot) => {
-                        const warranties = snapshot.docs.map(doc => ({
+                        let warranties = snapshot.docs.map(doc => ({
                             id: doc.id,
                             ...doc.data()
                         }))
+                        
+                        // Client-side filtering for assignedTo if needed
+                        if (filters.assignedTo) {
+                            warranties = warranties.filter(w => 
+                                w.assignedTo && w.assignedTo.includes(filters.assignedTo)
+                            )
+                        }
+                        
+                        // Client-side sorting if orderBy wasn't applied
+                        warranties.sort((a, b) => {
+                            const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds * 1000 || a.createdAt || 0
+                            const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds * 1000 || b.createdAt || 0
+                            return bTime - aTime
+                        })
+                        
                         callback(warranties)
                     },
                     (error) => {
                         console.error('Warranties listener error:', error)
+                        // Return empty array on error instead of crashing
                         callback([])
                     }
                 )

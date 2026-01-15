@@ -4779,6 +4779,26 @@ export const azureSqlGetAllProjectsProfitability = functions
                 // Query 18 results: $267,778,125.48 Total Contract Value - EXACT MATCH to Power BI's $267,778,125
                 // This matches Power BI's filter: ArchiveDate date = most recent date AND Is Most Recent? = Yes
                 // Query 18 did NOT have RedTeamImport = 0 filter, so power_bi_match should not include it
+                // 
+                // ============================================================================================
+                // FIX FOR MULTIPLE PRIME CONTRACTS (Jan 2026)
+                // ============================================================================================
+                // Issue: Projects with multiple prime contracts were only showing the first contract amount
+                //        instead of the sum of all contracts.
+                // 
+                // Solution: Calculate the sum of all prime contracts per project and use that value.
+                // 
+                // Behavior:
+                // - Projects with multiple prime contracts: Uses SUM of all contracts from PrimeContracts table
+                // - Projects with single prime contract: Uses stored value from ProjectProfitabilityArchive (unchanged)
+                // - Projects with no prime contracts: Uses stored value from ProjectProfitabilityArchive (unchanged)
+                // - Future projects with multiple contracts: Automatically handled correctly
+                // 
+                // Examples:
+                // - Project 335970001: Has 2 contracts ($957,882.77 + $1,779,753.78 = $2,737,636.55) ✅
+                // - Project 235840001: Has 2 contracts ($1,212,316.69 + $29,112.50 = $1,241,429.19) ✅
+                // - Other projects: Continue using stored value (no change) ✅
+                // ============================================================================================
                 const query = `
                     WITH MostRecentArchiveDate AS (
                         -- Get the most recent ArchiveDate (by date) in the entire table
@@ -4794,10 +4814,25 @@ export const azureSqlGetAllProjectsProfitability = functions
                         CROSS JOIN MostRecentArchiveDate mrad
                         WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                         GROUP BY ppa.ProjectNumber
+                    ),
+                    PrimeContractTotals AS (
+                        -- Calculate the correct total by summing all prime contracts per project
+                        -- IMPORTANT: PrimeContracts.ProjectId = Projects.ProcoreId (not Projects.ProjectId)
+                        -- This CTE will only have entries for projects that have prime contracts in PrimeContracts table
+                        SELECT 
+                            p.ProjectNumber,
+                            SUM(pc.RevisedContractAmount) AS TotalPrimeContractAmount
+                        FROM dbo.PrimeContracts pc
+                        INNER JOIN dbo.Projects p ON pc.ProjectId = p.ProcoreId
+                        WHERE pc.RevisedContractAmount > 0
+                        GROUP BY p.ProjectNumber
                     )
                     SELECT 
                         ppa.ProjectName,
-                        ppa.ProjectRevisedContractAmount,
+                        -- Use sum of all prime contracts if available (projects with multiple contracts),
+                        -- otherwise fall back to stored value (single contract or no contracts in PrimeContracts table)
+                        -- This ensures backward compatibility and correct handling of all scenarios
+                        COALESCE(pct.TotalPrimeContractAmount, ppa.ProjectRevisedContractAmount) as ProjectRevisedContractAmount,
                         ppa.ProjectNumber,
                         ppa.ProjectManager,
                         ppa.RedTeamImport,
@@ -4826,6 +4861,7 @@ export const azureSqlGetAllProjectsProfitability = functions
                         ON ppa.ProjectNumber = mra.ProjectNumber 
                         AND ppa.ArchiveDate = mra.LatestArchiveDate
                     CROSS JOIN MostRecentArchiveDate mrad
+                    LEFT JOIN PrimeContractTotals pct ON ppa.ProjectNumber = pct.ProjectNumber
                     WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                     ${additionalWhereClause}
                     ORDER BY ppa.ProjectName
