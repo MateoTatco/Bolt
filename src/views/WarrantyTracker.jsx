@@ -8,6 +8,7 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import Avatar from '@/components/ui/Avatar'
 import acronym from '@/utils/acronym'
 import useRandomBgColor from '@/utils/hooks/useRandomBgColor'
+import CreateWarrantyModal from '@/views/WarrantyTracker/components/CreateWarrantyModal'
 
 const WarrantyTracker = () => {
     const navigate = useNavigate()
@@ -404,24 +405,11 @@ const WarrantyTracker = () => {
                 </div>
             </Card>
 
-            {/* Create Modal - TODO: Will be implemented in next step */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <Card className="w-full max-w-2xl m-4">
-                        <div className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">Create New Warranty Item</h2>
-                            <p className="text-gray-600 dark:text-gray-400">
-                                Warranty creation form will be implemented next.
-                            </p>
-                            <div className="flex justify-end gap-2 mt-6">
-                                <Button variant="plain" onClick={() => setShowCreateModal(false)}>
-                                    Close
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-            )}
+            {/* Create/Edit Warranty Modal */}
+            <CreateWarrantyModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+            />
         </div>
     )
 }
