@@ -3,12 +3,83 @@ import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useWarrantyStore } from '@/store/warrantyStore'
-import { HiOutlinePlus, HiOutlineEye, HiOutlinePencil, HiOutlineCheckCircle, HiOutlineRefresh } from 'react-icons/hi'
+import { HiOutlinePlus, HiOutlineEye, HiOutlinePencil, HiOutlineCheckCircle, HiOutlineRefresh, HiOutlineTrash } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import Avatar from '@/components/ui/Avatar'
 import acronym from '@/utils/acronym'
 import useRandomBgColor from '@/utils/hooks/useRandomBgColor'
 import CreateWarrantyModal from '@/views/WarrantyTracker/components/CreateWarrantyModal'
+
+// Editable Status Cell Component
+const EditableStatusCell = ({ warranty, updateWarranty, completeWarranty }) => {
+    const [isEditing, setIsEditing] = useState(false)
+    const [selectedStatus, setSelectedStatus] = useState(warranty.status)
+    
+    const status = warranty.status
+    const statusClass = status === 'completed' 
+        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    
+    const handleStatusChange = async (newStatus) => {
+        if (newStatus === status) {
+            setIsEditing(false)
+            return
+        }
+        
+        try {
+            if (newStatus === 'completed') {
+                await completeWarranty(warranty.id)
+            } else {
+                await updateWarranty(warranty.id, { status: newStatus })
+            }
+            setIsEditing(false)
+        } catch (error) {
+            console.error('Failed to update status:', error)
+            setSelectedStatus(status) // Revert on error
+            setIsEditing(false)
+        }
+    }
+    
+                if (isEditing) {
+                    return (
+                        <Select
+                            options={[
+                                { value: 'open', label: 'Open' },
+                                { value: 'completed', label: 'Completed' },
+                            ]}
+                            value={{ value: selectedStatus, label: selectedStatus === 'completed' ? 'Completed' : 'Open' }}
+                            onChange={(selected) => {
+                                if (selected) {
+                                    setSelectedStatus(selected.value)
+                                    handleStatusChange(selected.value)
+                                }
+                            }}
+                            onBlur={() => setIsEditing(false)}
+                            autoFocus
+                            menuIsOpen
+                            className="min-w-[120px]"
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={{
+                                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                            }}
+                        />
+                    )
+                }
+    
+    return (
+        <div 
+            className="cursor-pointer inline-block" 
+            onClick={() => setIsEditing(true)}
+            title="Click to change status"
+        >
+            <Tag className={statusClass}>
+                {status === 'completed' ? 'Completed' : 'Open'}
+            </Tag>
+        </div>
+    )
+}
 
 const WarrantyTracker = () => {
     const navigate = useNavigate()
@@ -19,6 +90,7 @@ const WarrantyTracker = () => {
     
     const {
         warranties,
+        allWarranties,
         filters,
         loading,
         loadWarranties,
@@ -26,6 +98,8 @@ const WarrantyTracker = () => {
         setupRealtimeListener,
         cleanupRealtimeListener,
         completeWarranty,
+        updateWarranty,
+        deleteWarranty,
     } = useWarrantyStore()
 
     const bgColor = useRandomBgColor()
@@ -104,15 +178,21 @@ const WarrantyTracker = () => {
         }
     }
 
-    // Get user display name
+    // Get user display name - Always show "First Name Last Name" format when available
     const getUserDisplayName = (user) => {
         if (!user) return 'Unknown'
-        return user.userName || 
-               user.firstName || 
-               user.lastName || 
-               user.displayName || 
-               user.email?.split('@')[0] || 
-               'Unknown'
+        if (user.firstName && user.lastName) {
+            return `${user.firstName} ${user.lastName}`.trim()
+        } else if (user.firstName) {
+            return user.firstName
+        } else if (user.lastName) {
+            return user.lastName
+        } else {
+            return user.userName || 
+                   user.displayName || 
+                   user.email?.split('@')[0] || 
+                   'Unknown'
+        }
     }
 
     // Get user initials
@@ -201,36 +281,18 @@ const WarrantyTracker = () => {
                 const assignedUsers = assignedUserIds
                     .map(id => getUserById(id))
                     .filter(Boolean)
-                    .slice(0, 3) // Show max 3 avatars
                 
-                const remainingCount = assignedUserIds.length - assignedUsers.length
+                const displayNames = assignedUsers.map(user => getUserDisplayName(user))
+                const displayText = displayNames.length <= 2 
+                    ? displayNames.join(', ')
+                    : `${displayNames.slice(0, 2).join(', ')} +${displayNames.length - 2}`
 
                 return (
-                    <div className="flex items-center gap-2">
-                        <div className="flex -space-x-2">
-                            {assignedUsers.map((user, index) => {
-                                const displayName = getUserDisplayName(user)
-                                return (
-                                    <Tooltip
-                                        key={user.id || user.uid || index}
-                                        title={displayName}
-                                    >
-                                        <Avatar
-                                            size={28}
-                                            className={`${bgColor(displayName)} border-2 border-white dark:border-gray-800`}
-                                        >
-                                            {getUserInitials(user)}
-                                        </Avatar>
-                                    </Tooltip>
-                                )
-                            })}
-                        </div>
-                        {remainingCount > 0 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                                +{remainingCount}
-                            </span>
-                        )}
-                    </div>
+                    <Tooltip title={displayNames.join(', ')}>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                            {displayText}
+                        </span>
+                    </Tooltip>
                 )
             },
         },
@@ -239,23 +301,53 @@ const WarrantyTracker = () => {
             accessorKey: 'status',
             size: 120,
             cell: ({ row }) => {
-                const status = row.original.status
-                const statusClass = status === 'completed' 
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                const warranty = row.original
                 return (
-                    <Tag className={statusClass}>
-                        {status === 'completed' ? 'Completed' : 'Open'}
-                    </Tag>
+                    <EditableStatusCell 
+                        warranty={warranty} 
+                        updateWarranty={updateWarranty}
+                        completeWarranty={completeWarranty}
+                    />
                 )
             },
         },
         {
-            header: 'Start Date',
-            accessorKey: 'startDate',
-            size: 120,
+            header: 'Last Update',
+            accessorKey: 'lastUpdateDate',
+            size: 200,
             cell: ({ row }) => {
-                return <span className="whitespace-nowrap">{formatDate(row.original.startDate)}</span>
+                const warranty = row.original
+                const lastUpdate = warranty.lastUpdateDate
+                const lastUpdateText = warranty.lastUpdateText || ''
+                
+                if (!lastUpdate) {
+                    return <span className="text-gray-400">No updates</span>
+                }
+                
+                // Truncate text if too long
+                const displayText = lastUpdateText.length > 50 
+                    ? `${lastUpdateText.substring(0, 50)}...` 
+                    : lastUpdateText || 'Update'
+                
+                return (
+                    <Tooltip 
+                        title={
+                            <div>
+                                <div className="font-semibold mb-1">{formatDate(lastUpdate)}</div>
+                                {lastUpdateText && <div className="text-sm">{lastUpdateText}</div>}
+                            </div>
+                        }
+                    >
+                        <div className="cursor-pointer">
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                {formatDate(lastUpdate)}
+                            </div>
+                            <div className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
+                                {displayText}
+                            </div>
+                        </div>
+                    </Tooltip>
+                )
             },
         },
         {
@@ -309,11 +401,28 @@ const WarrantyTracker = () => {
                                 />
                             </Tooltip>
                         )}
+                        <Tooltip title="Delete">
+                            <Button
+                                size="sm"
+                                variant="plain"
+                                icon={<HiOutlineTrash />}
+                                onClick={async () => {
+                                    if (window.confirm('Are you sure you want to delete this warranty? This action cannot be undone.')) {
+                                        try {
+                                            await deleteWarranty(warranty.id)
+                                        } catch (error) {
+                                            console.error('Failed to delete warranty:', error)
+                                        }
+                                    }
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                            />
+                        </Tooltip>
                     </div>
                 )
             },
         },
-    ], [navigate, users, bgColor, completeWarranty])
+    ], [navigate, users, bgColor, completeWarranty, updateWarranty, deleteWarranty])
 
     return (
         <div className="flex flex-col gap-4">
@@ -354,7 +463,7 @@ const WarrantyTracker = () => {
                                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                             }`}
                         >
-                            Open Warranties ({activeTab === 'open' ? filteredWarranties.length : warranties.filter(w => w.status === 'open').length})
+                            Open Warranties ({activeTab === 'open' ? filteredWarranties.length : allWarranties.filter(w => w.status === 'open').length})
                         </button>
                         <button
                             onClick={() => setActiveTab('completed')}
@@ -364,7 +473,7 @@ const WarrantyTracker = () => {
                                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                             }`}
                         >
-                            Completed Warranties ({activeTab === 'completed' ? filteredWarranties.length : warranties.filter(w => w.status === 'completed').length})
+                            Completed Warranties ({activeTab === 'completed' ? filteredWarranties.length : allWarranties.filter(w => w.status === 'completed').length})
                         </button>
                     </div>
 
@@ -389,6 +498,12 @@ const WarrantyTracker = () => {
                                 })
                             }}
                             isLoading={loadingUsers}
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={{
+                                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                            }}
                         />
                     </div>
 

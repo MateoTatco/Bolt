@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
 import { useProjectsStore } from '@/store/projectsStore'
 import { useWarrantyStore } from '@/store/warrantyStore'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { components } from 'react-select'
+import { HiOutlineX, HiOutlinePlus } from 'react-icons/hi'
 
 const reminderFrequencyOptions = [
     { value: 'none', label: 'No Reminders' },
@@ -103,6 +104,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
         requestedBy: '',
         requestedByEmail: '',
         assignedTo: [],
+        cc: [], // CC recipients array
         reminderFrequency: '5days',
         startDate: null,
     })
@@ -189,6 +191,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 requestedBy: warrantyToEdit.requestedBy || '',
                 requestedByEmail: warrantyToEdit.requestedByEmail || '',
                 assignedTo: warrantyToEdit.assignedTo || [],
+                cc: warrantyToEdit.cc || [],
                 reminderFrequency: warrantyToEdit.reminderFrequency || '5days',
                 startDate: warrantyToEdit.startDate ? (warrantyToEdit.startDate.toDate ? warrantyToEdit.startDate.toDate() : new Date(warrantyToEdit.startDate)) : null,
             })
@@ -201,6 +204,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 requestedBy: '',
                 requestedByEmail: '',
                 assignedTo: [],
+                cc: [],
                 reminderFrequency: '5days',
                 startDate: null,
             })
@@ -227,15 +231,22 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
             })
     }, [projects])
 
-    // User options for assignedTo
+    // User options for assignedTo - Always show "First Name Last Name" format when available
     const userOptions = useMemo(() => {
         return users.map(user => {
-            const displayName = user.userName || 
-                               user.firstName || 
-                               user.lastName || 
-                               user.displayName || 
-                               user.email?.split('@')[0] || 
-                               'Unknown User'
+            let displayName = 'Unknown User'
+            if (user.firstName && user.lastName) {
+                displayName = `${user.firstName} ${user.lastName}`.trim()
+            } else if (user.firstName) {
+                displayName = user.firstName
+            } else if (user.lastName) {
+                displayName = user.lastName
+            } else {
+                displayName = user.userName || 
+                             user.displayName || 
+                             user.email?.split('@')[0] || 
+                             'Unknown User'
+            }
             return {
                 value: user.id || user.uid,
                 label: displayName,
@@ -278,6 +289,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
     // Handle form submission
     const handleSubmit = async (e) => {
         e.preventDefault()
+        e.stopPropagation()
         
         if (!validateForm()) {
             return
@@ -292,17 +304,30 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 requestedBy: formData.requestedBy.trim(),
                 requestedByEmail: formData.requestedByEmail.trim() || null,
                 assignedTo: formData.assignedTo,
+                cc: formData.cc.filter(id => id !== null && id !== undefined), // Filter out null values
                 reminderFrequency: formData.reminderFrequency,
                 startDate: formData.startDate,
             }
             
+            let createdWarranty = null
             if (warrantyToEdit) {
                 await updateWarranty(warrantyToEdit.id, warrantyData)
             } else {
-                await addWarranty(warrantyData)
+                const result = await addWarranty(warrantyData)
+                createdWarranty = result?.warranty
             }
             
             onClose()
+            
+            // Navigate to detail page if warranty was created (not edited)
+            // Only navigate if editing from home page (not from detail page)
+            if (createdWarranty?.id && !warrantyToEdit) {
+                // Use setTimeout to ensure modal closes first
+                setTimeout(() => {
+                    window.location.href = `/warranty-tracker/${createdWarranty.id}`
+                }, 300)
+            }
+            // If editing from home page, don't navigate - just close modal
         } catch (error) {
             console.error('Error saving warranty:', error)
             // Error is already handled by the store
@@ -329,8 +354,39 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
         }
     }
 
+    // Use a stable portal class name - only create once
+    const portalClassNameRef = useRef(null)
+    if (!portalClassNameRef.current) {
+        portalClassNameRef.current = `warranty-modal-portal-${Date.now()}`
+    }
+
+    // Track when modal opens to create a stable key
+    const modalOpenTimeRef = useRef(null)
+    useEffect(() => {
+        if (isOpen && !modalOpenTimeRef.current) {
+            modalOpenTimeRef.current = Date.now()
+        } else if (!isOpen) {
+            modalOpenTimeRef.current = null
+        }
+    }, [isOpen])
+
+    // Use a stable key that only changes when modal actually opens
+    const modalKey = modalOpenTimeRef.current ? `warranty-modal-${modalOpenTimeRef.current}` : null
+
+    // Only render Dialog when isOpen is true
+    if (!isOpen) {
+        return null
+    }
+
     return (
-        <Dialog isOpen={isOpen} onClose={onClose} width={800}>
+        <Dialog
+            key={modalKey} 
+            isOpen={isOpen} 
+            onClose={onClose} 
+            width={800}
+            ariaHideApp={false}
+            portalClassName={portalClassNameRef.current}
+        >
             <div className="p-6">
                 <div className="mb-6">
                     <h5 className="text-xl font-semibold">
@@ -365,15 +421,19 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                                 invalid={!!errors.description}
                                 errorMessage={errors.description}
                             >
-                                <Input
-                                    as="textarea"
-                                    rows={4}
+                                <textarea
                                     value={formData.description}
                                     onChange={(e) => {
                                         setFormData({ ...formData, description: e.target.value })
                                         setErrors({ ...errors, description: null })
+                                        // Auto-resize
+                                        e.target.style.height = 'auto'
+                                        e.target.style.height = `${Math.max(80, e.target.scrollHeight)}px`
                                     }}
                                     placeholder="Describe the warranty issue..."
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none min-h-[80px]"
+                                    style={{ minHeight: '80px' }}
                                 />
                             </FormItem>
 
@@ -436,6 +496,61 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                                         Option: CustomOption,
                                     }}
                                 />
+                            </FormItem>
+
+                            {/* CC Recipients */}
+                            <FormItem
+                                label="C.C"
+                                hint="Additional people to receive reminder emails"
+                            >
+                                <div className="space-y-2">
+                                    {formData.cc.map((ccUserId, index) => (
+                                        <div key={index} className="flex gap-2">
+                                            <Select
+                                                placeholder="Select CC recipient"
+                                                options={userOptions}
+                                                value={userOptions.find(opt => opt.value === ccUserId) || null}
+                                                onChange={(selected) => {
+                                                    const newCc = [...formData.cc]
+                                                    if (selected) {
+                                                        newCc[index] = selected.value
+                                                    } else {
+                                                        newCc.splice(index, 1)
+                                                    }
+                                                    setFormData({ ...formData, cc: newCc })
+                                                }}
+                                                isLoading={loadingUsers}
+                                                className="flex-1"
+                                                isClearable
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="plain"
+                                                icon={<HiOutlineX />}
+                                                onClick={(e) => {
+                                                    e.preventDefault()
+                                                    e.stopPropagation()
+                                                    const newCc = formData.cc.filter((_, i) => i !== index)
+                                                    setFormData({ ...formData, cc: newCc })
+                                                }}
+                                                size="sm"
+                                            />
+                                        </div>
+                                    ))}
+                                    <Button
+                                        type="button"
+                                        variant="twoTone"
+                                        icon={<HiOutlinePlus />}
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            setFormData({ ...formData, cc: [...formData.cc.filter(id => id !== null), null] })
+                                        }}
+                                        size="sm"
+                                    >
+                                        Add CC Recipient
+                                    </Button>
+                                </div>
                             </FormItem>
 
                             {/* Reminder Frequency */}

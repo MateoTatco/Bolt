@@ -10,6 +10,7 @@ import { Timestamp } from 'firebase/firestore'
 
 export const useWarrantyStore = create((set, get) => ({
     warranties: [],
+    allWarranties: [], // Store all warranties for counting (not filtered by status)
     filters: {
         search: '',
         status: 'open', // 'open' | 'completed' | null (all)
@@ -59,6 +60,11 @@ export const useWarrantyStore = create((set, get) => ({
             const companyId = get().getCompanyId()
             const filters = get().filters
             
+            // Always load all warranties first for counting (no filters)
+            const allWarrantiesResponse = await FirebaseDbService.warranties.getAll({ companyId: companyId })
+            const allWarranties = allWarrantiesResponse.success ? (allWarrantiesResponse.data || []) : []
+            
+            // Now filter for display
             const queryFilters = {
                 companyId: companyId,
             }
@@ -93,7 +99,11 @@ export const useWarrantyStore = create((set, get) => ({
                     )
                 }
                 
-                set({ warranties: filteredWarranties, loading: false })
+                set({ 
+                    warranties: filteredWarranties, 
+                    allWarranties: allWarranties, // Always keep all warranties for counting
+                    loading: false 
+                })
             } else {
                 throw new Error(response.error)
             }
@@ -119,6 +129,12 @@ export const useWarrantyStore = create((set, get) => ({
         const companyId = get().getCompanyId()
         const filters = get().filters
         
+        // Load all warranties (no status filter) for counting
+        const allWarrantiesQueryFilters = {
+            companyId: companyId,
+        }
+        
+        // Load filtered warranties for display
         const queryFilters = {
             companyId: companyId,
         }
@@ -127,11 +143,21 @@ export const useWarrantyStore = create((set, get) => ({
             queryFilters.status = filters.status
         }
 
-        const unsubscribe = FirebaseDbService.warranties.subscribe((warranties) => {
-            // Apply client-side filters
-            let filteredWarranties = warranties
+        // Subscribe to all warranties (for counting) - no status filter
+        const unsubscribeAll = FirebaseDbService.warranties.subscribe((allWarranties) => {
+            // Store all warranties for counting
+            set({ allWarranties: allWarranties })
             
+            // Also filter for display based on current status filter
             const currentFilters = get().filters
+            let filteredWarranties = allWarranties
+            
+            // Apply status filter if set
+            if (currentFilters.status) {
+                filteredWarranties = filteredWarranties.filter(w => w.status === currentFilters.status)
+            }
+            
+            // Apply search filter
             if (currentFilters.search) {
                 const searchLower = currentFilters.search.toLowerCase()
                 filteredWarranties = filteredWarranties.filter(w => 
@@ -141,6 +167,7 @@ export const useWarrantyStore = create((set, get) => ({
                 )
             }
             
+            // Apply project name filter
             if (currentFilters.projectName) {
                 filteredWarranties = filteredWarranties.filter(w => 
                     w.projectName === currentFilters.projectName
@@ -148,7 +175,12 @@ export const useWarrantyStore = create((set, get) => ({
             }
             
             set({ warranties: filteredWarranties })
-        }, queryFilters)
+        }, allWarrantiesQueryFilters)
+
+        // Return unsubscribe function
+        const unsubscribe = () => {
+            unsubscribeAll()
+        }
 
         set({ realtimeListener: unsubscribe })
         return unsubscribe
@@ -192,6 +224,7 @@ export const useWarrantyStore = create((set, get) => ({
                 requestedBy: warrantyData.requestedBy || '',
                 requestedByEmail: warrantyData.requestedByEmail || null,
                 assignedTo: warrantyData.assignedTo || [],
+                cc: warrantyData.cc || [],
                 status: 'open',
                 reminderFrequency: reminderFrequency,
                 lastReminderSent: null,
@@ -323,6 +356,7 @@ export const useWarrantyStore = create((set, get) => ({
             if (response.success) {
                 set((state) => ({
                     warranties: state.warranties.filter(w => w.id !== warrantyId),
+                    allWarranties: state.allWarranties.filter(w => w.id !== warrantyId),
                     loading: false
                 }))
                 

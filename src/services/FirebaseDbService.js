@@ -2064,10 +2064,20 @@ export const FirebaseDbService = {
             try {
                 await ensureAuthUser()
                 const updatesRef = collection(db, 'warranties', warrantyId, 'updates')
+                const now = serverTimestamp()
                 const docRef = await addDoc(updatesRef, {
                     ...updateData,
-                    createdAt: serverTimestamp()
+                    createdAt: now
                 })
+                
+                // Update warranty's lastUpdateDate and lastUpdateText
+                const warrantyRef = doc(db, 'warranties', warrantyId)
+                await updateDoc(warrantyRef, {
+                    lastUpdateDate: now,
+                    lastUpdateText: updateData.note || '',
+                    updatedAt: now
+                })
+                
                 return { success: true, data: { id: docRef.id, ...updateData } }
             } catch (error) {
                 console.error('Firebase add warranty update error:', error)

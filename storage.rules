@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check authentication
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Leads attachments
+    match /leads/{leadId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+    
+    // Clients attachments
+    match /clients/{clientId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+    
+    // Projects attachments
+    match /projects/{projectId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+    
+    // Warranties attachments
+    match /warranties/{warrantyId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+  }
+}
+

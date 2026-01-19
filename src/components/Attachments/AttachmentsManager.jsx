@@ -39,6 +39,12 @@ const formatUpdatedAt = (ts) => {
     }
 }
 
+// Helper to get collection name (handles irregular plurals)
+const getCollectionName = (entityType) => {
+    if (entityType === 'warranty') return 'warranties'
+    return `${entityType}s`
+}
+
 const AttachmentsManager = ({ entityType, entityId }) => {
     const [view, setView] = useState('grid') // 'grid' | 'list'
     const [uploadOpen, setUploadOpen] = useState(false)
@@ -56,6 +62,8 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     const [newFolderOpen, setNewFolderOpen] = useState(false)
     const [newFolderName, setNewFolderName] = useState('')
 
+    const collectionName = getCollectionName(entityType)
+
     const inFolder = useMemo(() => ({
         folders: folders.filter(f => f.parentId === currentFolderId),
         files: files.filter(f => f.parentId === currentFolderId)
@@ -65,8 +73,8 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     useEffect(() => {
         if (!entityId) return
         // folders
-        const foldersCol = collection(db, `${entityType}s`, entityId, 'folders')
-        const filesCol = collection(db, `${entityType}s`, entityId, 'files')
+        const foldersCol = collection(db, collectionName, entityId, 'folders')
+        const filesCol = collection(db, collectionName, entityId, 'files')
         const unsubFolders = onSnapshot(foldersCol, (snap) => {
             const fs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
             setFolders(fs)
@@ -129,7 +137,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             await ensureSignedIn()
             for (let i = 0; i < pendingUploads.length; i++) {
                 const file = pendingUploads[i]
-                const path = `${entityType}s/${entityId}/${currentFolderId}/${file.name}`
+                const path = `${collectionName}/${entityId}/${currentFolderId}/${file.name}`
                 const sRef = storageRef(storage, path)
                 try {
                     // Preferred: resumable upload with progress
@@ -161,7 +169,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 }
-                await addDoc(collection(db, `${entityType}s`, entityId, 'files'), meta)
+                await addDoc(collection(db, collectionName, entityId, 'files'), meta)
                 await logActivity(entityType, entityId, {
                     type: 'upload',
                     message: `uploaded file ${file.name}`,
@@ -173,7 +181,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 if (currentUserId) {
                     try {
                         // Get entity name
-                        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                        const entityDoc = await getDoc(doc(db, collectionName, entityId))
                         const entityData = entityDoc.data()
                         const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
                         
@@ -216,7 +224,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         if (!renameTarget) return
         try {
             if (renameTarget.kind === 'folder') {
-                await updateDoc(doc(db, `${entityType}s`, entityId, 'folders', renameTarget.id), {
+                await updateDoc(doc(db, collectionName, entityId, 'folders', renameTarget.id), {
                     name: renameValue,
                     updatedAt: serverTimestamp(),
                 })
@@ -226,7 +234,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                     metadata: { id: renameTarget.id }
                 })
             } else {
-                await updateDoc(doc(db, `${entityType}s`, entityId, 'files', renameTarget.id), {
+                await updateDoc(doc(db, collectionName, entityId, 'files', renameTarget.id), {
                     name: renameValue,
                     updatedAt: serverTimestamp(),
                 })
@@ -251,7 +259,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
 
     const deleteFolderRecursive = async (folderId) => {
         // delete child files
-        const filesQ = query(collection(db, `${entityType}s`, entityId, 'files'), where('parentId', '==', folderId))
+        const filesQ = query(collection(db, collectionName, entityId, 'files'), where('parentId', '==', folderId))
         const filesSnap = await getDocs(filesQ)
         for (const d of filesSnap.docs) {
             const data = d.data()
@@ -261,13 +269,13 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             await deleteDoc(d.ref)
         }
         // find child folders and recurse
-        const foldersQ = query(collection(db, `${entityType}s`, entityId, 'folders'), where('parentId', '==', folderId))
+        const foldersQ = query(collection(db, collectionName, entityId, 'folders'), where('parentId', '==', folderId))
         const foldersSnap = await getDocs(foldersQ)
         for (const fd of foldersSnap.docs) {
             await deleteFolderRecursive(fd.id)
         }
         // finally delete this folder
-        await deleteDoc(doc(db, `${entityType}s`, entityId, 'folders', folderId))
+        await deleteDoc(doc(db, collectionName, entityId, 'folders', folderId))
     }
 
     const confirmDeleteAction = async () => {
@@ -284,7 +292,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 if (fileDoc?.storagePath) {
                     try { await deleteObject(storageRef(storage, fileDoc.storagePath)) } catch {}
                 }
-                await deleteDoc(doc(db, `${entityType}s`, entityId, 'files', confirmDelete.id))
+                await deleteDoc(doc(db, collectionName, entityId, 'files', confirmDelete.id))
                 await logActivity(entityType, entityId, {
                     type: 'delete',
                     message: `deleted file ${confirmDelete.name}`,
@@ -295,7 +303,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 if (currentUserId) {
                     try {
                         // Get entity name
-                        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                        const entityDoc = await getDoc(doc(db, collectionName, entityId))
                         const entityData = entityDoc.data()
                         const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
                         
@@ -392,7 +400,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             return
         }
         try {
-            await addDoc(collection(db, `${entityType}s`, entityId, 'folders'), {
+            await addDoc(collection(db, collectionName, entityId, 'folders'), {
                 name: newFolderName.trim(),
                 parentId: currentFolderId,
                 depth: currentDepth + 1,
@@ -418,7 +426,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         <div className="grid grid-cols-2 md:flex md:items-center gap-2 w-full md:w-auto">
             <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Grid</Button>
             <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">List</Button>
-            <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">New Folder</Button>
+            {entityType !== 'warranty' && (
+                <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">New Folder</Button>
+            )}
             <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Upload</Button>
         </div>
     )
@@ -541,9 +551,11 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             {(inFolder.folders.length === 0 && inFolder.files.length === 0) ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center bg-gray-50/60 dark:bg-gray-800/30 rounded-xl">
                     <div className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-2">This folder is empty</div>
-                    <div className="text-sm text-gray-500 mb-4">Upload your first file or create a folder to get started.</div>
+                    <div className="text-sm text-gray-500 mb-4">Upload your first file{entityType !== 'warranty' ? ' or create a folder' : ''} to get started.</div>
                     <div className="flex items-center gap-2">
-                        <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)}>New Folder</Button>
+                        {entityType !== 'warranty' && (
+                            <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)}>New Folder</Button>
+                        )}
                         <Button size="sm" variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)}>Upload</Button>
                     </div>
                 </div>

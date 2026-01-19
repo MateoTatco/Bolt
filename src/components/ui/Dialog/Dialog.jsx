@@ -3,9 +3,11 @@ import classNames from 'classnames'
 import CloseButton from '../CloseButton'
 import { motion } from 'framer-motion'
 import useWindowSize from '../hooks/useWindowSize'
+import { useState, useEffect } from 'react'
 
 const Dialog = (props) => {
     const currentSize = useWindowSize()
+    const [shouldRender, setShouldRender] = useState(false)
 
     const {
         bodyOpenClassName,
@@ -23,6 +25,21 @@ const Dialog = (props) => {
         width = 520,
         ...rest
     } = props
+
+    // Only render modal component when isOpen is true to prevent duplicate registration
+    useEffect(() => {
+        if (isOpen) {
+            setShouldRender(true)
+        } else {
+            // Wait for close animation before unmounting
+            const timer = setTimeout(() => {
+                setShouldRender(false)
+            }, closeTimeoutMS + 50)
+            return () => {
+                clearTimeout(timer)
+            }
+        }
+    }, [isOpen, closeTimeoutMS])
 
     const onCloseClick = (e) => {
         onClose?.(e)
@@ -61,6 +78,11 @@ const Dialog = (props) => {
     const defaultDialogContentClass = 'dialog-content'
 
     const dialogClass = classNames(defaultDialogContentClass, contentClassName)
+
+    // Don't render Modal component at all until it should be rendered
+    if (!shouldRender) {
+        return null
+    }
 
     return (
         <Modal
