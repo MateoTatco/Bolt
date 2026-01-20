@@ -46,10 +46,16 @@ const WarrantyDetail = () => {
     const [addingUpdate, setAddingUpdate] = useState(false)
     const [users, setUsers] = useState([])
     const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'saved' })
-    const [isEditing, setIsEditing] = useState(false)
+    // Initialize isEditing from URL parameter to persist across remounts
+    const getInitialEditState = () => {
+        const params = new URLSearchParams(window.location.search)
+        return params.get('edit') === 'true'
+    }
+    const [isEditing, setIsEditing] = useState(getInitialEditState())
     const [editFormData, setEditFormData] = useState({})
     const [saving, setSaving] = useState(false)
     const [projects, setProjects] = useState([])
+
     
     const { completeWarranty, updateWarranty } = useWarrantyStore()
     const projectsFromStore = useProjectsStore((state) => state.projects) || []
@@ -70,6 +76,18 @@ const WarrantyDetail = () => {
         }
         loadUsers()
     }, [])
+
+    // Check for edit parameter and automatically enter edit mode (same as clicking Edit button)
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const editParam = params.get('edit')
+        
+        // If we have edit=true in URL and not already editing, enter edit mode
+        if (editParam === 'true' && !isEditing) {
+            // Same behavior as clicking the Edit button at the top
+            setIsEditing(true)
+        }
+    }, [location.search, warrantyId, isEditing]) // Include warrantyId to catch navigation to new warranty
 
     // Load warranty
     useEffect(() => {
@@ -178,6 +196,24 @@ const WarrantyDetail = () => {
             setActiveTab(tab)
         }
     }, [location.search])
+
+    // Handle edit query parameter - automatically enter edit mode when ?edit=true
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const editParam = params.get('edit')
+        if (editParam === 'true') {
+            if (!isEditing) {
+                setIsEditing(true)
+            }
+            // Remove the edit parameter from URL to clean it up (only if we're not already editing)
+            if (!isEditing) {
+                params.delete('edit')
+                const newSearch = params.toString()
+                const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`
+                navigate(newUrl, { replace: true })
+            }
+        }
+    }, [location.search, location.pathname, isEditing, navigate])
 
     // Format date helper
     const formatDate = (date) => {
