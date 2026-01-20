@@ -1,9 +1,13 @@
 import { db } from '@/configs/firebase.config'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, serverTimestamp, getDoc, doc } from 'firebase/firestore'
 import { useSessionUser } from '@/store/authStore'
 import { getAuth } from 'firebase/auth'
 import { notifyActivityAdded, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
-import { getDoc, doc } from 'firebase/firestore'
+
+const getCollectionName = (entityType) => {
+    if (entityType === 'warranty') return 'warranties'
+    return `${entityType}s`
+}
 
 export const getCurrentActor = () => {
     try {
@@ -40,14 +44,16 @@ export async function logActivity(entityType, entityId, payload) {
         createdAt: serverTimestamp(),
     }
     try {
-        await addDoc(collection(db, `${entityType}s`, entityId, 'activities'), data)
+        const collectionName = getCollectionName(entityType)
+        await addDoc(collection(db, collectionName, entityId, 'activities'), data)
         
         // Notify users about new activity
         const currentUserId = getCurrentUserId()
         if (currentUserId && payload?.message) {
             try {
                 // Get entity name
-                const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+                const collectionName = getCollectionName(entityType)
+                const entityDoc = await getDoc(doc(db, collectionName, entityId))
                 const entityData = entityDoc.data()
                 const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
                 

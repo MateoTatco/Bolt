@@ -445,6 +445,11 @@ export function getCurrentUserId() {
  * @param {string} entityId - Entity ID
  * @returns {Promise<string[]>} Array of user IDs to notify
  */
+const getCollectionName = (entityType) => {
+    if (entityType === 'warranty') return 'warranties'
+    return `${entityType}s`
+}
+
 export async function getUsersToNotify(entityType, entityId) {
     if (!entityType || !entityId) {
         return []
@@ -452,9 +457,10 @@ export async function getUsersToNotify(entityType, entityId) {
 
     try {
         const memberIds = new Set()
+        const collectionName = getCollectionName(entityType)
         
         // First, check for entity-level members (stored directly on the entity document)
-        const entityDoc = await getDoc(doc(db, `${entityType}s`, entityId))
+        const entityDoc = await getDoc(doc(db, collectionName, entityId))
         if (entityDoc.exists()) {
             const entityData = entityDoc.data()
             if (entityData.members && Array.isArray(entityData.members)) {
@@ -467,7 +473,7 @@ export async function getUsersToNotify(entityType, entityId) {
         }
         
         // Also get members from all sections (for backward compatibility)
-        const sectionsRef = collection(db, `${entityType}s`, entityId, 'sections')
+        const sectionsRef = collection(db, collectionName, entityId, 'sections')
         const sectionsSnapshot = await getDocs(sectionsRef)
         
         sectionsSnapshot.forEach(doc => {

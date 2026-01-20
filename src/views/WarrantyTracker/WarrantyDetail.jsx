@@ -21,6 +21,7 @@ import {
     HiOutlineCheck
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
 import AttachmentsManager from '@/components/Attachments/AttachmentsManager'
 import CreateWarrantyModal from './components/CreateWarrantyModal'
 import { useWarrantyStore } from '@/store/warrantyStore'
@@ -757,7 +758,7 @@ const WarrantyDetail = () => {
 
                     {/* Updates Tab */}
                     {activeTab === 'updates' && (
-                        <div className="space-y-6">
+                    <div className="space-y-8">
                             {/* Add Update Form */}
                             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -797,112 +798,94 @@ const WarrantyDetail = () => {
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Press Ctrl+Enter to submit</p>
                             </div>
 
-                            {/* Updates Timeline */}
+                            {/* Updates List */}
                             <div className="space-y-6">
-                                {/* Latest Update (if exists) - Show first */}
-                                {updates.length > 0 && (
-                                    <div className="relative">
-                                        <div className="relative flex gap-4">
-                                            <div className="relative z-10 flex-shrink-0">
-                                                <Avatar
-                                                    size={40}
-                                                    className={`${bgColor(getUserDisplayName(getUserById(updates[0].createdBy)))} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
-                                                >
-                                                    {getUserInitials(getUserById(updates[0].createdBy))}
-                                                </Avatar>
-                                            </div>
-                                            <Card className="flex-1 shadow-lg border-2 border-primary">
-                                                <div className="p-5">
-                                                    <div className="flex items-center justify-between mb-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-semibold text-gray-900 dark:text-white">
-                                                                {updates[0].createdByName || getUserDisplayName(getUserById(updates[0].createdBy))}
-                                                            </span>
-                                                            <Tag className="bg-primary text-white">
-                                                                Latest Update
-                                                            </Tag>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                                            <HiOutlineClock className="text-base" />
-                                                            <span>{formatDate(updates[0].createdAt)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                                                            {updates[0].note}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </Card>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Original Request */}
-                                {warranty && (
-                                    <div className="relative">
-                                        <div className="relative flex gap-4">
-                                            <div className="relative z-10 flex-shrink-0">
-                                                <Avatar
-                                                    size={40}
-                                                    className={`${bgColor(getUserDisplayName(getUserById(warranty.createdBy)))} border-4 border-white dark:border-gray-900 shadow-md`}
-                                                >
-                                                    {getUserInitials(getUserById(warranty.createdBy))}
-                                                </Avatar>
-                                            </div>
-                                            <Card className="flex-1 shadow-md">
-                                                <div className="p-5">
-                                                    <div className="flex items-center justify-between mb-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-semibold text-gray-900 dark:text-white">
-                                                                {getUserDisplayName(getUserById(warranty.createdBy))}
-                                                            </span>
-                                                            <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                                Created Warranty
-                                                            </Tag>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                                            <HiOutlineClock className="text-base" />
-                                                            <span>{formatDate(warranty.createdAt)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                                                            {warranty.description || <span className="text-gray-400 italic">No description provided</span>}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </Card>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* All Other Updates Timeline */}
                                 {updates.length === 0 ? (
-                                    <Card>
-                                        <div className="text-center py-16">
-                                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
-                                                <HiOutlineClock className="text-3xl text-gray-400 dark:text-gray-500" />
+                                    <>
+                                        {/* Created Warranty only (no updates yet) */}
+                                        {warranty && (
+                                            <div className="relative flex gap-4">
+                                                <div className="relative z-10 flex-shrink-0">
+                                                    <Avatar
+                                                        size={40}
+                                                        className={`${bgColor(getUserDisplayName(getUserById(warranty.createdBy)))} border-4 border-white dark:border-gray-900 shadow-md`}
+                                                    >
+                                                        {getUserInitials(getUserById(warranty.createdBy))}
+                                                    </Avatar>
+                                                </div>
+                                                <Card className="flex-1 shadow-md">
+                                                    <div className="p-5">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-semibold text-gray-900 dark:text-white">
+                                                                    {getUserDisplayName(getUserById(warranty.createdBy))}
+                                                                </span>
+                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                    Created Warranty
+                                                                </Tag>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                <HiOutlineClock className="text-base" />
+                                                                <span>{formatDate(warranty.createdAt)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                                {warranty.description || <span className="text-gray-400 italic">No description provided</span>}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </Card>
                                             </div>
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No updates yet</h3>
-                                            <p className="text-gray-500 dark:text-gray-400">Add the first update to track progress on this warranty item.</p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Latest Update (always on top, highlighted) */}
+                                        <div className="relative">
+                                            <div className="relative flex gap-4">
+                                                <div className="relative z-10 flex-shrink-0">
+                                                    <Avatar
+                                                        size={40}
+                                                        className={`${bgColor(getUserDisplayName(getUserById(updates[0].createdBy)))} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
+                                                    >
+                                                        {getUserInitials(getUserById(updates[0].createdBy))}
+                                                    </Avatar>
+                                                </div>
+                                                <Card className="flex-1 shadow-lg border-2 border-primary">
+                                                    <div className="p-5">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-semibold text-gray-900 dark:text-white">
+                                                                    {updates[0].createdByName || getUserDisplayName(getUserById(updates[0].createdBy))}
+                                                                </span>
+                                                                <Tag className="bg-primary text-white">
+                                                                    Latest Update
+                                                                </Tag>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                <HiOutlineClock className="text-base" />
+                                                                <span>{formatDate(updates[0].createdAt)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                                {updates[0].note}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </Card>
+                                            </div>
                                         </div>
-                                    </Card>
-                                ) : updates.length > 1 ? (
-                                    <div className="relative">
-                                        <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 ml-12">All Updates</h3>
-                                        {updates.slice(1).map((update, index) => {
+
+                                        {/* Previous updates, newest to oldest, same visual style but without the "Latest" tag */}
+                                        {updates.slice(1).map((update) => {
                                             const updateUser = getUserById(update.createdBy)
                                             const displayName = update.createdByName || getUserDisplayName(updateUser)
                                             const updateDate = formatDate(update.createdAt)
-                                            
+
                                             return (
-                                                <div
-                                                    key={update.id}
-                                                    className="relative flex gap-4 mb-6 last:mb-0"
-                                                >
-                                                    {/* Timeline dot */}
+                                                <div key={update.id} className="relative flex gap-4">
                                                     <div className="relative z-10 flex-shrink-0">
                                                         <Avatar
                                                             size={40}
@@ -911,9 +894,7 @@ const WarrantyDetail = () => {
                                                             {update.createdByName ? acronym(update.createdByName) : getUserInitials(updateUser)}
                                                         </Avatar>
                                                     </div>
-                                                    
-                                                    {/* Update content */}
-                                                    <Card className="flex-1 shadow-md hover:shadow-lg transition-shadow">
+                                                    <Card className="flex-1 shadow-md">
                                                         <div className="p-5">
                                                             <div className="flex items-center justify-between mb-3">
                                                                 <div className="flex items-center gap-2">
@@ -936,8 +917,53 @@ const WarrantyDetail = () => {
                                                 </div>
                                             )
                                         })}
-                                    </div>
-                                ) : null}
+
+                                        {/* Original warranty request (created warranty) - always last */}
+                                        {warranty && (
+                                            <div className="relative flex gap-4">
+                                                <div className="relative z-10 flex-shrink-0">
+                                                    <Avatar
+                                                        size={40}
+                                                        className={`${bgColor(getUserDisplayName(getUserById(warranty.createdBy)))} border-4 border-white dark:border-gray-900 shadow-md`}
+                                                    >
+                                                        {getUserInitials(getUserById(warranty.createdBy))}
+                                                    </Avatar>
+                                                </div>
+                                                <Card className="flex-1 shadow-md">
+                                                    <div className="p-5">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-semibold text-gray-900 dark:text-white">
+                                                                    {getUserDisplayName(getUserById(warranty.createdBy))}
+                                                                </span>
+                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                    Created Warranty
+                                                                </Tag>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                <HiOutlineClock className="text-base" />
+                                                                <span>{formatDate(warranty.createdAt)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                                {warranty.description || <span className="text-gray-400 italic">No description provided</span>}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </Card>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Activity Timeline (unified activity stream: creation, updates, attachments, etc.) */}
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                                    Activity Timeline
+                                </h2>
+                                <ActivitiesTimeline entityType="warranty" entityId={warrantyId} />
                             </div>
                         </div>
                     )}

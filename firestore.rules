@@ -102,6 +102,20 @@ service cloud.firestore {
         allow read: if isAuthed();
         allow write: if isAuthed();
       }
+
+      // Activities subcollection (for unified activity timeline)
+      match /activities/{activityId} {
+        // Authenticated users can read and write activities for warranties
+        // UI restricts access to Tatco roles; this enforces auth at DB level
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+      }
+
+      // Sections subcollection (for notification membership lookups)
+      match /sections/{sectionId} {
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+      }
     }
     
     // Notifications collection

@@ -3,6 +3,7 @@ import React from 'react'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
+import logActivity from '@/utils/activityLogger'
 import { getCurrentUserId } from '@/utils/notificationHelper'
 import { ROLE_TO_COMPANY } from '@/constants/roles.constant'
 import { useSessionUser } from '@/store/authStore'
@@ -249,6 +250,20 @@ export const useWarrantyStore = create((set, get) => ({
                         'Warranty created successfully',
                     ),
                 )
+
+                // Log activity for warranty creation so it appears in the activity timeline
+                try {
+                    await logActivity('warranty', response.data.id, {
+                        type: 'create',
+                        message: 'created warranty',
+                        metadata: {
+                            projectName: newWarranty.projectName || '',
+                            requestedBy: newWarranty.requestedBy || '',
+                        },
+                    })
+                } catch (activityError) {
+                    console.error('Failed to log warranty creation activity', activityError)
+                }
                 
                 return { warranty: response.data }
             } else {
@@ -330,6 +345,19 @@ export const useWarrantyStore = create((set, get) => ({
                         'Warranty marked as completed',
                     ),
                 )
+
+                // Log activity for completion
+                try {
+                    await logActivity('warranty', warrantyId, {
+                        type: 'update',
+                        message: 'marked warranty as completed',
+                        metadata: {
+                            completedDate: updates.completedDate,
+                        },
+                    })
+                } catch (activityError) {
+                    console.error('Failed to log warranty completion activity', activityError)
+                }
                 
                 return { warranty: response.data }
             } else {

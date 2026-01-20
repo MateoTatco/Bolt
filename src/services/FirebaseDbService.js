@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
+import logActivity from '@/utils/activityLogger'
 
 export const FirebaseDbService = {
     // LEADS COLLECTION
@@ -2077,6 +2078,20 @@ export const FirebaseDbService = {
                     lastUpdateText: updateData.note || '',
                     updatedAt: now
                 })
+
+                // Log activity entry for this update so it appears in the unified activity timeline
+                try {
+                    await logActivity('warranty', warrantyId, {
+                        type: 'update',
+                        message: 'added an update',
+                        metadata: {
+                            note: updateData.note || '',
+                        },
+                    })
+                } catch (activityError) {
+                    // Don't fail the update flow if activity logging fails
+                    console.error('Failed to log warranty update activity', activityError)
+                }
                 
                 return { success: true, data: { id: docRef.id, ...updateData } }
             } catch (error) {

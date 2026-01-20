@@ -13,6 +13,11 @@ const formatTime = (ts) => {
     }
 }
 
+const getCollectionName = (entityType) => {
+    if (entityType === 'warranty') return 'warranties'
+    return `${entityType}s`
+}
+
 const IconForType = ({ type }) => {
     const base = 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold'
     switch (type) {
@@ -34,46 +39,49 @@ const IconForType = ({ type }) => {
 
 const ActivityItem = ({ a }) => {
     return (
-        <Timeline.Item
-            media={<IconForType type={a?.type} />}
-        >
-            <div className="bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-semibold text-gray-900 dark:text-white">{a?.actor?.name || 'Someone'}</span> {a?.message}
-                    </div>
-                    <div className="text-xs text-gray-400">{formatTime(a?.createdAt)}</div>
-                </div>
-                {a?.metadata?.changes && (
-                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                        {(() => {
-                            const entries = Object.entries(a.metadata.changes)
-                            const maxItems = 3
-                            const truncate = (v) => {
-                                const s = String(v ?? '—')
-                                return s.length > 120 ? s.slice(0, 117) + '…' : s
-                            }
-                            const visible = entries.slice(0, maxItems)
-                            return (
-                                <>
-                                    {visible.map(([field, [fromVal, toVal]]) => (
-                                        <div key={field} className="flex items-center gap-2">
-                                            <span className="font-medium text-gray-700 dark:text-gray-200">{field}:</span>
-                                            <span className="line-through text-gray-400">{truncate(fromVal)}</span>
-                                            <span className="text-gray-400">→</span>
-                                            <span className="text-gray-700 dark:text-gray-200">{truncate(toVal)}</span>
-                                        </div>
-                                    ))}
-                                    {entries.length > maxItems && (
-                                        <div className="text-gray-400">+{entries.length - maxItems} more change(s)</div>
-                                    )}
-                                </>
-                            )
-                        })()}
-                    </div>
-                )}
+        <div className="flex gap-4">
+            <div className="flex-shrink-0">
+                <IconForType type={a?.type} />
             </div>
-        </Timeline.Item>
+            <div className="flex-1">
+                <div className="bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600 dark:text-gray-300">
+                            <span className="font-semibold text-gray-900 dark:text-white">{a?.actor?.name || 'Someone'}</span> {a?.message}
+                        </div>
+                        <div className="text-xs text-gray-400">{formatTime(a?.createdAt)}</div>
+                    </div>
+                    {a?.metadata?.changes && (
+                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                            {(() => {
+                                const entries = Object.entries(a.metadata.changes)
+                                const maxItems = 3
+                                const truncate = (v) => {
+                                    const s = String(v ?? '—')
+                                    return s.length > 120 ? s.slice(0, 117) + '…' : s
+                                }
+                                const visible = entries.slice(0, maxItems)
+                                return (
+                                    <>
+                                        {visible.map(([field, [fromVal, toVal]]) => (
+                                            <div key={field} className="flex items-center gap-2">
+                                                <span className="font-medium text-gray-700 dark:text-gray-200">{field}:</span>
+                                                <span className="line-through text-gray-400">{truncate(fromVal)}</span>
+                                                <span className="text-gray-400">→</span>
+                                                <span className="text-gray-700 dark:text-gray-200">{truncate(toVal)}</span>
+                                            </div>
+                                        ))}
+                                        {entries.length > maxItems && (
+                                            <div className="text-gray-400">+{entries.length - maxItems} more change(s)</div>
+                                        )}
+                                    </>
+                                )
+                            })()}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
     )
 }
 
@@ -82,7 +90,8 @@ const ActivitiesTimeline = ({ entityType, entityId }) => {
 
     useEffect(() => {
         if (!entityId) return
-        const col = collection(db, `${entityType}s`, entityId, 'activities')
+        const collectionName = getCollectionName(entityType)
+        const col = collection(db, collectionName, entityId, 'activities')
         const q = query(col, orderBy('createdAt', 'desc'))
         const unsub = onSnapshot(q, (snap) => {
             const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -115,11 +124,11 @@ const ActivitiesTimeline = ({ entityType, entityId }) => {
             {Object.entries(grouped).map(([dateLabel, items]) => (
                 <div key={dateLabel} className="space-y-3">
                     <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">{dateLabel}</div>
-                    <Timeline className="space-y-4">
+                    <div className="space-y-4">
                         {items.map((a) => (
                             <ActivityItem key={a.id} a={a} />
                         ))}
-                    </Timeline>
+                    </div>
                 </div>
             ))}
         </div>
