@@ -255,14 +255,24 @@ const ValuationsTab = () => {
     }
 
     const getActiveValuation = () => {
+        // If a plan is selected, find active valuation for that plan
+        // Otherwise, find any active valuation (for backward compatibility)
+        if (selectedPlanId) {
+            return valuations.find(v => v.status === 'Active' && v.planId === selectedPlanId) 
+                || valuations.find(v => v.planId === selectedPlanId) || null
+        }
         return valuations.find(v => v.status === 'Active') || valuations[0] || null
     }
 
     const getPreviousValuation = () => {
         const active = getActiveValuation()
         if (!active) return null
-        const activeIndex = valuations.findIndex(v => v.id === active.id)
-        return valuations[activeIndex + 1] || null
+        // Use filtered valuations for plan-specific comparison
+        const valuationsToSearch = selectedPlanId 
+            ? valuations.filter(v => v.planId === selectedPlanId)
+            : valuations
+        const activeIndex = valuationsToSearch.findIndex(v => v.id === active.id)
+        return valuationsToSearch[activeIndex + 1] || null
     }
 
     const calculateChange = () => {
@@ -455,18 +465,24 @@ const ValuationsTab = () => {
                 // Update existing
                 const valuationRef = doc(db, 'valuations', editingValuation.id)
                 
-                // If setting this as Active, set all others to Historical
-                if (formData.profitType && !editingValuation.status) {
-                    // Check if we should set status
-                    const shouldSetActive = true // You can add logic here
-                    if (shouldSetActive) {
-                        valuationData.status = 'Active'
-                        // Set all other Active valuations to Historical
-                        const activeValuations = valuations.filter(v => v.status === 'Active' && v.id !== editingValuation.id)
-                        for (const val of activeValuations) {
-                            const valRef = doc(db, 'valuations', val.id)
-                            await updateDoc(valRef, { status: 'Historical' })
-                        }
+                // Preserve existing status unless explicitly changing
+                valuationData.status = editingValuation.status || 'Historical'
+                
+                // If this valuation is being set to Active (or is already Active), 
+                // deactivate other Active valuations for the SAME PLAN
+                // This allows multiple plans per company to each have their own active profit entry
+                if (valuationData.status === 'Active') {
+                    // Only deactivate other Active valuations for the SAME PLAN (and same company)
+                    // This ensures each plan can have its own active profit entry
+                    const activeValuations = valuations.filter(v => 
+                        v.status === 'Active' && 
+                        v.id !== editingValuation.id &&
+                        v.planId === formData.planId &&
+                        v.companyId === selectedCompanyId
+                    )
+                    for (const val of activeValuations) {
+                        const valRef = doc(db, 'valuations', val.id)
+                        await updateDoc(valRef, { status: 'Historical' })
                     }
                 }
                 
@@ -483,8 +499,14 @@ const ValuationsTab = () => {
                 valuationData.status = 'Active' // New valuations are Active by default
                 valuationData.createdAt = serverTimestamp()
                 
-                // Set all other Active valuations to Historical
-                const activeValuations = valuations.filter(v => v.status === 'Active')
+                // Set all other Active valuations for the SAME PLAN to Historical
+                // This allows multiple plans per company to each have their own active profit entry
+                // Only deactivate other Active valuations for the SAME PLAN (and same company)
+                const activeValuations = valuations.filter(v => 
+                    v.status === 'Active' &&
+                    v.planId === formData.planId &&
+                    v.companyId === selectedCompanyId
+                )
                 for (const val of activeValuations) {
                     const valRef = doc(db, 'valuations', val.id)
                     await updateDoc(valRef, { status: 'Historical' })
