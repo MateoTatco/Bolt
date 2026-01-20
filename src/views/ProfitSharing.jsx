@@ -52,9 +52,13 @@ const ProfitSharing = () => {
         const tab = params.get('tab')
         // User role can access overview, stakeholders, and valuations (read-only)
         // Supervisor can access overview, stakeholders, and valuations
+        // TEMPORARY: Remove 'valuations' from regular users - only supervisors and admins can access
+        // TODO: Restore 'valuations' for all users - this is a temporary change
         const allowedTabs = isAdmin 
             ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
-            : ['overview', 'stakeholders', 'valuations']
+            : effectiveIsSupervisor 
+                ? ['overview', 'stakeholders', 'valuations']
+                : ['overview', 'stakeholders']
         if (tab && allowedTabs.includes(tab)) {
             return tab
         }
@@ -92,9 +96,13 @@ const ProfitSharing = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search)
         const tab = params.get('tab')
+        // TEMPORARY: Remove 'valuations' from regular users - only supervisors and admins can access
+        // TODO: Restore 'valuations' for all users - this is a temporary change
         const allowedTabs = isAdmin 
             ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
-            : ['overview', 'stakeholders', 'valuations']
+            : effectiveIsSupervisor 
+                ? ['overview', 'stakeholders', 'valuations']
+                : ['overview', 'stakeholders']
         if (tab && allowedTabs.includes(tab)) {
             if (tab !== activeTab) {
                 setActiveTab(tab)
@@ -137,7 +145,9 @@ const ProfitSharing = () => {
             icon: <HiOutlineUsers />,
             adminOnly: false,
         },
-        { key: 'valuations', label: 'Company Profits', icon: <HiOutlineChartBar />, adminOnly: false },
+        // TEMPORARY: Hide Company Profits tab for regular users (only show for supervisors and admins)
+        // TODO: Restore visibility for all users - this is a temporary change
+        { key: 'valuations', label: 'Company Profits', icon: <HiOutlineChartBar />, adminOnly: false, supervisorOrAdminOnly: true },
         { key: 'milestones', label: 'Trigger Tracking', icon: <HiOutlineFlag />, adminOnly: true },
         { key: 'settings', label: 'Settings', icon: <HiOutlineCog />, adminOnly: true },
     ]
@@ -145,7 +155,12 @@ const ProfitSharing = () => {
     // Filter sidebar items based on role
     const sidebarItems = isAdmin 
         ? allSidebarItems 
-        : allSidebarItems.filter(item => !item.adminOnly)
+        : allSidebarItems.filter(item => {
+            // Regular users: exclude admin-only items AND supervisor/admin-only items
+            if (item.adminOnly) return false
+            if (item.supervisorOrAdminOnly && !effectiveIsSupervisor) return false
+            return true
+        })
 
     return (
         <div className="flex min-h-screen bg-white dark:bg-gray-900">
@@ -248,7 +263,9 @@ const ProfitSharing = () => {
                     {activeTab === 'overview' && <OverviewTab />}
                     {activeTab === 'plans' && isAdmin && <PlansTab />}
                     {activeTab === 'stakeholders' && <StakeholdersTab isAdmin={isAdmin} />}
-                    {activeTab === 'valuations' && <ValuationsTab />}
+                    {/* TEMPORARY: Only show Company Profits tab for supervisors and admins */}
+                    {/* TODO: Restore visibility for all users - this is a temporary change */}
+                    {activeTab === 'valuations' && (isAdmin || effectiveIsSupervisor) && <ValuationsTab />}
                     {activeTab === 'milestones' && isAdmin && <MilestonesTab />}
                     {activeTab === 'settings' && isAdmin && <SettingsTab />}
                 </div>
