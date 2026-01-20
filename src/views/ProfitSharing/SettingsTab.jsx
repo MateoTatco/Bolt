@@ -211,6 +211,7 @@ const SettingsTab = () => {
 
     // User Management state
     const [accessRecords, setAccessRecords] = useState([])
+    const [stakeholderUsers, setStakeholderUsers] = useState([]) // Users with stakeholder records but no access records
     const [allUsers, setAllUsers] = useState([])
     const [loadingUsers, setLoadingUsers] = useState(true)
     const [showAddUserDialog, setShowAddUserDialog] = useState(false)
@@ -462,17 +463,104 @@ const SettingsTab = () => {
     }
 
     const loadAccessRecords = async () => {
-        if (!selectedCompanyId) return
+        if (!selectedCompanyId) {
+            setAccessRecords([])
+            setStakeholderUsers([])
+            return
+        }
         
         try {
+            // Load explicit access records
             const result = await FirebaseDbService.profitSharingAccess.getByCompany(selectedCompanyId)
+            
             if (result.success) {
                 setAccessRecords(result.data)
             } else {
                 console.error('Failed to load access records:', result.error)
+                setAccessRecords([])
+            }
+            
+            // Also load users who have stakeholder records for this company but no explicit access records
+            // This ensures all users associated with the company are visible in user management
+            try {
+                const stakeholdersResult = await FirebaseDbService.stakeholders.getAll()
+                
+                if (stakeholdersResult.success) {
+                    // Get all stakeholder records for this company
+                    // IMPORTANT: Include stakeholders even if they don't have linkedUserId
+                    // Some stakeholders might be added without a linked user initially
+                    const allCompanyStakeholders = stakeholdersResult.data.filter(
+                        sh => sh.companyId === selectedCompanyId
+                    )
+                    const companyStakeholders = allCompanyStakeholders.filter(sh => sh.linkedUserId)
+                    
+                    // Get user IDs from access records
+                    const accessUserIds = new Set(result.success ? result.data.map(r => r.userId).filter(Boolean) : [])
+                    
+                    // Get unique user IDs from stakeholders who don't have access records
+                    const stakeholderUserIds = new Set()
+                    companyStakeholders.forEach(sh => {
+                        if (sh.linkedUserId && !accessUserIds.has(sh.linkedUserId)) {
+                            stakeholderUserIds.add(sh.linkedUserId)
+                        }
+                    })
+                    
+                    // Load user details for these stakeholder users
+                    if (stakeholderUserIds.size > 0) {
+                        const usersResult = await FirebaseDbService.users.getAll()
+                        
+                        if (usersResult.success) {
+                            const stakeholderUsersList = Array.from(stakeholderUserIds).map(userId => {
+                                const user = usersResult.data.find(u => u.id === userId || u.uid === userId)
+                                
+                                if (!user) return null
+                                
+                                // Create a pseudo-access record for display purposes
+                                // Format user name consistently
+                                let userName = ''
+                                if (user.firstName && user.lastName) {
+                                    userName = `${user.firstName} ${user.lastName}`
+                                } else if (user.firstName) {
+                                    userName = user.firstName
+                                } else if (user.name) {
+                                    userName = user.name
+                                } else if (user.userName) {
+                                    userName = user.userName
+                                } else {
+                                    userName = user.email || 'Unknown User'
+                                }
+                                
+                                return {
+                                    id: `stakeholder-${userId}`, // Pseudo ID
+                                    userId: userId,
+                                    companyId: selectedCompanyId,
+                                    userName: userName,
+                                    userEmail: user.email || '',
+                                    role: 'user', // Default to user role for stakeholder-only users
+                                    isStakeholderOnly: true // Flag to indicate this is from stakeholder record
+                                }
+                            }).filter(Boolean)
+                            
+                            setStakeholderUsers(stakeholderUsersList)
+                        } else {
+                            console.error('Failed to load users:', usersResult.error)
+                            setStakeholderUsers([])
+                        }
+                    } else {
+                        setStakeholderUsers([])
+                    }
+                } else {
+                    console.error('Failed to load stakeholders:', stakeholdersResult.error)
+                    setStakeholderUsers([])
+                }
+            } catch (stakeholderError) {
+                console.error('Error loading stakeholder users:', stakeholderError)
+                setStakeholderUsers([])
             }
         } catch (error) {
             console.error('Error loading access records:', error)
+            setAccessRecords([])
+            setStakeholderUsers([])
         }
     }
 
@@ -841,8 +929,9 @@ const SettingsTab = () => {
         }
     })
 
-    // Combine built-in admins with database records
-    const allAccessRecords = [...SUPER_ADMINS, ...accessRecords]
+    // Combine built-in admins with database records and stakeholder-only users
+    // Stakeholder-only users are users who have stakeholder records but no explicit access records
+    const allAccessRecords = [...SUPER_ADMINS, ...accessRecords, ...stakeholderUsers]
 
     // User Profit Sharing Overview functions
     const loadUserProfitSharingOverview = async () => {
@@ -1053,6 +1142,11 @@ const SettingsTab = () => {
                                     Built-in
                                 </Tag>
                             )}
+                            {row.original.isStakeholderOnly && (
+                                <Tag className="ml-2 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs">
+                                    Stakeholder Only
+                                </Tag>
+                            )}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">{row.original.userEmail}</div>
                     </div>
@@ -1085,6 +1179,31 @@ const SettingsTab = () => {
                 if (row.original.isBuiltIn) {
                     return (
                         <span className="text-xs text-gray-400">Cannot modify</span>
+                    )
+                }
+                // Stakeholder-only users (have stakeholder records but no access records) need to be added first
+                if (row.original.isStakeholderOnly) {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="plain"
+                                icon={<HiOutlinePlus />}
+                                onClick={() => {
+                                    // Pre-populate form with user info and add them
+                                    setUserFormData({
+                                        userId: row.original.userId,
+                                        role: 'user',
+                                        companyIds: [selectedCompanyId]
+                                    })
+                                    setEditingAccess(null)
+                                    setShowAddUserDialog(true)
+                                }}
+                            >
+                                Add Access
+                            </Button>
+                            <span className="text-xs text-gray-400">Stakeholder only</span>
+                        </div>
                     )
                 }
                 return (
@@ -1295,6 +1414,14 @@ const SettingsTab = () => {
                             columns={accessColumns}
                             data={allAccessRecords}
                             loading={false}
+                            // IMPORTANT: Show all users on a single page in User Management
+                            // so newly added users are always visible and not hidden
+                            // on a second page due to default pageSize=10 in DataTable.
+                            pagingData={{
+                                total: allAccessRecords.length,
+                                pageIndex: 1,
+                                pageSize: allAccessRecords.length || 10,
+                            }}
                         />
                     </div>
                 )}

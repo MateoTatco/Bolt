@@ -44,7 +44,29 @@ export const useProfitSharingAccess = () => {
                 return
             }
 
-            // NEW: Check user role from user profile first
+            // Check profitSharingAccess collection first to get accurate role (admin/supervisor/user)
+            // This ensures supervisors are detected even if they have role-based profile access
+            const result = await FirebaseDbService.profitSharingAccess.getByUserId(userId)
+            
+            if (result.success && result.data.length > 0) {
+                setAccessRecords(result.data)
+                // Get highest role (admin > supervisor > user)
+                const hasAdminAccess = result.data.some(r => r.role === 'admin')
+                const hasSupervisorAccess = result.data.some(r => r.role === 'supervisor')
+                if (hasAdminAccess) {
+                    setUserRole('admin')
+                } else if (hasSupervisorAccess) {
+                    setUserRole('supervisor')
+                } else {
+                    setUserRole('user')
+                }
+                setHasAccess(true)
+                setLoading(false)
+                return
+            }
+
+            // NEW: Check user role from user profile as fallback
+            // This handles users who have role-based access but no explicit profitSharingAccess record
             if (userRoleFromProfile) {
                 // Handle both single role (string) and multiple roles (array)
                 const roles = Array.isArray(userRoleFromProfile) ? userRoleFromProfile : [userRoleFromProfile]
@@ -61,35 +83,17 @@ export const useProfitSharingAccess = () => {
                 const hasProfitSharingAccess = roles.some(role => hasModuleAccess(role, MODULES.PROFIT_SHARING))
                 if (hasProfitSharingAccess) {
                     setHasAccess(true)
-                    // For role-based users, check if they have admin role in profit sharing
-                    // For now, assign 'user' role - can be enhanced later
+                    // For role-based users without explicit access records, default to 'user' role
                     setUserRole('user')
                     setLoading(false)
                     return
                 }
             }
 
-            // LEGACY: Fall back to profitSharingAccess collection for backward compatibility
-            const result = await FirebaseDbService.profitSharingAccess.getByUserId(userId)
-            
-            if (result.success && result.data.length > 0) {
-                setAccessRecords(result.data)
-                // Get highest role (admin > supervisor > user)
-                const hasAdminAccess = result.data.some(r => r.role === 'admin')
-                const hasSupervisorAccess = result.data.some(r => r.role === 'supervisor')
-                if (hasAdminAccess) {
-                    setUserRole('admin')
-                } else if (hasSupervisorAccess) {
-                    setUserRole('supervisor')
-                } else {
-                    setUserRole('user')
-                }
-                setHasAccess(true)
-            } else {
-                setAccessRecords([])
-                setUserRole(null)
-                setHasAccess(false)
-            }
+            // No access found
+            setAccessRecords([])
+            setUserRole(null)
+            setHasAccess(false)
         } catch (error) {
             console.error('Error loading profit sharing access:', error)
             setHasAccess(false)

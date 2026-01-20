@@ -47,22 +47,13 @@ const ProfitSharing = () => {
     const canAccess = isSuperAdmin || isAdminFromRole || hasAccess || hasRoleBasedAccess
 
     // Initialize tab from URL params or default to 'overview'
+    // Note: This runs on initial render, so effectiveIsSupervisor might not be set yet
+    // The useEffect below will handle tab validation once roles are loaded
     const getInitialTab = () => {
         const params = new URLSearchParams(location.search)
         const tab = params.get('tab')
-        // User role can access overview, stakeholders, and valuations (read-only)
-        // Supervisor can access overview, stakeholders, and valuations
-        // TEMPORARY: Remove 'valuations' from regular users - only supervisors and admins can access
-        // TODO: Restore 'valuations' for all users - this is a temporary change
-        const allowedTabs = isAdmin 
-            ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
-            : effectiveIsSupervisor 
-                ? ['overview', 'stakeholders', 'valuations']
-                : ['overview', 'stakeholders']
-        if (tab && allowedTabs.includes(tab)) {
-            return tab
-        }
-        return 'overview'
+        // Default to overview - validation will happen in useEffect once roles are loaded
+        return tab || 'overview'
     }
 
     const [activeTab, setActiveTab] = useState(getInitialTab)
@@ -93,7 +84,10 @@ const ProfitSharing = () => {
     }, [canAccess, loadingAccess, navigate])
 
     // Handle tab from URL query params (only update if different)
+    // Wait for access loading to complete before validating tabs
     useEffect(() => {
+        if (loadingAccess) return // Don't validate tabs while still loading access
+        
         const params = new URLSearchParams(location.search)
         const tab = params.get('tab')
         // TEMPORARY: Remove 'valuations' from regular users - only supervisors and admins can access
@@ -110,11 +104,27 @@ const ProfitSharing = () => {
         } else if (!tab && activeTab !== 'overview') {
             // If no tab in URL, default to overview
             setActiveTab('overview')
+        } else if (tab && !allowedTabs.includes(tab)) {
+            // If tab is not allowed, redirect to overview
+            navigate('/profit-sharing?tab=overview', { replace: true })
         }
-    }, [location.search, activeTab, isAdmin])
+    }, [location.search, activeTab, isAdmin, effectiveIsSupervisor, navigate, loadingAccess])
 
     // Update URL when tab changes
     const handleTabChange = (tab) => {
+        // Check if tab is allowed for current user role
+        const allowedTabs = isAdmin 
+            ? ['overview', 'plans', 'stakeholders', 'valuations', 'milestones', 'settings']
+            : effectiveIsSupervisor 
+                ? ['overview', 'stakeholders', 'valuations']
+                : ['overview', 'stakeholders']
+        
+        if (!allowedTabs.includes(tab)) {
+            // Tab not allowed, redirect to overview
+            navigate('/profit-sharing?tab=overview', { replace: true })
+            return
+        }
+        
         if (tab !== activeTab) {
             setActiveTab(tab)
             navigate(`/profit-sharing?tab=${tab}`, { replace: true })

@@ -921,19 +921,26 @@ const OverviewTab = () => {
                 )
             })()}
 
-            {loadingMyData && (
+            {(loadingMyData || loadingPlans) && (
                 <Card className="p-8">
                     <div className="text-center text-gray-500 dark:text-gray-400">Loading your awards...</div>
                 </Card>
             )}
 
-            {!loadingMyData && allMyAwards.length === 0 && plans.length === 0 && (
-                <Card className="p-8">
-                    <div className="text-center text-gray-500 dark:text-gray-400">
-                        You don't have any awards or plan agreements yet.
-                    </div>
-                </Card>
-            )}
+            {!loadingMyData && !loadingPlans && allMyAwards.length === 0 && (() => {
+                // Check if user has any plans where they actually have awards
+                const userPlanIds = new Set(allMyAwards.map(award => award.planId).filter(Boolean))
+                const plansWithAwards = plans.filter(plan => userPlanIds.has(plan.id))
+                
+                // Show message only if no awards AND no plans with awards
+                return plansWithAwards.length === 0 && (
+                    <Card className="p-8">
+                        <div className="text-center text-gray-500 dark:text-gray-400">
+                            You don't have any awards or plan agreements yet.
+                        </div>
+                    </Card>
+                )
+            })()}
 
             {/* Plan Document Modal */}
             <PdfViewerModal
