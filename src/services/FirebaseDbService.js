@@ -2092,6 +2092,24 @@ export const FirebaseDbService = {
                     // Don't fail the update flow if activity logging fails
                     console.error('Failed to log warranty update activity', activityError)
                 }
+
+                // Notify users about warranty update
+                try {
+                    const { notifyWarrantyUpdated, getUsersToNotify } = await import('@/utils/notificationHelper')
+                    const warrantyDoc = await getDoc(doc(db, 'warranties', warrantyId))
+                    if (warrantyDoc.exists()) {
+                        const warrantyData = warrantyDoc.data()
+                        const warrantyName = warrantyData?.projectName || warrantyData?.description || 'Warranty'
+                        await notifyWarrantyUpdated({
+                            warrantyId,
+                            warrantyName,
+                            updatedBy: updateData.createdBy || null
+                        })
+                    }
+                } catch (notifyError) {
+                    console.error('Failed to notify warranty update', notifyError)
+                    // Don't fail the update if notification fails
+                }
                 
                 return { success: true, data: { id: docRef.id, ...updateData } }
             } catch (error) {

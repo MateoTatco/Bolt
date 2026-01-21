@@ -1047,6 +1047,83 @@ const Profile = () => {
                                     </div>
                                     )}
 
+                                    {/* Warranty Notifications - Only show for Tatco roles */}
+                                    {(isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_CREATED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_UPDATED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_STATUS_CHANGED) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_REMINDER) ||
+                                      isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_ATTACHMENT)) && (
+                                    <div className="mb-6 md:mb-8">
+                                        <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 text-gray-900 dark:text-gray-100">Warranty Notifications</h2>
+                                        <div className="space-y-3 md:space-y-4">
+                                            {isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_CREATED) && (
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Warranty Created</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a new warranty is created</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.WARRANTY_CREATED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.WARRANTY_CREATED, checked)}
+                                                />
+                                            </div>
+                                            )}
+
+                                            {isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_UPDATED) && (
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Warranty Updated</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a warranty details change</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.WARRANTY_UPDATED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.WARRANTY_UPDATED, checked)}
+                                                />
+                                            </div>
+                                            )}
+
+                                            {isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_STATUS_CHANGED) && (
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Warranty Status Changed</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when a warranty opens, completes, or reopens</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.WARRANTY_STATUS_CHANGED] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.WARRANTY_STATUS_CHANGED, checked)}
+                                                />
+                                            </div>
+                                            )}
+
+                                            {isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_REMINDER) && (
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Warranty Reminder</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get reminder notifications based on configured frequency</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.WARRANTY_REMINDER] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.WARRANTY_REMINDER, checked)}
+                                                />
+                                            </div>
+                                            )}
+
+                                            {isNotificationTypeVisible(NOTIFICATION_TYPES.WARRANTY_ATTACHMENT) && (
+                                            <div className="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100">Warranty Attachment</p>
+                                                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Get notified when attachments are added to a warranty</p>
+                                                </div>
+                                                <Switcher
+                                                    checked={notificationPreferences[NOTIFICATION_TYPES.WARRANTY_ATTACHMENT] !== false}
+                                                    onChange={(checked) => handleNotificationPreferenceChange(NOTIFICATION_TYPES.WARRANTY_ATTACHMENT, checked)}
+                                                />
+                                            </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    )}
+
                                     {/* System Notifications - Show for all roles */}
                                     {isNotificationTypeVisible(NOTIFICATION_TYPES.SYSTEM) && (
                                     <div className="mb-6 md:mb-8">

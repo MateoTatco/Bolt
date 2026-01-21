@@ -6,7 +6,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, o
 import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import logActivity from '@/utils/activityLogger'
-import { notifyAttachmentAdded, notifyAttachmentDeleted, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
+import { notifyAttachmentAdded, notifyAttachmentDeleted, notifyWarrantyAttachment, getCurrentUserId, getUsersToNotify } from '@/utils/notificationHelper'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 
@@ -185,18 +185,28 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                         const entityData = entityDoc.data()
                         const entityName = entityData?.companyName || entityData?.clientName || entityData?.projectName || entityData?.ProjectName || `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}`
                         
-                        // Get users to notify
-                        const userIds = await getUsersToNotify(entityType, entityId)
-                        
-                        if (userIds.length > 0) {
-                            await notifyAttachmentAdded({
-                                userIds,
-                                entityType,
-                                entityId,
-                                entityName,
+                        // Use warranty-specific notification for warranties, generic for others
+                        if (entityType === 'warranty') {
+                            await notifyWarrantyAttachment({
+                                warrantyId: entityId,
+                                warrantyName: entityName,
                                 fileName: file.name,
                                 uploadedBy: currentUserId
                             })
+                        } else {
+                            // Get users to notify
+                            const userIds = await getUsersToNotify(entityType, entityId)
+                            
+                            if (userIds.length > 0) {
+                                await notifyAttachmentAdded({
+                                    userIds,
+                                    entityType,
+                                    entityId,
+                                    entityName,
+                                    fileName: file.name,
+                                    uploadedBy: currentUserId
+                                })
+                            }
                         }
                     } catch (notifyError) {
                         console.error('Error notifying about attachment:', notifyError)

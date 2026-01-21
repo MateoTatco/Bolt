@@ -20,6 +20,13 @@ export const NOTIFICATION_TYPES = {
     // Activity notifications
     ACTIVITY_ADDED: 'activity_added',
     
+    // Warranty notifications (Tatco users)
+    WARRANTY_CREATED: 'warranty_created',
+    WARRANTY_UPDATED: 'warranty_updated',
+    WARRANTY_STATUS_CHANGED: 'warranty_status_changed',
+    WARRANTY_REMINDER: 'warranty_reminder',
+    WARRANTY_ATTACHMENT: 'warranty_attachment',
+
     // System notifications
     SYSTEM: 'system',
 

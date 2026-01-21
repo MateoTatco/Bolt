@@ -463,12 +463,37 @@ export async function getUsersToNotify(entityType, entityId) {
         const entityDoc = await getDoc(doc(db, collectionName, entityId))
         if (entityDoc.exists()) {
             const entityData = entityDoc.data()
+
+            // Generic members array (used by projects/leads/clients/etc.)
             if (entityData.members && Array.isArray(entityData.members)) {
                 entityData.members.forEach(memberId => {
                     if (memberId) {
                         memberIds.add(memberId)
                     }
                 })
+            }
+
+            // Warranty-specific membership: assignedTo, cc, createdBy
+            if (entityType === 'warranty') {
+                if (Array.isArray(entityData.assignedTo)) {
+                    entityData.assignedTo.forEach(memberId => {
+                        if (memberId) {
+                            memberIds.add(memberId)
+                        }
+                    })
+                }
+
+                if (Array.isArray(entityData.cc)) {
+                    entityData.cc.forEach(memberId => {
+                        if (memberId) {
+                            memberIds.add(memberId)
+                        }
+                    })
+                }
+
+                if (entityData.createdBy) {
+                    memberIds.add(entityData.createdBy)
+                }
             }
         }
         
@@ -656,3 +681,177 @@ export async function notifyActivityAdded({
     }
 }
 
+/**
+ * Create notification for warranty creation
+ */
+export async function notifyWarrantyCreated({
+    warrantyId,
+    warrantyName,
+    createdBy,
+    userIds = []
+}) {
+    // If userIds not provided, get them from the warranty
+    if (userIds.length === 0) {
+        userIds = await getUsersToNotify('warranty', warrantyId)
+    }
+
+    if (userIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No users to notify' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.WARRANTY_CREATED,
+                title: 'New Warranty Created',
+                message: `Warranty "${warrantyName}" has been created`,
+                entityType: 'warranty',
+                entityId: warrantyId,
+                relatedUserId: createdBy,
+                metadata: {
+                    warrantyName
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for warranty update
+ */
+export async function notifyWarrantyUpdated({
+    warrantyId,
+    warrantyName,
+    updatedBy,
+    userIds = []
+}) {
+    // If userIds not provided, get them from the warranty
+    if (userIds.length === 0) {
+        userIds = await getUsersToNotify('warranty', warrantyId)
+    }
+
+    if (userIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No users to notify' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.WARRANTY_UPDATED,
+                title: 'Warranty Updated',
+                message: `Warranty "${warrantyName}" has been updated`,
+                entityType: 'warranty',
+                entityId: warrantyId,
+                relatedUserId: updatedBy,
+                metadata: {
+                    warrantyName
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for warranty status change
+ */
+export async function notifyWarrantyStatusChanged({
+    warrantyId,
+    warrantyName,
+    oldStatus,
+    newStatus,
+    changedBy,
+    userIds = []
+}) {
+    // If userIds not provided, get them from the warranty
+    if (userIds.length === 0) {
+        userIds = await getUsersToNotify('warranty', warrantyId)
+    }
+
+    if (userIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No users to notify' }
+    }
+
+    const statusLabels = {
+        'open': 'Open',
+        'completed': 'Completed'
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.WARRANTY_STATUS_CHANGED,
+                title: 'Warranty Status Changed',
+                message: `Warranty "${warrantyName}" status changed from ${statusLabels[oldStatus] || oldStatus} to ${statusLabels[newStatus] || newStatus}`,
+                entityType: 'warranty',
+                entityId: warrantyId,
+                relatedUserId: changedBy,
+                metadata: {
+                    warrantyName,
+                    oldStatus,
+                    newStatus
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
+ * Create notification for warranty attachment
+ */
+export async function notifyWarrantyAttachment({
+    warrantyId,
+    warrantyName,
+    fileName,
+    uploadedBy,
+    userIds = []
+}) {
+    // If userIds not provided, get them from the warranty
+    if (userIds.length === 0) {
+        userIds = await getUsersToNotify('warranty', warrantyId)
+    }
+
+    if (userIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No users to notify' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.WARRANTY_ATTACHMENT,
+                title: 'Warranty Attachment Added',
+                message: `New file "${fileName}" added to warranty "${warrantyName}"`,
+                entityType: 'warranty',
+                entityId: warrantyId,
+                relatedUserId: uploadedBy,
+                metadata: {
+                    warrantyName,
+                    fileName
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}

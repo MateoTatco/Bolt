@@ -4,7 +4,7 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import logActivity from '@/utils/activityLogger'
-import { getCurrentUserId } from '@/utils/notificationHelper'
+import { getCurrentUserId, notifyWarrantyCreated, notifyWarrantyUpdated, notifyWarrantyStatusChanged } from '@/utils/notificationHelper'
 import { ROLE_TO_COMPANY } from '@/constants/roles.constant'
 import { useSessionUser } from '@/store/authStore'
 import { Timestamp } from 'firebase/firestore'
@@ -264,6 +264,33 @@ export const useWarrantyStore = create((set, get) => ({
                 } catch (activityError) {
                     console.error('Failed to log warranty creation activity', activityError)
                 }
+
+                // Notify users about warranty creation
+                try {
+                    const createdWarranty = response.data
+                    const warrantyName = createdWarranty?.projectName || createdWarranty?.description || newWarranty.projectName || newWarranty.description || 'New Warranty'
+                    // Get user IDs from the warranty data we just created (assignedTo, cc, createdBy)
+                    const userIds = new Set()
+                    if (Array.isArray(newWarranty.assignedTo)) {
+                        newWarranty.assignedTo.forEach(id => userIds.add(id))
+                    }
+                    if (Array.isArray(newWarranty.cc)) {
+                        newWarranty.cc.forEach(id => userIds.add(id))
+                    }
+                    if (currentUserId) {
+                        userIds.add(currentUserId)
+                    }
+                    
+                    await notifyWarrantyCreated({
+                        warrantyId: createdWarranty.id,
+                        warrantyName,
+                        createdBy: currentUserId,
+                        userIds: Array.from(userIds)
+                    })
+                } catch (notifyError) {
+                    console.error('Failed to notify warranty creation', notifyError)
+                    // Don't fail the warranty creation if notification fails
+                }
                 
                 return { warranty: response.data }
             } else {
@@ -286,11 +313,16 @@ export const useWarrantyStore = create((set, get) => ({
     updateWarranty: async (warrantyId, updates) => {
         set({ loading: true, error: null })
         try {
+            // Get current warranty to check for status changes
+            const currentWarranty = get().warranties.find(w => w.id === warrantyId)
+            const oldStatus = currentWarranty?.status
+            
             const response = await FirebaseDbService.warranties.update(warrantyId, updates)
             if (response.success) {
+                const updatedWarranty = { ...currentWarranty, ...updates }
                 set((state) => ({
                     warranties: state.warranties.map(w => 
-                        w.id === warrantyId ? { ...w, ...updates } : w
+                        w.id === warrantyId ? updatedWarranty : w
                     ),
                     loading: false
                 }))
@@ -302,6 +334,34 @@ export const useWarrantyStore = create((set, get) => ({
                         'Warranty updated successfully',
                     ),
                 )
+
+                // Notify users about warranty update or status change
+                try {
+                    const warranty = updatedWarranty || response.data
+                    const warrantyName = warranty?.projectName || warranty?.description || 'Warranty'
+                    const newStatus = updates.status
+                    
+                    // If status changed, notify with status change notification
+                    if (newStatus && oldStatus && newStatus !== oldStatus) {
+                        await notifyWarrantyStatusChanged({
+                            warrantyId,
+                            warrantyName,
+                            oldStatus,
+                            newStatus,
+                            changedBy: getCurrentUserId()
+                        })
+                    } else {
+                        // Otherwise, notify with general update notification
+                        await notifyWarrantyUpdated({
+                            warrantyId,
+                            warrantyName,
+                            updatedBy: getCurrentUserId()
+                        })
+                    }
+                } catch (notifyError) {
+                    console.error('Failed to notify warranty update', notifyError)
+                    // Don't fail the warranty update if notification fails
+                }
                 
                 return { warranty: response.data }
             } else {
@@ -357,6 +417,22 @@ export const useWarrantyStore = create((set, get) => ({
                     })
                 } catch (activityError) {
                     console.error('Failed to log warranty completion activity', activityError)
+                }
+
+                // Notify users about status change
+                try {
+                    const warranty = get().warranties.find(w => w.id === warrantyId) || response.data
+                    const warrantyName = warranty?.projectName || warranty?.description || 'Warranty'
+                    await notifyWarrantyStatusChanged({
+                        warrantyId,
+                        warrantyName,
+                        oldStatus: 'open',
+                        newStatus: 'completed',
+                        changedBy: getCurrentUserId()
+                    })
+                } catch (notifyError) {
+                    console.error('Failed to notify warranty status change', notifyError)
+                    // Don't fail the warranty completion if notification fails
                 }
                 
                 return { warranty: response.data }
