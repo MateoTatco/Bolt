@@ -56,6 +56,40 @@ export async function getUserIdsByEmails(emails) {
 }
 
 /**
+ * Get user emails from user IDs
+ * @param {string[]} userIds - Array of user IDs
+ * @returns {Promise<string[]>} Array of email addresses (filtered to remove null/undefined)
+ */
+export async function getUserEmailsByUserIds(userIds) {
+    try {
+        if (!userIds || userIds.length === 0) return []
+        
+        const { FirebaseDbService } = await import('@/services/FirebaseDbService')
+        const emails = []
+        
+        // Get user data for each user ID
+        for (const userId of userIds) {
+            if (!userId) continue
+            try {
+                const userResult = await FirebaseDbService.users.getById(userId)
+                if (userResult.success && userResult.data && userResult.data.email) {
+                    emails.push(userResult.data.email)
+                }
+            } catch (error) {
+                console.error(`Error getting email for user ${userId}:`, error)
+                // Continue with other users
+            }
+        }
+        
+        // Remove duplicates and filter out invalid emails
+        return [...new Set(emails)].filter(email => email && email.includes('@'))
+    } catch (error) {
+        console.error('Error getting user emails:', error)
+        return []
+    }
+}
+
+/**
  * Get all users from Firestore
  * @returns {Promise<Array>} Array of all users with their data
  */

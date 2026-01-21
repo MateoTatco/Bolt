@@ -5,6 +5,7 @@ import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import logActivity from '@/utils/activityLogger'
 import { getCurrentUserId, notifyWarrantyCreated, notifyWarrantyUpdated, notifyWarrantyStatusChanged } from '@/utils/notificationHelper'
+import { getUserEmailsByUserIds } from '@/utils/userHelper'
 import { ROLE_TO_COMPANY } from '@/constants/roles.constant'
 import { useSessionUser } from '@/store/authStore'
 import { Timestamp } from 'firebase/firestore'
@@ -265,7 +266,7 @@ export const useWarrantyStore = create((set, get) => ({
                     console.error('Failed to log warranty creation activity', activityError)
                 }
 
-                // Notify users about warranty creation
+                // Notify users about warranty creation (in-app notifications)
                 try {
                     const createdWarranty = response.data
                     const warrantyName = createdWarranty?.projectName || createdWarranty?.description || newWarranty.projectName || newWarranty.description || 'New Warranty'
@@ -290,6 +291,54 @@ export const useWarrantyStore = create((set, get) => ({
                 } catch (notifyError) {
                     console.error('Failed to notify warranty creation', notifyError)
                     // Don't fail the warranty creation if notification fails
+                }
+
+                // Send email notifications
+                try {
+                    const createdWarranty = response.data
+                    const warrantyName = createdWarranty?.projectName || createdWarranty?.description || newWarranty.projectName || newWarranty.description || 'New Warranty'
+                    
+                    // Get user IDs for email recipients (assignedTo, cc, and requestedByEmail if provided)
+                    const emailUserIds = new Set()
+                    if (Array.isArray(newWarranty.assignedTo)) {
+                        newWarranty.assignedTo.forEach(id => emailUserIds.add(id))
+                    }
+                    if (Array.isArray(newWarranty.cc)) {
+                        newWarranty.cc.forEach(id => emailUserIds.add(id))
+                    }
+                    
+                    // Get emails from user IDs
+                    const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
+                    
+                    // Add requestedByEmail if provided (external email)
+                    if (newWarranty.requestedByEmail && newWarranty.requestedByEmail.includes('@')) {
+                        recipientEmails.push(newWarranty.requestedByEmail)
+                    }
+                    
+                    // Remove duplicates
+                    const uniqueEmails = [...new Set(recipientEmails)]
+                    
+                    if (uniqueEmails.length > 0) {
+                        // Call Cloud Function to send emails
+                        const { getFunctions, httpsCallable } = await import('firebase/functions')
+                        const functions = getFunctions()
+                        const sendEmailFunction = httpsCallable(functions, 'sendWarrantyNotificationEmail')
+                        
+                        await sendEmailFunction({
+                            warrantyId: createdWarranty.id,
+                            warrantyName,
+                            projectName: newWarranty.projectName || '',
+                            description: newWarranty.description || '',
+                            requestedBy: newWarranty.requestedBy || '',
+                            requestedByEmail: newWarranty.requestedByEmail || null,
+                            recipientEmails: uniqueEmails,
+                            notificationType: 'created',
+                            warrantyUrl: `https://www.mybolt.pro/warranty-tracker/${createdWarranty.id}`
+                        })
+                    }
+                } catch (emailError) {
+                    console.error('Failed to send warranty creation emails', emailError)
+                    // Don't fail the warranty creation if email fails
                 }
                 
                 return { warranty: response.data }
@@ -335,7 +384,7 @@ export const useWarrantyStore = create((set, get) => ({
                     ),
                 )
 
-                // Notify users about warranty update or status change
+                // Notify users about warranty update or status change (in-app notifications)
                 try {
                     const warranty = updatedWarranty || response.data
                     const warrantyName = warranty?.projectName || warranty?.description || 'Warranty'
@@ -361,6 +410,59 @@ export const useWarrantyStore = create((set, get) => ({
                 } catch (notifyError) {
                     console.error('Failed to notify warranty update', notifyError)
                     // Don't fail the warranty update if notification fails
+                }
+
+                // Send email notifications
+                try {
+                    const warranty = updatedWarranty || response.data
+                    const warrantyName = warranty?.projectName || warranty?.description || 'Warranty'
+                    const newStatus = updates.status
+                    
+                    // Get user IDs for email recipients
+                    const emailUserIds = new Set()
+                    if (Array.isArray(warranty?.assignedTo)) {
+                        warranty.assignedTo.forEach(id => emailUserIds.add(id))
+                    }
+                    if (Array.isArray(warranty?.cc)) {
+                        warranty.cc.forEach(id => emailUserIds.add(id))
+                    }
+                    
+                    // Get emails from user IDs
+                    const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
+                    
+                    // Add requestedByEmail if provided
+                    if (warranty?.requestedByEmail && warranty.requestedByEmail.includes('@')) {
+                        recipientEmails.push(warranty.requestedByEmail)
+                    }
+                    
+                    // Remove duplicates
+                    const uniqueEmails = [...new Set(recipientEmails)]
+                    
+                    if (uniqueEmails.length > 0) {
+                        // Call Cloud Function to send emails
+                        const { getFunctions, httpsCallable } = await import('firebase/functions')
+                        const functions = getFunctions()
+                        const sendEmailFunction = httpsCallable(functions, 'sendWarrantyNotificationEmail')
+                        
+                        const notificationType = (newStatus && oldStatus && newStatus !== oldStatus) ? 'status_changed' : 'updated'
+                        
+                        await sendEmailFunction({
+                            warrantyId,
+                            warrantyName,
+                            projectName: warranty?.projectName || '',
+                            description: warranty?.description || '',
+                            requestedBy: warranty?.requestedBy || '',
+                            requestedByEmail: warranty?.requestedByEmail || null,
+                            recipientEmails: uniqueEmails,
+                            notificationType,
+                            oldStatus: oldStatus || null,
+                            newStatus: newStatus || null,
+                            warrantyUrl: `https://www.mybolt.pro/warranty-tracker/${warrantyId}`
+                        })
+                    }
+                } catch (emailError) {
+                    console.error('Failed to send warranty update emails', emailError)
+                    // Don't fail the warranty update if email fails
                 }
                 
                 return { warranty: response.data }

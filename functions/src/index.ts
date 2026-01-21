@@ -6435,6 +6435,285 @@ If you have any questions, please contact your administrator.
     }
 });
 
+// Send Warranty Notification Email Function
+// Sends email notifications when warranties are created or updated
+export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAIL_USER', 'EMAIL_PASSWORD'] }).https.onCall(async (data, context) => {
+    // Verify the caller is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to send warranty emails');
+    }
+
+    const { 
+        warrantyId,
+        warrantyName,
+        projectName,
+        description,
+        requestedBy,
+        recipientEmails,
+        notificationType, // 'created', 'updated', 'status_changed', 'reminder'
+        oldStatus,
+        newStatus,
+        warrantyUrl
+    } = data;
+
+    if (!recipientEmails || !Array.isArray(recipientEmails) || recipientEmails.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Recipient emails are required');
+    }
+
+    if (!notificationType) {
+        throw new functions.https.HttpsError('invalid-argument', 'Notification type is required');
+    }
+
+    try {
+        // Get email credentials
+        const emailUser = process.env.EMAIL_USER;
+        const emailPassword = process.env.EMAIL_PASSWORD;
+
+        if (!emailUser || !emailPassword) {
+            throw new functions.https.HttpsError('failed-precondition', 'Email service not configured. Please set EMAIL_USER and EMAIL_PASSWORD secrets.');
+        }
+
+        // Create transporter
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: emailUser,
+                pass: emailPassword,
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        });
+
+        // Determine email subject and content based on notification type
+        let subject = '';
+        let title = '';
+        let message = '';
+        let actionText = '';
+
+        switch (notificationType) {
+            case 'created':
+                subject = `New Warranty Created: ${warrantyName || projectName || 'Warranty'}`;
+                title = 'New Warranty Created';
+                message = `A new warranty has been created${projectName ? ` for project "${projectName}"` : ''}.`;
+                actionText = 'View Warranty';
+                break;
+            case 'updated':
+                subject = `Warranty Updated: ${warrantyName || projectName || 'Warranty'}`;
+                title = 'Warranty Updated';
+                message = `A warranty${projectName ? ` for project "${projectName}"` : ''} has been updated.`;
+                actionText = 'View Warranty';
+                break;
+            case 'status_changed':
+                const statusLabels: { [key: string]: string } = {
+                    'open': 'Open',
+                    'completed': 'Completed'
+                };
+                subject = `Warranty Status Changed: ${warrantyName || projectName || 'Warranty'}`;
+                title = 'Warranty Status Changed';
+                message = `Warranty${projectName ? ` for project "${projectName}"` : ''} status has changed from ${statusLabels[oldStatus] || oldStatus} to ${statusLabels[newStatus] || newStatus}.`;
+                actionText = 'View Warranty';
+                break;
+            case 'reminder':
+                subject = `Warranty Reminder: ${warrantyName || projectName || 'Warranty'}`;
+                title = 'Warranty Reminder';
+                message = `This is a reminder about an open warranty${projectName ? ` for project "${projectName}"` : ''}.`;
+                actionText = 'View Warranty';
+                break;
+            default:
+                subject = `Warranty Notification: ${warrantyName || projectName || 'Warranty'}`;
+                title = 'Warranty Notification';
+                message = `You have a warranty notification${projectName ? ` for project "${projectName}"` : ''}.`;
+                actionText = 'View Warranty';
+        }
+
+        // Build warranty details
+        const warrantyDetails = [];
+        if (projectName) warrantyDetails.push({ label: 'Project', value: projectName });
+        if (requestedBy) warrantyDetails.push({ label: 'Requested By', value: requestedBy });
+        if (description) warrantyDetails.push({ label: 'Description', value: description });
+
+        // Create warranty URL
+        const viewUrl = warrantyUrl || `https://www.mybolt.pro/warranty-tracker/${warrantyId}`;
+
+        // Create email HTML template
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .email-container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #4F46E5;
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 30px;
+        }
+        .message {
+            font-size: 16px;
+            color: #374151;
+            margin-bottom: 25px;
+        }
+        .details {
+            background-color: #f9fafb;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        .detail-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            font-weight: 600;
+            color: #6b7280;
+            width: 120px;
+            flex-shrink: 0;
+        }
+        .detail-value {
+            color: #111827;
+            flex: 1;
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background-color: #4F46E5;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .footer {
+            background-color: #f9fafb;
+            padding: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+            border-top: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>${title}</h1>
+        </div>
+        <div class="content">
+            <p class="message">${message}</p>
+            
+            ${warrantyDetails.length > 0 ? `
+            <div class="details">
+                ${warrantyDetails.map(detail => `
+                    <div class="detail-row">
+                        <div class="detail-label">${detail.label}:</div>
+                        <div class="detail-value">${detail.value}</div>
+                    </div>
+                `).join('')}
+            </div>
+            ` : ''}
+            
+            <div class="button-container">
+                <a href="${viewUrl}" class="button">${actionText}</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>© ${new Date().getFullYear()} Bolt. All rights reserved.</p>
+            <p>This is an automated notification from the Bolt Warranty Tracker.</p>
+        </div>
+    </div>
+</body>
+</html>
+        `;
+
+        // Plain text version
+        const emailText = `
+${title}
+
+${message}
+
+${warrantyDetails.length > 0 ? warrantyDetails.map(d => `${d.label}: ${d.value}`).join('\n') + '\n' : ''}
+View Warranty: ${viewUrl}
+
+© ${new Date().getFullYear()} Bolt. All rights reserved.
+This is an automated notification from the Bolt Warranty Tracker.
+        `;
+
+        // Send emails to all recipients
+        const emailResults = [];
+        for (const recipientEmail of recipientEmails) {
+            try {
+                const mailOptions = {
+                    from: `"Bolt Warranty Tracker" <${emailUser}>`,
+                    replyTo: emailUser,
+                    to: recipientEmail,
+                    subject: subject,
+                    text: emailText,
+                    html: emailHtml,
+                };
+
+                await transporter.sendMail(mailOptions);
+                emailResults.push({ email: recipientEmail, success: true });
+                console.log(`Warranty notification email sent successfully to ${recipientEmail}`);
+            } catch (emailError: any) {
+                console.error(`Failed to send email to ${recipientEmail}:`, emailError);
+                emailResults.push({ email: recipientEmail, success: false, error: emailError.message });
+            }
+        }
+
+        const successCount = emailResults.filter(r => r.success).length;
+        const failureCount = emailResults.filter(r => !r.success).length;
+
+        return {
+            success: failureCount === 0,
+            sent: successCount,
+            failed: failureCount,
+            results: emailResults,
+            message: failureCount === 0 
+                ? `All ${successCount} email(s) sent successfully`
+                : `${successCount} email(s) sent, ${failureCount} failed`
+        };
+    } catch (error: any) {
+        console.error('Error sending warranty notification email:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to send warranty notification email', error.message);
+    }
+});
+
 // Delete User Function
 // Deletes a user from both Firebase Auth and Firestore
 export const deleteUser = functions.runWith({ secrets: [] }).https.onCall(async (data, context) => {

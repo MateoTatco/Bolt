@@ -2093,9 +2093,9 @@ export const FirebaseDbService = {
                     console.error('Failed to log warranty update activity', activityError)
                 }
 
-                // Notify users about warranty update
+                // Notify users about warranty update (in-app notifications)
                 try {
-                    const { notifyWarrantyUpdated, getUsersToNotify } = await import('@/utils/notificationHelper')
+                    const { notifyWarrantyUpdated } = await import('@/utils/notificationHelper')
                     const warrantyDoc = await getDoc(doc(db, 'warranties', warrantyId))
                     if (warrantyDoc.exists()) {
                         const warrantyData = warrantyDoc.data()
@@ -2109,6 +2109,58 @@ export const FirebaseDbService = {
                 } catch (notifyError) {
                     console.error('Failed to notify warranty update', notifyError)
                     // Don't fail the update if notification fails
+                }
+
+                // Send email notifications for warranty update
+                try {
+                    const warrantyDoc = await getDoc(doc(db, 'warranties', warrantyId))
+                    if (warrantyDoc.exists()) {
+                        const warrantyData = warrantyDoc.data()
+                        const warrantyName = warrantyData?.projectName || warrantyData?.description || 'Warranty'
+                        
+                        // Get user IDs for email recipients
+                        const emailUserIds = new Set()
+                        if (Array.isArray(warrantyData?.assignedTo)) {
+                            warrantyData.assignedTo.forEach(id => emailUserIds.add(id))
+                        }
+                        if (Array.isArray(warrantyData?.cc)) {
+                            warrantyData.cc.forEach(id => emailUserIds.add(id))
+                        }
+                        
+                        // Get emails from user IDs
+                        const { getUserEmailsByUserIds } = await import('@/utils/userHelper')
+                        const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
+                        
+                        // Add requestedByEmail if provided
+                        if (warrantyData?.requestedByEmail && warrantyData.requestedByEmail.includes('@')) {
+                            recipientEmails.push(warrantyData.requestedByEmail)
+                        }
+                        
+                        // Remove duplicates
+                        const uniqueEmails = [...new Set(recipientEmails)]
+                        
+                        if (uniqueEmails.length > 0) {
+                            // Call Cloud Function to send emails
+                            const { getFunctions, httpsCallable } = await import('firebase/functions')
+                            const functions = getFunctions()
+                            const sendEmailFunction = httpsCallable(functions, 'sendWarrantyNotificationEmail')
+                            
+                            await sendEmailFunction({
+                                warrantyId,
+                                warrantyName,
+                                projectName: warrantyData?.projectName || '',
+                                description: warrantyData?.description || '',
+                                requestedBy: warrantyData?.requestedBy || '',
+                                requestedByEmail: warrantyData?.requestedByEmail || null,
+                                recipientEmails: uniqueEmails,
+                                notificationType: 'updated',
+                                warrantyUrl: `https://www.mybolt.pro/warranty-tracker/${warrantyId}`
+                            })
+                        }
+                    }
+                } catch (emailError) {
+                    console.error('Failed to send warranty update emails', emailError)
+                    // Don't fail the update if email fails
                 }
                 
                 return { success: true, data: { id: docRef.id, ...updateData } }
