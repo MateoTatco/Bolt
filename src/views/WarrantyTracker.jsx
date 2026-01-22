@@ -104,14 +104,42 @@ const WarrantyTracker = () => {
 
     const bgColor = useRandomBgColor()
 
-    // Load users for assignedTo display and filters
+    // Load users for assignedTo display and filters - only users who have warranties assigned
     useEffect(() => {
         const loadUsers = async () => {
             setLoadingUsers(true)
             try {
                 const response = await FirebaseDbService.users.getAll()
                 if (response.success) {
-                    setUsers(response.data || [])
+                    const allUsers = response.data || []
+                    
+                    // Use warranties from store if available, otherwise fetch
+                    let allWarrantiesData = allWarranties || []
+                    if (allWarrantiesData.length === 0) {
+                        const companyId = useWarrantyStore.getState().getCompanyId()
+                        const warrantiesResponse = await FirebaseDbService.warranties.getAll({ companyId })
+                        allWarrantiesData = warrantiesResponse.success ? (warrantiesResponse.data || []) : []
+                    }
+                    
+                    // Collect unique user IDs from assignedTo fields
+                    const assignedUserIds = new Set()
+                    allWarrantiesData.forEach(warranty => {
+                        if (Array.isArray(warranty.assignedTo)) {
+                            warranty.assignedTo.forEach(userId => {
+                                if (userId) {
+                                    assignedUserIds.add(userId)
+                                }
+                            })
+                        }
+                    })
+                    
+                    // Filter users to only include those with warranties assigned
+                    const filteredUsers = allUsers.filter(user => {
+                        const userId = user.id || user.uid
+                        return assignedUserIds.has(userId)
+                    })
+                    
+                    setUsers(filteredUsers)
                 }
             } catch (error) {
                 console.error('Failed to load users:', error)
@@ -120,7 +148,7 @@ const WarrantyTracker = () => {
             }
         }
         loadUsers()
-    }, [])
+    }, [allWarranties]) // Update when warranties change
 
     // Load warranties and setup real-time listener
     useEffect(() => {

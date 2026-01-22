@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Button, Dialog, Input, Select, Tag, Tooltip, Avatar, Alert, Dropdown } from '@/components/ui'
 import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft } from 'react-icons/hi'
 import { db, storage } from '@/configs/firebase.config'
@@ -61,6 +61,7 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     const [uploadProgress, setUploadProgress] = useState([]) // {name, percent, cancel}
     const [newFolderOpen, setNewFolderOpen] = useState(false)
     const [newFolderName, setNewFolderName] = useState('')
+    const fileInputRef = useRef(null)
 
     const collectionName = getCollectionName(entityType)
 
@@ -612,12 +613,20 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             <Dialog isOpen={uploadOpen} onClose={()=>setUploadOpen(false)} width={600}>
                 <div className="p-4 md:p-6">
                     <h3 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Upload Files</h3>
-                    <div className="border-2 border-dashed rounded-xl p-4 md:p-8 text-center mb-3 md:mb-4 transition hover:border-primary hover:bg-primary/5"
+                    <div 
+                        className="border-2 border-dashed rounded-xl p-4 md:p-8 text-center mb-3 md:mb-4 transition hover:border-primary hover:bg-primary/5 cursor-pointer"
                         onDragOver={(e)=>{e.preventDefault();}}
                         onDrop={(e)=>{e.preventDefault(); onChooseFiles(e.dataTransfer.files)}}
+                        onClick={() => fileInputRef.current?.click()}
                     >
                         <p className="text-sm md:text-base text-gray-600 mb-2">Drop your files here, or <span className="text-primary">browse</span></p>
-                        <input type="file" multiple onChange={(e)=>onChooseFiles(e.target.files)} className="text-xs md:text-sm" />
+                        <input 
+                            ref={fileInputRef}
+                            type="file" 
+                            multiple 
+                            onChange={(e)=>onChooseFiles(e.target.files)} 
+                            className="hidden" 
+                        />
                         <div className="text-xs text-gray-500 mt-2">Max {MAX_FILE_MB}MB per file</div>
                     </div>
                     {pendingUploads.length > 0 && !uploading && (

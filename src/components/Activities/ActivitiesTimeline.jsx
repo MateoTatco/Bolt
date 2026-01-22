@@ -40,9 +40,6 @@ const IconForType = ({ type }) => {
 const ActivityItem = ({ a }) => {
     return (
         <div className="flex gap-4">
-            <div className="flex-shrink-0">
-                <IconForType type={a?.type} />
-            </div>
             <div className="flex-1">
                 <div className="bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm">
                     <div className="flex items-center justify-between">
