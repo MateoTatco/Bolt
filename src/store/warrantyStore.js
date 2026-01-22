@@ -213,7 +213,9 @@ export const useWarrantyStore = create((set, get) => ({
             const reminderFrequency = warrantyData.reminderFrequency || '5days'
             if (reminderFrequency !== 'none') {
                 const now = new Date()
-                const days = reminderFrequency === '3days' ? 3 : 
+                const days = reminderFrequency === '1day' ? 1 : 
+                            reminderFrequency === '2days' ? 2 :
+                            reminderFrequency === '3days' ? 3 : 
                             reminderFrequency === '5days' ? 5 : 
                             reminderFrequency === 'weekly' ? 7 : 5
                 nextReminderDate = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000))
@@ -365,6 +367,23 @@ export const useWarrantyStore = create((set, get) => ({
             // Get current warranty to check for status changes
             const currentWarranty = get().warranties.find(w => w.id === warrantyId)
             const oldStatus = currentWarranty?.status
+            const oldReminderFrequency = currentWarranty?.reminderFrequency
+            
+            // Recalculate nextReminderDate if reminderFrequency changed
+            if (updates.reminderFrequency !== undefined && updates.reminderFrequency !== oldReminderFrequency) {
+                const reminderFrequency = updates.reminderFrequency
+                if (reminderFrequency === 'none') {
+                    updates.nextReminderDate = null
+                } else {
+                    const now = new Date()
+                    const days = reminderFrequency === '1day' ? 1 : 
+                                reminderFrequency === '2days' ? 2 :
+                                reminderFrequency === '3days' ? 3 : 
+                                reminderFrequency === '5days' ? 5 : 
+                                reminderFrequency === 'weekly' ? 7 : 5
+                    updates.nextReminderDate = Timestamp.fromDate(new Date(now.getTime() + (days * 24 * 60 * 60 * 1000)))
+                }
+            }
             
             const response = await FirebaseDbService.warranties.update(warrantyId, updates)
             if (response.success) {

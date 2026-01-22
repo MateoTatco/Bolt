@@ -8,6 +8,8 @@ import { HiOutlineX, HiOutlinePlus } from 'react-icons/hi'
 
 const reminderFrequencyOptions = [
     { value: 'none', label: 'No Reminders' },
+    { value: '1day', label: 'Every 1 Day' },
+    { value: '2days', label: 'Every 2 Days' },
     { value: '3days', label: 'Every 3 Days' },
     { value: '5days', label: 'Every 5 Days' },
     { value: 'weekly', label: 'Weekly' },

@@ -18,7 +18,8 @@ import {
     HiOutlineBell,
     HiOutlineCheckCircle as HiOutlineCheckCircleSolid,
     HiOutlineX,
-    HiOutlineCheck
+    HiOutlineCheck,
+    HiOutlinePlus
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import ActivitiesTimeline from '@/components/Activities/ActivitiesTimeline'
@@ -44,6 +45,7 @@ const WarrantyDetail = () => {
     const [updates, setUpdates] = useState([])
     const [newUpdateText, setNewUpdateText] = useState('')
     const [addingUpdate, setAddingUpdate] = useState(false)
+    const [updateCc, setUpdateCc] = useState([]) // CC recipients for updates
     const [users, setUsers] = useState([])
     const [alertBanner, setAlertBanner] = useState({ visible: false, kind: 'saved' })
     // Initialize isEditing from URL parameter to persist across remounts
@@ -325,6 +327,8 @@ const WarrantyDetail = () => {
 
     const reminderFrequencyOptions = [
         { value: 'none', label: 'No Reminders' },
+        { value: '1day', label: 'Every 1 Day' },
+        { value: '2days', label: 'Every 2 Days' },
         { value: '3days', label: 'Every 3 Days' },
         { value: '5days', label: 'Every 5 Days' },
         { value: 'weekly', label: 'Weekly' },
@@ -343,12 +347,14 @@ const WarrantyDetail = () => {
             const updateData = {
                 note: newUpdateText.trim(),
                 createdBy: currentUserId || 'unknown',
-                createdByName: displayName
+                createdByName: displayName,
+                cc: updateCc.filter(id => id !== null && id !== undefined) // Include CC recipients
             }
             
             const response = await FirebaseDbService.warranties.addUpdate(warrantyId, updateData)
             if (response.success) {
                 setNewUpdateText('')
+                setUpdateCc([]) // Reset CC after successful update
                 setAlertBanner({ visible: true, kind: 'saved', message: 'Update added successfully' })
                 setTimeout(() => setAlertBanner(b => ({ ...b, visible: false })), 3000)
             } else {
@@ -745,6 +751,101 @@ const WarrantyDetail = () => {
 
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <HiOutlineMail className="text-xl text-gray-400 dark:text-gray-500" />
+                                    C.C Recipients
+                                </h2>
+                                {isEditing ? (
+                                    <div className="space-y-2">
+                                        {(editFormData.cc || []).map((ccUserId, index) => (
+                                            <div key={index} className="flex gap-2">
+                                                <Select
+                                                    placeholder="Select CC recipient"
+                                                    options={userOptions}
+                                                    value={userOptions.find(opt => opt.value === ccUserId) || null}
+                                                    onChange={(selected) => {
+                                                        const newCc = [...(editFormData.cc || [])]
+                                                        if (selected) {
+                                                            newCc[index] = selected.value
+                                                        } else {
+                                                            newCc.splice(index, 1)
+                                                        }
+                                                        setEditFormData({ ...editFormData, cc: newCc })
+                                                    }}
+                                                    className="flex-1"
+                                                    isClearable
+                                                    menuPortalTarget={document.body}
+                                                    menuPosition="fixed"
+                                                    styles={{
+                                                        menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                                        menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                                    }}
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="plain"
+                                                    icon={<HiOutlineX />}
+                                                    onClick={(e) => {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        const newCc = (editFormData.cc || []).filter((_, i) => i !== index)
+                                                        setEditFormData({ ...editFormData, cc: newCc })
+                                                    }}
+                                                    size="sm"
+                                                />
+                                            </div>
+                                        ))}
+                                        <Button
+                                            type="button"
+                                            variant="twoTone"
+                                            icon={<HiOutlinePlus />}
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                setEditFormData({ 
+                                                    ...editFormData, 
+                                                    cc: [...(editFormData.cc || []).filter(id => id !== null), null] 
+                                                })
+                                            }}
+                                            size="sm"
+                                        >
+                                            Add CC Recipient
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        {warranty.cc && warranty.cc.length > 0 ? (
+                                            <div className="flex flex-wrap gap-3">
+                                                {warranty.cc.map((userId) => {
+                                                    const user = getUserById(userId)
+                                                    if (!user) return null
+                                                    const displayName = getUserDisplayName(user)
+                                                    return (
+                                                        <div 
+                                                            key={userId}
+                                                            className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-800"
+                                                        >
+                                                            <Avatar
+                                                                size={32}
+                                                                className={`${bgColor(displayName)} border-2 border-white dark:border-gray-700`}
+                                                            >
+                                                                {getUserInitials(user)}
+                                                            </Avatar>
+                                                            <span className="font-medium text-gray-900 dark:text-white">
+                                                                {displayName}
+                                                            </span>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-400 dark:text-gray-500">No CC recipients</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                                     <HiOutlineCalendar className="text-xl text-gray-400 dark:text-gray-500" />
                                     Timeline & Reminders
                                 </h2>
@@ -770,6 +871,8 @@ const WarrantyDetail = () => {
                                         ) : (
                                             <p className="text-base font-medium text-gray-900 dark:text-white">
                                                 {warranty.reminderFrequency === 'none' ? 'No Reminders' :
+                                                 warranty.reminderFrequency === '1day' ? 'Every 1 Day' :
+                                                 warranty.reminderFrequency === '2days' ? 'Every 2 Days' :
                                                  warranty.reminderFrequency === '3days' ? 'Every 3 Days' :
                                                  warranty.reminderFrequency === '5days' ? 'Every 5 Days' :
                                                  warranty.reminderFrequency === 'weekly' ? 'Weekly' :
@@ -831,6 +934,62 @@ const WarrantyDetail = () => {
                                         Add Update
                                     </Button>
                                 </div>
+                                
+                                {/* CC Recipients for Update */}
+                                <div className="mt-4">
+                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 block">
+                                        C.C (Optional)
+                                    </label>
+                                    <div className="space-y-2">
+                                        {updateCc.map((ccUserId, index) => (
+                                            <div key={index} className="flex gap-2">
+                                                <Select
+                                                    placeholder="Select CC recipient"
+                                                    options={userOptions}
+                                                    value={userOptions.find(opt => opt.value === ccUserId) || null}
+                                                    onChange={(selected) => {
+                                                        const newCc = [...updateCc]
+                                                        if (selected) {
+                                                            newCc[index] = selected.value
+                                                        } else {
+                                                            newCc.splice(index, 1)
+                                                        }
+                                                        setUpdateCc(newCc)
+                                                    }}
+                                                    className="flex-1"
+                                                    isClearable
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="plain"
+                                                    icon={<HiOutlineX />}
+                                                    onClick={(e) => {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        const newCc = updateCc.filter((_, i) => i !== index)
+                                                        setUpdateCc(newCc)
+                                                    }}
+                                                    size="sm"
+                                                />
+                                            </div>
+                                        ))}
+                                        <Button
+                                            type="button"
+                                            variant="twoTone"
+                                            icon={<HiOutlinePlus />}
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                setUpdateCc([...updateCc.filter(id => id !== null), null])
+                                            }}
+                                            size="sm"
+                                        >
+                                            Add CC Recipient
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">CC recipients will receive email notifications for this update</p>
+                                </div>
+                                
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Press Ctrl+Enter to submit</p>
                             </div>
 

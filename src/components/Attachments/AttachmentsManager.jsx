@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Button, Dialog, Input, Select, Tag, Tooltip, Avatar, Alert, Dropdown } from '@/components/ui'
-import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft } from 'react-icons/hi'
+import { HiOutlineViewGrid, HiOutlineViewList, HiOutlineDotsHorizontal, HiOutlineFolder, HiOutlineDocument, HiOutlineUpload, HiOutlineTrash, HiOutlinePencil, HiOutlineDownload, HiOutlineChevronRight, HiOutlineChevronLeft, HiOutlineEye } from 'react-icons/hi'
 import { db, storage } from '@/configs/firebase.config'
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, serverTimestamp, getDocs, getDoc } from 'firebase/firestore'
 import { ref as storageRef, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
@@ -61,6 +61,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     const [uploadProgress, setUploadProgress] = useState([]) // {name, percent, cancel}
     const [newFolderOpen, setNewFolderOpen] = useState(false)
     const [newFolderName, setNewFolderName] = useState('')
+    const [previewFile, setPreviewFile] = useState(null)
+    const [previewUrl, setPreviewUrl] = useState(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
     const fileInputRef = useRef(null)
 
     const collectionName = getCollectionName(entityType)
@@ -345,15 +348,24 @@ const AttachmentsManager = ({ entityType, entityId }) => {
         }
     }
 
-    const handleDownloadFile = async (file) => {
+    const getFileUrl = async (file) => {
         try {
-            // Prefer explicit downloadURL if present
             let url = file?.downloadURL
             const pathRef = file?.storagePath || file?.path
             if (!url && pathRef) {
                 const sRef = storageRef(storage, pathRef)
                 url = await getDownloadURL(sRef)
             }
+            return url
+        } catch (e) {
+            console.error('Failed to get file URL:', e)
+            return null
+        }
+    }
+
+    const handleDownloadFile = async (file) => {
+        try {
+            const url = await getFileUrl(file)
             if (!url) {
                 setError('File is not downloadable (no storage path). Upload a new version to enable download.')
                 return
@@ -365,6 +377,49 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             console.error('Download failed:', e)
             setError('Download failed. Please try again.')
         }
+    }
+
+    const handlePreviewFile = async (file) => {
+        setPreviewLoading(true)
+        try {
+            const url = await getFileUrl(file)
+            if (!url) {
+                setError('File cannot be previewed (no storage path).')
+                setPreviewLoading(false)
+                return
+            }
+            setPreviewFile(file)
+            setPreviewUrl(url)
+        } catch (e) {
+            console.error('Preview failed:', e)
+            setError('Preview failed. Please try again.')
+        } finally {
+            setPreviewLoading(false)
+        }
+    }
+
+    const closePreview = () => {
+        setPreviewFile(null)
+        setPreviewUrl(null)
+        setPreviewLoading(false)
+    }
+
+    const isImageFile = (file) => {
+        const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
+        return imageTypes.includes(file.type?.toLowerCase()) || 
+               /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name)
+    }
+
+    const isPdfFile = (file) => {
+        return file.type?.toLowerCase() === 'application/pdf' || /\.pdf$/i.test(file.name)
+    }
+
+    const isMsgFile = (file) => {
+        return file.type?.toLowerCase() === 'application/vnd.ms-outlook' || /\.msg$/i.test(file.name)
+    }
+
+    const canPreview = (file) => {
+        return isImageFile(file) || isPdfFile(file) || isMsgFile(file)
     }
 
     const collectDescendantFiles = (folderId) => {
@@ -472,6 +527,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                 </div>
             </div>
             <div className="flex items-center gap-2">
+                {canPreview(file) && (
+                    <Button size="sm" variant="plain" icon={<HiOutlineEye />} onClick={()=>handlePreviewFile(file)} title="Preview" />
+                )}
                 <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} />
                 <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} />
                 <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600" onClick={()=>onDelete(file,'file')} />
@@ -503,6 +561,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             <div className="flex items-start justify-between">
                 <HiOutlineDocument className="text-emerald-500 text-lg md:text-xl" />
                 <Dropdown placement="bottom-end" renderTitle={<Button size="sm" variant="plain" icon={<HiOutlineDotsHorizontal />} />}>
+                    {canPreview(file) && (
+                        <Dropdown.Item onClick={()=>handlePreviewFile(file)}>Preview</Dropdown.Item>
+                    )}
                     <Dropdown.Item onClick={()=>handleDownloadFile(file)} disabled={!file.path && !file.downloadURL}>Download</Dropdown.Item>
                     <Dropdown.Item onClick={()=>startRename(file,'file')}>Rename</Dropdown.Item>
                     <Dropdown.Item onClick={()=>onDelete(file,'file')}>Delete</Dropdown.Item>
@@ -511,6 +572,9 @@ const AttachmentsManager = ({ entityType, entityId }) => {
             <div className="mt-2 md:mt-3 font-medium text-sm md:text-base truncate">{file.name}</div>
             <div className="text-xs text-gray-500 mt-1">{file.type?.toUpperCase()} • {bytesToHuman(file.size)}</div>
             <div className="mt-2 md:mt-3 flex gap-1.5 md:gap-2">
+                {canPreview(file) && (
+                    <Button size="sm" variant="plain" icon={<HiOutlineEye />} onClick={()=>handlePreviewFile(file)} className="text-xs" title="Preview" />
+                )}
                 <Button size="sm" variant="plain" icon={<HiOutlineDownload />} onClick={()=>handleDownloadFile(file)} className="text-xs" />
                 <Button size="sm" variant="plain" icon={<HiOutlinePencil />} onClick={()=>startRename(file,'file')} className="text-xs" />
                 <Button size="sm" variant="plain" icon={<HiOutlineTrash />} className="text-red-600 text-xs" onClick={()=>onDelete(file,'file')} />
@@ -686,6 +750,67 @@ const AttachmentsManager = ({ entityType, entityId }) => {
                         <Button variant="twoTone" onClick={()=>{setNewFolderOpen(false); setNewFolderName('')}}>Cancel</Button>
                         <Button variant="solid" onClick={handleCreateFolder} disabled={!newFolderName.trim()}>Create</Button>
                     </div>
+                </div>
+            </Dialog>
+
+            {/* File Preview Dialog */}
+            <Dialog isOpen={Boolean(previewFile)} onClose={closePreview} width={previewFile && isImageFile(previewFile) ? 900 : 1200}>
+                <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">{previewFile?.name}</h3>
+                        <div className="flex gap-2">
+                            <Button variant="twoTone" icon={<HiOutlineDownload />} onClick={()=>previewFile && handleDownloadFile(previewFile)}>Download</Button>
+                        </div>
+                    </div>
+                    {previewLoading ? (
+                        <div className="flex items-center justify-center h-96">
+                            <div className="text-gray-500">Loading preview...</div>
+                        </div>
+                    ) : previewUrl ? (
+                        <div className="w-full">
+                            {isImageFile(previewFile) && (
+                                <div className="flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+                                    <img 
+                                        src={previewUrl} 
+                                        alt={previewFile.name}
+                                        className="max-w-full max-h-[70vh] object-contain rounded"
+                                        onError={() => setError('Failed to load image preview')}
+                                    />
+                                </div>
+                            )}
+                            {isPdfFile(previewFile) && (
+                                <div className="w-full h-[70vh] border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
+                                    <iframe 
+                                        src={previewUrl}
+                                        className="w-full h-full"
+                                        title={previewFile.name}
+                                    />
+                                </div>
+                            )}
+                            {isMsgFile(previewFile) && (
+                                <div className="w-full">
+                                    <div className="flex flex-col items-center justify-center h-[50vh] bg-gray-50 dark:bg-gray-800 rounded-lg p-8 border border-gray-300 dark:border-gray-600">
+                                        <HiOutlineDocument className="text-6xl text-gray-400 dark:text-gray-500 mb-4" />
+                                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">MSG File Preview Not Available</h4>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 text-center max-w-md mb-6">
+                                            MSG files cannot be previewed in the browser. Please download the file to view it in Microsoft Outlook or another email client.
+                                        </p>
+                                        <Button 
+                                            variant="solid" 
+                                            icon={<HiOutlineDownload />} 
+                                            onClick={()=>previewFile && handleDownloadFile(previewFile)}
+                                        >
+                                            Download MSG File
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center h-96">
+                            <div className="text-gray-500">Preview not available</div>
+                        </div>
+                    )}
                 </div>
             </Dialog>
         </div>

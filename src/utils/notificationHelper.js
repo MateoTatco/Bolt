@@ -814,6 +814,46 @@ export async function notifyWarrantyStatusChanged({
 }
 
 /**
+ * Create notification for warranty reminder
+ */
+export async function notifyWarrantyReminder({
+    warrantyId,
+    warrantyName,
+    userIds = []
+}) {
+    // If userIds not provided, get them from the warranty
+    if (userIds.length === 0) {
+        userIds = await getUsersToNotify('warranty', warrantyId)
+    }
+
+    if (userIds.length === 0) {
+        return { success: true, skipped: true, reason: 'No users to notify' }
+    }
+
+    const notifications = await Promise.all(
+        userIds.map(userId =>
+            createNotification({
+                userId,
+                type: NOTIFICATION_TYPES.WARRANTY_REMINDER,
+                title: 'Warranty Reminder',
+                message: `Reminder: Warranty "${warrantyName}" is still open`,
+                entityType: 'warranty',
+                entityId: warrantyId,
+                relatedUserId: null,
+                metadata: {
+                    warrantyName
+                }
+            })
+        )
+    )
+
+    return {
+        success: notifications.every(n => n.success),
+        notifications
+    }
+}
+
+/**
  * Create notification for warranty attachment
  */
 export async function notifyWarrantyAttachment({

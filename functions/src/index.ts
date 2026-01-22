@@ -6453,7 +6453,8 @@ export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAI
         notificationType, // 'created', 'updated', 'status_changed', 'reminder'
         oldStatus,
         newStatus,
-        warrantyUrl
+        warrantyUrl,
+        updateNote // Optional: note from warranty update
     } = data;
 
     if (!recipientEmails || !Array.isArray(recipientEmails) || recipientEmails.length === 0) {
@@ -6504,6 +6505,9 @@ export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAI
                 subject = `Warranty Updated: ${warrantyName || projectName || 'Warranty'}`;
                 title = 'Warranty Updated';
                 message = `A warranty${projectName ? ` for project "${projectName}"` : ''} has been updated.`;
+                if (updateNote) {
+                    message += `\n\nUpdate: ${updateNote}`;
+                }
                 actionText = 'View Warranty';
                 break;
             case 'status_changed':
@@ -6534,6 +6538,9 @@ export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAI
         if (projectName) warrantyDetails.push({ label: 'Project', value: projectName });
         if (requestedBy) warrantyDetails.push({ label: 'Requested By', value: requestedBy });
         if (description) warrantyDetails.push({ label: 'Description', value: description });
+        if (updateNote && notificationType === 'updated') {
+            warrantyDetails.push({ label: 'Latest Update', value: updateNote });
+        }
 
         // Create warranty URL
         const viewUrl = warrantyUrl || `https://www.mybolt.pro/warranty-tracker/${warrantyId}`;
@@ -6713,6 +6720,241 @@ This is an automated notification from the Bolt Warranty Tracker.
         throw new functions.https.HttpsError('internal', 'Failed to send warranty notification email', error.message);
     }
 });
+
+// Helper function to calculate next reminder date based on frequency
+function calculateNextReminderDate(frequency: string, lastSent: Date): Date {
+    const days = frequency === '1day' ? 1 : 
+                 frequency === '2days' ? 2 :
+                 frequency === '3days' ? 3 : 
+                 frequency === '5days' ? 5 : 
+                 frequency === 'weekly' ? 7 : 5;
+    return new Date(lastSent.getTime() + (days * 24 * 60 * 60 * 1000));
+}
+
+// Scheduled function to check warranty reminders
+// Runs every 6 hours to check for warranties that need reminder emails
+export const checkWarrantyReminders = functions
+    .region('us-central1')
+    .pubsub
+    .schedule('every 6 hours')
+    .timeZone('UTC')
+    .onRun(async () => {
+        console.log('Starting warranty reminder check...');
+        
+        const now = admin.firestore.Timestamp.now();
+        
+        try {
+            // Query warranties that need reminders
+            const warrantiesSnapshot = await admin.firestore()
+                .collection('warranties')
+                .where('status', '==', 'open')
+                .where('reminderFrequency', '!=', 'none')
+                .where('nextReminderDate', '<=', now)
+                .get();
+            
+            console.log(`Found ${warrantiesSnapshot.size} warranties needing reminders`);
+            
+            let remindersSent = 0;
+            let errors = 0;
+            
+            for (const warrantyDoc of warrantiesSnapshot.docs) {
+                try {
+                    const warranty = warrantyDoc.data();
+                    const warrantyId = warrantyDoc.id;
+                    
+                    // Skip if no reminder frequency set
+                    if (!warranty.reminderFrequency || warranty.reminderFrequency === 'none') {
+                        continue;
+                    }
+                    
+                    // Get recipient emails
+                    const emailUserIds = new Set<string>();
+                    
+                    // Add assignedTo users
+                    if (Array.isArray(warranty.assignedTo)) {
+                        warranty.assignedTo.forEach((id: string) => {
+                            if (id) emailUserIds.add(id);
+                        });
+                    }
+                    
+                    // Add CC users
+                    if (Array.isArray(warranty.cc)) {
+                        warranty.cc.forEach((id: string) => {
+                            if (id) emailUserIds.add(id);
+                        });
+                    }
+                    
+                    // Get user emails
+                    const recipientEmails: string[] = [];
+                    for (const userId of emailUserIds) {
+                        try {
+                            const userDoc = await admin.firestore().collection('users').doc(userId).get();
+                            if (userDoc.exists) {
+                                const userData = userDoc.data();
+                                if (userData?.email && userData.email.includes('@')) {
+                                    recipientEmails.push(userData.email);
+                                }
+                            }
+                        } catch (userError) {
+                            console.error(`Error getting email for user ${userId}:`, userError);
+                        }
+                    }
+                    
+                    // Add requestedByEmail if provided
+                    if (warranty.requestedByEmail && warranty.requestedByEmail.includes('@')) {
+                        recipientEmails.push(warranty.requestedByEmail);
+                    }
+                    
+                    // Remove duplicates
+                    const uniqueEmails = [...new Set(recipientEmails)];
+                    
+                    if (uniqueEmails.length === 0) {
+                        console.log(`No recipients found for warranty ${warrantyId}, skipping`);
+                        continue;
+                    }
+                    
+                    // Send reminder emails
+                    const warrantyName = warranty.projectName || warranty.description || 'Warranty';
+                    
+                    // Call the sendWarrantyNotificationEmail function internally
+                    // We'll use the same email sending logic
+                    const emailUser = process.env.EMAIL_USER;
+                    const emailPassword = process.env.EMAIL_PASSWORD;
+                    
+                    if (!emailUser || !emailPassword) {
+                        console.error('Email service not configured. Skipping warranty reminders.');
+                        continue;
+                    }
+                    
+                    const transporter = nodemailer.createTransport({
+                        host: 'smtp.gmail.com',
+                        port: 587,
+                        secure: false,
+                        auth: {
+                            user: emailUser,
+                            pass: emailPassword,
+                        },
+                        tls: {
+                            rejectUnauthorized: false
+                        }
+                    });
+                    
+                    const subject = `Warranty Reminder: ${warrantyName}`;
+                    const title = 'Warranty Reminder';
+                    const message = `This is a reminder about an open warranty${warranty.projectName ? ` for project "${warranty.projectName}"` : ''}.`;
+                    const warrantyUrl = `https://www.mybolt.pro/warranty-tracker/${warrantyId}`;
+                    
+                    // Build warranty details
+                    const warrantyDetails = [];
+                    if (warranty.projectName) warrantyDetails.push({ label: 'Project', value: warranty.projectName });
+                    if (warranty.requestedBy) warrantyDetails.push({ label: 'Requested By', value: warranty.requestedBy });
+                    if (warranty.description) warrantyDetails.push({ label: 'Description', value: warranty.description });
+                    
+                    // Create email HTML (simplified version)
+                    const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
+        .email-container { background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header { background-color: #4F46E5; color: white; padding: 30px 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        .content { padding: 30px; }
+        .message { font-size: 16px; color: #374151; margin-bottom: 25px; }
+        .details { background-color: #f9fafb; border-radius: 6px; padding: 20px; margin: 25px 0; }
+        .detail-row { display: flex; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { font-weight: 600; color: #6b7280; width: 120px; flex-shrink: 0; }
+        .detail-value { color: #111827; flex: 1; }
+        .button-container { text-align: center; margin: 30px 0; }
+        .button { display: inline-block; padding: 14px 32px; background-color: #4F46E5; color: white !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; }
+        .footer { background-color: #f9fafb; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header"><h1>${title}</h1></div>
+        <div class="content">
+            <p class="message">${message}</p>
+            ${warrantyDetails.length > 0 ? `<div class="details">${warrantyDetails.map(d => `<div class="detail-row"><div class="detail-label">${d.label}:</div><div class="detail-value">${d.value}</div></div>`).join('')}</div>` : ''}
+            <div class="button-container"><a href="${warrantyUrl}" class="button">View Warranty</a></div>
+        </div>
+        <div class="footer">
+            <p>© ${new Date().getFullYear()} Bolt. All rights reserved.</p>
+            <p>This is an automated notification from the Bolt Warranty Tracker.</p>
+        </div>
+    </div>
+</body>
+</html>`;
+                    
+                    const emailText = `${title}\n\n${message}\n\n${warrantyDetails.length > 0 ? warrantyDetails.map(d => `${d.label}: ${d.value}`).join('\n') + '\n' : ''}View Warranty: ${warrantyUrl}\n\n© ${new Date().getFullYear()} Bolt. All rights reserved.\nThis is an automated notification from the Bolt Warranty Tracker.`;
+                    
+                    // Send emails
+                    for (const recipientEmail of uniqueEmails) {
+                        try {
+                            await transporter.sendMail({
+                                from: `"Bolt Warranty Tracker" <${emailUser}>`,
+                                replyTo: emailUser,
+                                to: recipientEmail,
+                                subject: subject,
+                                text: emailText,
+                                html: emailHtml,
+                            });
+                            console.log(`Reminder email sent to ${recipientEmail} for warranty ${warrantyId}`);
+                        } catch (emailError: any) {
+                            console.error(`Failed to send reminder email to ${recipientEmail}:`, emailError);
+                        }
+                    }
+                    
+                    // Create in-app notifications for all users
+                    const notificationUserIds = Array.from(emailUserIds);
+                    for (const userId of notificationUserIds) {
+                        try {
+                            await createNotification({
+                                userId: userId,
+                                type: 'warranty_reminder',
+                                title: 'Warranty Reminder',
+                                message: `Reminder: Warranty "${warrantyName}" is still open`,
+                                entityType: 'warranty',
+                                entityId: warrantyId,
+                                metadata: {
+                                    warrantyName: warrantyName
+                                }
+                            });
+                            console.log(`In-app notification created for user ${userId} for warranty ${warrantyId}`);
+                        } catch (notifyError) {
+                            console.error(`Error creating notification for user ${userId}:`, notifyError);
+                        }
+                    }
+                    
+                    // Update warranty: set lastReminderSent and calculate nextReminderDate
+                    const lastSent = new Date();
+                    const nextReminderDate = calculateNextReminderDate(warranty.reminderFrequency, lastSent);
+                    
+                    await warrantyDoc.ref.update({
+                        lastReminderSent: admin.firestore.Timestamp.fromDate(lastSent),
+                        nextReminderDate: admin.firestore.Timestamp.fromDate(nextReminderDate),
+                        updatedAt: admin.firestore.Timestamp.now()
+                    });
+                    
+                    remindersSent++;
+                    console.log(`Reminder sent (email + in-app) and next reminder date updated for warranty ${warrantyId}`);
+                    
+                } catch (warrantyError: any) {
+                    console.error(`Error processing warranty ${warrantyDoc.id}:`, warrantyError);
+                    errors++;
+                }
+            }
+            
+            console.log(`Warranty reminder check completed. Sent: ${remindersSent}, Errors: ${errors}`);
+        } catch (error: any) {
+            console.error('Error in warranty reminder check:', error);
+        }
+    });
 
 // Delete User Function
 // Deletes a user from both Firebase Auth and Firestore

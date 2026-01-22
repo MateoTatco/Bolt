@@ -2126,6 +2126,10 @@ export const FirebaseDbService = {
                         if (Array.isArray(warrantyData?.cc)) {
                             warrantyData.cc.forEach(id => emailUserIds.add(id))
                         }
+                        // Add CC recipients from the update if provided
+                        if (Array.isArray(updateData?.cc)) {
+                            updateData.cc.forEach(id => emailUserIds.add(id))
+                        }
                         
                         // Get emails from user IDs
                         const { getUserEmailsByUserIds } = await import('@/utils/userHelper')
@@ -2154,6 +2158,7 @@ export const FirebaseDbService = {
                                 requestedByEmail: warrantyData?.requestedByEmail || null,
                                 recipientEmails: uniqueEmails,
                                 notificationType: 'updated',
+                                updateNote: updateData.note || '', // Include update note in email
                                 warrantyUrl: `https://www.mybolt.pro/warranty-tracker/${warrantyId}`
                             })
                         }
