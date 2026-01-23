@@ -234,6 +234,7 @@ export const useWarrantyStore = create((set, get) => ({
                 lastReminderSent: null,
                 nextReminderDate: nextReminderDate ? Timestamp.fromDate(new Date(nextReminderDate)) : null,
                 startDate: warrantyData.startDate ? (warrantyData.startDate instanceof Date ? Timestamp.fromDate(warrantyData.startDate) : warrantyData.startDate) : null,
+                expectedCompletionDate: warrantyData.expectedCompletionDate ? (warrantyData.expectedCompletionDate instanceof Date ? Timestamp.fromDate(warrantyData.expectedCompletionDate) : warrantyData.expectedCompletionDate) : null,
                 completedDate: null,
                 companyId: companyId,
                 createdBy: currentUserId,

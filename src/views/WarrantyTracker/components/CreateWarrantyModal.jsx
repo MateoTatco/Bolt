@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem, DatePicker } from '@/components/ui'
 import { useProjectsStore } from '@/store/projectsStore'
 import { useWarrantyStore } from '@/store/warrantyStore'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
@@ -109,6 +109,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
         cc: [], // CC recipients array
         reminderFrequency: '5days',
         startDate: null,
+        expectedCompletionDate: null,
     })
     
     const [errors, setErrors] = useState({})
@@ -196,6 +197,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 cc: warrantyToEdit.cc || [],
                 reminderFrequency: warrantyToEdit.reminderFrequency || '5days',
                 startDate: warrantyToEdit.startDate ? (warrantyToEdit.startDate.toDate ? warrantyToEdit.startDate.toDate() : new Date(warrantyToEdit.startDate)) : null,
+                expectedCompletionDate: warrantyToEdit.expectedCompletionDate ? (warrantyToEdit.expectedCompletionDate.toDate ? warrantyToEdit.expectedCompletionDate.toDate() : new Date(warrantyToEdit.expectedCompletionDate)) : null,
             })
         } else if (isOpen && !warrantyToEdit) {
             // Reset form for new warranty
@@ -209,6 +211,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 cc: [],
                 reminderFrequency: '5days',
                 startDate: null,
+                expectedCompletionDate: null,
             })
         }
         setErrors({})
@@ -309,6 +312,7 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                 cc: formData.cc.filter(id => id !== null && id !== undefined), // Filter out null values
                 reminderFrequency: formData.reminderFrequency,
                 startDate: formData.startDate,
+                expectedCompletionDate: formData.expectedCompletionDate,
             }
             
             let createdWarranty = null
@@ -563,6 +567,19 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                                     onChange={(selected) => {
                                         setFormData({ ...formData, reminderFrequency: selected?.value || '5days' })
                                     }}
+                                />
+                            </FormItem>
+
+                            {/* Expected Completion Date */}
+                            <FormItem label="Expected Completion Date">
+                                <DatePicker
+                                    inputtable
+                                    inputtableBlurClose={false}
+                                    value={formData.expectedCompletionDate}
+                                    onChange={(date) => {
+                                        setFormData({ ...formData, expectedCompletionDate: date })
+                                    }}
+                                    placeholder="Select expected completion date (optional)"
                                 />
                             </FormItem>
                         </div>

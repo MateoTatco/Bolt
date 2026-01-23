@@ -186,6 +186,7 @@ const WarrantyDetail = () => {
                 cc: warranty.cc || [],
                 reminderFrequency: warranty.reminderFrequency || '5days',
                 startDate: warranty.startDate?.toDate ? warranty.startDate.toDate() : (warranty.startDate || null),
+                expectedCompletionDate: warranty.expectedCompletionDate?.toDate ? warranty.expectedCompletionDate.toDate() : (warranty.expectedCompletionDate || null),
             })
         }
     }, [isEditing, warranty])
@@ -416,6 +417,7 @@ const WarrantyDetail = () => {
                 cc: editFormData.cc.filter(id => id !== null && id !== undefined),
                 reminderFrequency: editFormData.reminderFrequency,
                 startDate: editFormData.startDate ? (editFormData.startDate instanceof Date ? Timestamp.fromDate(editFormData.startDate) : editFormData.startDate) : null,
+                expectedCompletionDate: editFormData.expectedCompletionDate ? (editFormData.expectedCompletionDate instanceof Date ? Timestamp.fromDate(editFormData.expectedCompletionDate) : editFormData.expectedCompletionDate) : null,
             }
             await updateWarranty(warrantyId, updateData)
             setIsEditing(false)
@@ -877,6 +879,28 @@ const WarrantyDetail = () => {
                                                  warranty.reminderFrequency === '5days' ? 'Every 5 Days' :
                                                  warranty.reminderFrequency === 'weekly' ? 'Weekly' :
                                                  '-'}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 block">
+                                            Expected Completion Date
+                                        </label>
+                                        {isEditing ? (
+                                            <DatePicker
+                                                inputtable
+                                                inputtableBlurClose={false}
+                                                value={editFormData.expectedCompletionDate}
+                                                onChange={(date) => {
+                                                    setEditFormData({ ...editFormData, expectedCompletionDate: date })
+                                                }}
+                                                placeholder="Select expected completion date (optional)"
+                                            />
+                                        ) : (
+                                            <p className="text-base font-medium text-gray-900 dark:text-white">
+                                                {warranty.expectedCompletionDate 
+                                                    ? formatDate(warranty.expectedCompletionDate) 
+                                                    : <span className="text-gray-400 dark:text-gray-500">Not set</span>}
                                             </p>
                                         )}
                                     </div>
