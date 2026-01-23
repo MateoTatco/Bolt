@@ -6801,9 +6801,10 @@ export const checkWarrantyReminders = functions
                     }
                     
                     // Add requestedByEmail if provided
-                    if (warranty.requestedByEmail && warranty.requestedByEmail.includes('@')) {
-                        recipientEmails.push(warranty.requestedByEmail);
-                    }
+                    // DISABLED: Requesters no longer receive email notifications (internal tool only)
+                    // if (warranty.requestedByEmail && warranty.requestedByEmail.includes('@')) {
+                    //     recipientEmails.push(warranty.requestedByEmail);
+                    // }
                     
                     // Remove duplicates
                     const uniqueEmails = [...new Set(recipientEmails)];

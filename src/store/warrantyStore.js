@@ -313,9 +313,10 @@ export const useWarrantyStore = create((set, get) => ({
                     const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
                     
                     // Add requestedByEmail if provided (external email)
-                    if (newWarranty.requestedByEmail && newWarranty.requestedByEmail.includes('@')) {
-                        recipientEmails.push(newWarranty.requestedByEmail)
-                    }
+                    // DISABLED: Requesters no longer receive email notifications (internal tool only)
+                    // if (newWarranty.requestedByEmail && newWarranty.requestedByEmail.includes('@')) {
+                    //     recipientEmails.push(newWarranty.requestedByEmail)
+                    // }
                     
                     // Remove duplicates
                     const uniqueEmails = [...new Set(recipientEmails)]
@@ -450,9 +451,10 @@ export const useWarrantyStore = create((set, get) => ({
                     const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
                     
                     // Add requestedByEmail if provided
-                    if (warranty?.requestedByEmail && warranty.requestedByEmail.includes('@')) {
-                        recipientEmails.push(warranty.requestedByEmail)
-                    }
+                    // DISABLED: Requesters no longer receive email notifications (internal tool only)
+                    // if (warranty?.requestedByEmail && warranty.requestedByEmail.includes('@')) {
+                    //     recipientEmails.push(warranty.requestedByEmail)
+                    // }
                     
                     // Remove duplicates
                     const uniqueEmails = [...new Set(recipientEmails)]

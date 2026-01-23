@@ -2136,9 +2136,10 @@ export const FirebaseDbService = {
                         const recipientEmails = await getUserEmailsByUserIds(Array.from(emailUserIds))
                         
                         // Add requestedByEmail if provided
-                        if (warrantyData?.requestedByEmail && warrantyData.requestedByEmail.includes('@')) {
-                            recipientEmails.push(warrantyData.requestedByEmail)
-                        }
+                        // DISABLED: Requesters no longer receive email notifications (internal tool only)
+                        // if (warrantyData?.requestedByEmail && warrantyData.requestedByEmail.includes('@')) {
+                        //     recipientEmails.push(warrantyData.requestedByEmail)
+                        // }
                         
                         // Remove duplicates
                         const uniqueEmails = [...new Set(recipientEmails)]
