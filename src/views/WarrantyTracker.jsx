@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useWarrantyStore } from '@/store/warrantyStore'
-import { HiOutlinePlus, HiOutlineEye, HiOutlinePencil, HiOutlineCheckCircle, HiOutlineRefresh, HiOutlineTrash } from 'react-icons/hi'
+import { HiOutlinePlus, HiOutlineEye, HiOutlinePencil, HiOutlineCheckCircle, HiOutlineRefresh, HiOutlineTrash, HiOutlineDownload } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import Avatar from '@/components/ui/Avatar'
 import acronym from '@/utils/acronym'
 import useRandomBgColor from '@/utils/hooks/useRandomBgColor'
 import CreateWarrantyModal from '@/views/WarrantyTracker/components/CreateWarrantyModal'
+import * as XLSX from 'xlsx'
 
 // Editable Status Cell Component
 const EditableStatusCell = ({ warranty, updateWarranty, completeWarranty }) => {
@@ -175,32 +176,25 @@ const WarrantyTracker = () => {
         return users.find(u => u.id === userId || u.uid === userId)
     }
 
-    // Format date helper
+    // Format date helper - DD/MM/YYYY format
     const formatDate = (date) => {
         if (!date) return '-'
         try {
+            let dateObj
             if (date?.toDate) {
-                return date.toDate().toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
-                })
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return '-'
             }
-            if (date instanceof Date) {
-                return date.toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
-                })
-            }
-            if (typeof date === 'string') {
-                return new Date(date).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
-                })
-            }
-            return '-'
+            
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const year = dateObj.getFullYear()
+            return `${day}/${month}/${year}`
         } catch {
             return '-'
         }
@@ -242,6 +236,152 @@ const WarrantyTracker = () => {
             label: getUserDisplayName(user),
         }))
     }, [users])
+
+    // Export to Excel function
+    const handleExportToExcel = async () => {
+        try {
+            // Get all active warranties (open status)
+            const activeWarranties = warranties.filter(w => w.status === 'open')
+            
+            if (activeWarranties.length === 0) {
+                alert('No active warranties to export')
+                return
+            }
+
+            // Prepare export data
+            const exportData = []
+            
+            for (const warranty of activeWarranties) {
+                // Get updates for this warranty
+                let updates = []
+                try {
+                    const updatesResponse = await FirebaseDbService.warranties.getUpdates(warranty.id)
+                    if (updatesResponse.success) {
+                        updates = updatesResponse.data || []
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch updates for warranty ${warranty.id}:`, error)
+                }
+
+                // Format assigned users
+                const assignedUserIds = warranty.assignedTo || []
+                const assignedUsers = assignedUserIds
+                    .map(id => getUserById(id))
+                    .filter(Boolean)
+                    .map(user => getUserDisplayName(user))
+                    .join(', ') || 'Unassigned'
+
+                // Format CC users
+                const ccUserIds = warranty.cc || []
+                const ccUsers = ccUserIds
+                    .map(id => getUserById(id))
+                    .filter(Boolean)
+                    .map(user => getUserDisplayName(user))
+                    .join(', ') || 'None'
+
+                // Format dates
+                const formatDateForExport = (date) => {
+                    if (!date) return ''
+                    try {
+                        let dateObj
+                        if (date?.toDate) {
+                            dateObj = date.toDate()
+                        } else if (date instanceof Date) {
+                            dateObj = date
+                        } else if (typeof date === 'string') {
+                            dateObj = new Date(date)
+                        } else {
+                            return ''
+                        }
+                        const day = String(dateObj.getDate()).padStart(2, '0')
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+                        const year = dateObj.getFullYear()
+                        return `${day}/${month}/${year}`
+                    } catch {
+                        return ''
+                    }
+                }
+
+                // Main warranty row
+                const mainRow = {
+                    'Project Name': warranty.projectName || '',
+                    'Description': warranty.description || '',
+                    'Requested By': warranty.requestedBy || '',
+                    'Requested By Email': warranty.requestedByEmail || '',
+                    'Assigned To': assignedUsers,
+                    'CC Recipients': ccUsers,
+                    'Status': warranty.status || 'open',
+                    'Start Date': formatDateForExport(warranty.startDate),
+                    'Expected Completion Date': formatDateForExport(warranty.expectedCompletionDate),
+                    'Reminder Frequency': warranty.reminderFrequency === '1day' ? '1 Day' :
+                                         warranty.reminderFrequency === '3days' ? '3 Days' :
+                                         warranty.reminderFrequency === '5days' ? '5 Days' :
+                                         warranty.reminderFrequency === '7days' ? '7 Days' :
+                                         warranty.reminderFrequency || '',
+                    'Last Update Date': formatDateForExport(warranty.lastUpdateDate),
+                    'Last Update Text': warranty.lastUpdateText || '',
+                    'Created Date': formatDateForExport(warranty.createdAt),
+                    'Created By': getUserDisplayName(getUserById(warranty.createdBy)),
+                    'Updates Count': updates.length,
+                    'Latest Update': updates.length > 0 ? (updates[0].note || '') : '',
+                    'Latest Update Date': updates.length > 0 ? formatDateForExport(updates[0].createdAt) : '',
+                    'Latest Update By': updates.length > 0 ? (updates[0].createdByName || getUserDisplayName(getUserById(updates[0].createdBy)) || '') : ''
+                }
+                
+                exportData.push(mainRow)
+
+                // Add update rows if there are updates
+                if (updates.length > 0) {
+                    updates.forEach((update, index) => {
+                        if (index === 0) {
+                            // First update already in main row, skip
+                            return
+                        }
+                        const updateRow = {
+                            'Project Name': '',
+                            'Description': '',
+                            'Requested By': '',
+                            'Requested By Email': '',
+                            'Assigned To': '',
+                            'CC Recipients': '',
+                            'Status': '',
+                            'Start Date': '',
+                            'Expected Completion Date': '',
+                            'Reminder Frequency': '',
+                            'Last Update Date': '',
+                            'Last Update Text': '',
+                            'Created Date': '',
+                            'Created By': '',
+                            'Updates Count': '',
+                            'Latest Update': update.note || '',
+                            'Latest Update Date': formatDateForExport(update.createdAt),
+                            'Latest Update By': update.createdByName || getUserDisplayName(getUserById(update.createdBy)) || ''
+                        }
+                        exportData.push(updateRow)
+                    })
+                }
+            }
+
+            // Create workbook and worksheet
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Active Warranties')
+            
+            // Generate filename with current date
+            const now = new Date()
+            const day = String(now.getDate()).padStart(2, '0')
+            const month = String(now.getMonth() + 1).padStart(2, '0')
+            const year = now.getFullYear()
+            const dateStr = `${day}-${month}-${year}`
+            const filename = `Active_Warranties_${dateStr}.xlsx`
+            
+            // Write file and trigger download
+            XLSX.writeFile(wb, filename)
+        } catch (error) {
+            console.error('Error exporting to Excel:', error)
+            alert(`Failed to export to Excel: ${error.message || 'Unknown error'}`)
+        }
+    }
 
     // Table columns
     const columns = useMemo(() => [
@@ -488,6 +628,15 @@ const WarrantyTracker = () => {
                         className="w-full sm:w-auto"
                     >
                         New Warranty Item
+                    </Button>
+                    <Button
+                        variant="twoTone"
+                        icon={<HiOutlineDownload />}
+                        onClick={handleExportToExcel}
+                        disabled={loading || filteredWarranties.length === 0}
+                        className="w-full sm:w-auto"
+                    >
+                        Export to Excel
                     </Button>
                     <Button
                         variant="twoTone"

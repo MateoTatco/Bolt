@@ -6754,10 +6754,10 @@ export const checkWarrantyReminders = functions
         
         try {
             // Query warranties that need reminders
+            // Get all open warranties with reminderFrequency set and nextReminderDate <= now
             const warrantiesSnapshot = await admin.firestore()
                 .collection('warranties')
                 .where('status', '==', 'open')
-                .where('reminderFrequency', '!=', 'none')
                 .where('nextReminderDate', '<=', now)
                 .get();
             

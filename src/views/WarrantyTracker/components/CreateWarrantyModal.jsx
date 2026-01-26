@@ -391,16 +391,17 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
             ariaHideApp={false}
             portalClassName={portalClassNameRef.current}
         >
-            <div className="p-6">
-                <div className="mb-6">
+            <div className="flex flex-col max-h-[90vh]">
+                <div className="p-6 pb-4 flex-shrink-0">
                     <h5 className="text-xl font-semibold">
                         {warrantyToEdit ? 'Edit Warranty Item' : 'Create New Warranty Item'}
                     </h5>
                 </div>
 
-                <FormContainer>
-                    <form onSubmit={handleSubmit}>
-                        <div className="space-y-4">
+                <div className="flex-1 overflow-y-auto px-6">
+                    <FormContainer>
+                        <form onSubmit={handleSubmit}>
+                            <div className="space-y-4">
                             {/* Project Selection */}
                             <FormItem
                                 label="Project"
@@ -557,50 +558,53 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
                                 </div>
                             </FormItem>
 
-                            {/* Reminder Frequency */}
-                            <FormItem label="Reminder Frequency">
-                                <Select
-                                    options={reminderFrequencyOptions}
-                                    value={reminderFrequencyOptions.find(opt => opt.value === formData.reminderFrequency) || null}
-                                    onChange={(selected) => {
-                                        setFormData({ ...formData, reminderFrequency: selected?.value || '5days' })
-                                    }}
-                                />
-                            </FormItem>
+                            {/* Reminder Frequency and Expected Completion Date - Side by Side */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <FormItem label="Reminder Frequency">
+                                    <Select
+                                        options={reminderFrequencyOptions}
+                                        value={reminderFrequencyOptions.find(opt => opt.value === formData.reminderFrequency) || null}
+                                        onChange={(selected) => {
+                                            setFormData({ ...formData, reminderFrequency: selected?.value || '5days' })
+                                        }}
+                                    />
+                                </FormItem>
 
-                            {/* Expected Completion Date */}
-                            <FormItem label="Expected Completion Date">
-                                <DatePicker
-                                    inputtable
-                                    inputtableBlurClose={false}
-                                    value={formData.expectedCompletionDate}
-                                    onChange={(date) => {
-                                        setFormData({ ...formData, expectedCompletionDate: date })
-                                    }}
-                                    placeholder="Select expected completion date (optional)"
-                                />
-                            </FormItem>
-                        </div>
+                                <FormItem label="Expected Completion Date">
+                                    <DatePicker
+                                        inputtable
+                                        inputtableBlurClose={false}
+                                        inputFormat="DD/MM/YYYY"
+                                        value={formData.expectedCompletionDate}
+                                        onChange={(date) => {
+                                            setFormData({ ...formData, expectedCompletionDate: date })
+                                        }}
+                                        placeholder="Select expected completion date (optional)"
+                                    />
+                                </FormItem>
+                            </div>
+                            </div>
 
-                        {/* Form Actions */}
-                        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <Button
-                                variant="plain"
-                                onClick={onClose}
-                                disabled={loading}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="solid"
-                                type="submit"
-                                loading={loading}
-                            >
-                                {warrantyToEdit ? 'Update Warranty' : 'Create Warranty'}
-                            </Button>
-                        </div>
-                    </form>
-                </FormContainer>
+                            {/* Form Actions */}
+                            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <Button
+                                    variant="plain"
+                                    onClick={onClose}
+                                    disabled={loading}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="solid"
+                                    type="submit"
+                                    loading={loading}
+                                >
+                                    {warrantyToEdit ? 'Update Warranty' : 'Create Warranty'}
+                                </Button>
+                            </div>
+                        </form>
+                    </FormContainer>
+                </div>
             </div>
         </Dialog>
     )

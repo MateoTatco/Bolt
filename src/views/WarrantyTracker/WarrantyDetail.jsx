@@ -218,38 +218,51 @@ const WarrantyDetail = () => {
         }
     }, [location.search, location.pathname, isEditing, navigate])
 
-    // Format date helper
+    // Format date helper - DD/MM/YYYY format (with time for updates)
     const formatDate = (date) => {
         if (!date) return '-'
         try {
+            let dateObj
             if (date?.toDate) {
-                return date.toDate().toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return '-'
             }
-            if (date instanceof Date) {
-                return date.toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })
-            }
-            if (typeof date === 'string') {
-                return new Date(date).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                })
-            }
+            
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const year = dateObj.getFullYear()
+            const hours = String(dateObj.getHours()).padStart(2, '0')
+            const minutes = String(dateObj.getMinutes()).padStart(2, '0')
+            return `${day}/${month}/${year} ${hours}:${minutes}`
+        } catch {
             return '-'
+        }
+    }
+
+    // Format date only (no time) - DD/MM/YYYY format
+    const formatDateOnly = (date) => {
+        if (!date) return '-'
+        try {
+            let dateObj
+            if (date?.toDate) {
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return '-'
+            }
+            
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const year = dateObj.getFullYear()
+            return `${day}/${month}/${year}`
         } catch {
             return '-'
         }
@@ -887,6 +900,7 @@ const WarrantyDetail = () => {
                                             <DatePicker
                                                 inputtable
                                                 inputtableBlurClose={false}
+                                                inputFormat="DD/MM/YYYY"
                                                 value={editFormData.expectedCompletionDate}
                                                 onChange={(date) => {
                                                     setEditFormData({ ...editFormData, expectedCompletionDate: date })
@@ -896,7 +910,7 @@ const WarrantyDetail = () => {
                                         ) : (
                                             <p className="text-base font-medium text-gray-900 dark:text-white">
                                                 {warranty.expectedCompletionDate 
-                                                    ? formatDate(warranty.expectedCompletionDate) 
+                                                    ? formatDateOnly(warranty.expectedCompletionDate) 
                                                     : <span className="text-gray-400 dark:text-gray-500">Not set</span>}
                                             </p>
                                         )}
