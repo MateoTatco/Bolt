@@ -6454,7 +6454,9 @@ export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAI
         oldStatus,
         newStatus,
         warrantyUrl,
-        updateNote // Optional: note from warranty update
+        updateNote, // Optional: note from warranty update
+        expectedCompletionDate, // Optional: current expected completion date
+        oldExpectedCompletionDate // Optional: previous expected completion date (for tracking changes)
     } = data;
 
     if (!recipientEmails || !Array.isArray(recipientEmails) || recipientEmails.length === 0) {
@@ -6538,6 +6540,13 @@ export const sendWarrantyNotificationEmail = functions.runWith({ secrets: ['EMAI
         if (projectName) warrantyDetails.push({ label: 'Project', value: projectName });
         if (requestedBy) warrantyDetails.push({ label: 'Requested By', value: requestedBy });
         if (description) warrantyDetails.push({ label: 'Description', value: description });
+        if (expectedCompletionDate) {
+            if (oldExpectedCompletionDate && oldExpectedCompletionDate !== expectedCompletionDate) {
+                warrantyDetails.push({ label: 'Expected Completion Date', value: `${expectedCompletionDate} (changed from ${oldExpectedCompletionDate})` });
+            } else {
+                warrantyDetails.push({ label: 'Expected Completion Date', value: expectedCompletionDate });
+            }
+        }
         if (updateNote && notificationType === 'updated') {
             warrantyDetails.push({ label: 'Latest Update', value: updateNote });
         }
@@ -6723,11 +6732,11 @@ This is an automated notification from the Bolt Warranty Tracker.
 
 // Helper function to calculate next reminder date based on frequency
 function calculateNextReminderDate(frequency: string, lastSent: Date): Date {
-    const days = frequency === '1day' ? 1 : 
-                 frequency === '2days' ? 2 :
-                 frequency === '3days' ? 3 : 
-                 frequency === '5days' ? 5 : 
-                 frequency === 'weekly' ? 7 : 5;
+    const days = frequency === '1day' ? 1 :
+                 frequency === '3days' ? 3 :
+                 frequency === '5days' ? 5 :
+                 frequency === '7days' ? 7 :
+                 frequency === 'weekly' ? 7 : 5; // Legacy support
     return new Date(lastSent.getTime() + (days * 24 * 60 * 60 * 1000));
 }
 
@@ -6763,7 +6772,7 @@ export const checkWarrantyReminders = functions
                     const warrantyId = warrantyDoc.id;
                     
                     // Skip if no reminder frequency set
-                    if (!warranty.reminderFrequency || warranty.reminderFrequency === 'none') {
+                    if (!warranty.reminderFrequency) {
                         continue;
                     }
                     

@@ -379,6 +379,29 @@ const WarrantyTracker = () => {
             },
         },
         {
+            header: 'Expected Completion',
+            accessorKey: 'expectedCompletionDate',
+            size: 150,
+            cell: ({ row }) => {
+                const warranty = row.original
+                const expectedDate = warranty.expectedCompletionDate
+                
+                if (!expectedDate) {
+                    return <span className="text-gray-400">Not set</span>
+                }
+                
+                // Check if date has passed
+                const dateValue = expectedDate?.toDate ? expectedDate.toDate() : new Date(expectedDate)
+                const isOverdue = dateValue < new Date() && warranty.status === 'open'
+                
+                return (
+                    <span className={`whitespace-nowrap ${isOverdue ? 'text-red-600 dark:text-red-400 font-semibold' : ''}`}>
+                        {formatDate(expectedDate)}
+                    </span>
+                )
+            },
+        },
+        {
             header: 'Created',
             accessorKey: 'createdAt',
             size: 120,

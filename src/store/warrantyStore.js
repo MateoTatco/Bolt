@@ -211,15 +211,13 @@ export const useWarrantyStore = create((set, get) => ({
             // Calculate next reminder date based on frequency
             let nextReminderDate = null
             const reminderFrequency = warrantyData.reminderFrequency || '5days'
-            if (reminderFrequency !== 'none') {
-                const now = new Date()
-                const days = reminderFrequency === '1day' ? 1 : 
-                            reminderFrequency === '2days' ? 2 :
-                            reminderFrequency === '3days' ? 3 : 
-                            reminderFrequency === '5days' ? 5 : 
-                            reminderFrequency === 'weekly' ? 7 : 5
-                nextReminderDate = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000))
-            }
+            const now = new Date()
+            const days = reminderFrequency === '1day' ? 1 : 
+                        reminderFrequency === '3days' ? 3 : 
+                        reminderFrequency === '5days' ? 5 : 
+                        reminderFrequency === '7days' ? 7 :
+                        reminderFrequency === 'weekly' ? 7 : 5 // Legacy support
+            nextReminderDate = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000))
 
             const newWarranty = {
                 projectId: warrantyData.projectId || null,
@@ -374,18 +372,20 @@ export const useWarrantyStore = create((set, get) => ({
             // Recalculate nextReminderDate if reminderFrequency changed
             if (updates.reminderFrequency !== undefined && updates.reminderFrequency !== oldReminderFrequency) {
                 const reminderFrequency = updates.reminderFrequency
-                if (reminderFrequency === 'none') {
-                    updates.nextReminderDate = null
-                } else {
-                    const now = new Date()
-                    const days = reminderFrequency === '1day' ? 1 : 
-                                reminderFrequency === '2days' ? 2 :
-                                reminderFrequency === '3days' ? 3 : 
-                                reminderFrequency === '5days' ? 5 : 
-                                reminderFrequency === 'weekly' ? 7 : 5
-                    updates.nextReminderDate = Timestamp.fromDate(new Date(now.getTime() + (days * 24 * 60 * 60 * 1000)))
-                }
+                const now = new Date()
+                const days = reminderFrequency === '1day' ? 1 : 
+                            reminderFrequency === '3days' ? 3 : 
+                            reminderFrequency === '5days' ? 5 : 
+                            reminderFrequency === '7days' ? 7 :
+                            reminderFrequency === 'weekly' ? 7 : 5 // Legacy support
+                updates.nextReminderDate = Timestamp.fromDate(new Date(now.getTime() + (days * 24 * 60 * 60 * 1000)))
             }
+            
+            // Track expected completion date changes
+            const oldExpectedCompletionDate = currentWarranty?.expectedCompletionDate
+            const newExpectedCompletionDate = updates.expectedCompletionDate
+            const expectedDateChanged = newExpectedCompletionDate !== undefined && 
+                JSON.stringify(oldExpectedCompletionDate) !== JSON.stringify(newExpectedCompletionDate)
             
             const response = await FirebaseDbService.warranties.update(warrantyId, updates)
             if (response.success) {
@@ -405,6 +405,35 @@ export const useWarrantyStore = create((set, get) => ({
                     ),
                 )
 
+                // Log expected completion date change if it changed
+                if (expectedDateChanged) {
+                    try {
+                        const formatDateForLog = (date) => {
+                            if (!date) return null
+                            if (date?.toDate) return date.toDate().toISOString()
+                            if (date instanceof Date) return date.toISOString()
+                            return date
+                        }
+                        
+                        await logActivity('warranty', warrantyId, {
+                            type: 'update',
+                            message: 'changed expected completion date',
+                            metadata: {
+                                changes: {
+                                    expectedCompletionDate: [
+                                        formatDateForLog(oldExpectedCompletionDate),
+                                        formatDateForLog(newExpectedCompletionDate)
+                                    ]
+                                },
+                                oldExpectedCompletionDate: formatDateForLog(oldExpectedCompletionDate),
+                                newExpectedCompletionDate: formatDateForLog(newExpectedCompletionDate)
+                            }
+                        })
+                    } catch (activityError) {
+                        console.error('Failed to log expected completion date change', activityError)
+                    }
+                }
+
                 // Notify users about warranty update or status change (in-app notifications)
                 try {
                     const warranty = updatedWarranty || response.data
@@ -419,6 +448,13 @@ export const useWarrantyStore = create((set, get) => ({
                             oldStatus,
                             newStatus,
                             changedBy: getCurrentUserId()
+                        })
+                    } else if (expectedDateChanged) {
+                        // If expected completion date changed, notify with update notification
+                        await notifyWarrantyUpdated({
+                            warrantyId,
+                            warrantyName,
+                            updatedBy: getCurrentUserId()
                         })
                     } else {
                         // Otherwise, notify with general update notification
@@ -468,6 +504,14 @@ export const useWarrantyStore = create((set, get) => ({
                         
                         const notificationType = (newStatus && oldStatus && newStatus !== oldStatus) ? 'status_changed' : 'updated'
                         
+                        // Format dates for email
+                        const formatDateForEmail = (date) => {
+                            if (!date) return null
+                            if (date?.toDate) return date.toDate().toISOString().split('T')[0]
+                            if (date instanceof Date) return date.toISOString().split('T')[0]
+                            return date
+                        }
+                        
                         await sendEmailFunction({
                             warrantyId,
                             warrantyName,
@@ -479,6 +523,8 @@ export const useWarrantyStore = create((set, get) => ({
                             notificationType,
                             oldStatus: oldStatus || null,
                             newStatus: newStatus || null,
+                            expectedCompletionDate: expectedDateChanged ? formatDateForEmail(newExpectedCompletionDate) : formatDateForEmail(warranty?.expectedCompletionDate),
+                            oldExpectedCompletionDate: expectedDateChanged ? formatDateForEmail(oldExpectedCompletionDate) : null,
                             warrantyUrl: `https://www.mybolt.pro/warranty-tracker/${warrantyId}`
                         })
                     }

@@ -327,12 +327,10 @@ const WarrantyDetail = () => {
     }, [projects])
 
     const reminderFrequencyOptions = [
-        { value: 'none', label: 'No Reminders' },
-        { value: '1day', label: 'Every 1 Day' },
-        { value: '2days', label: 'Every 2 Days' },
-        { value: '3days', label: 'Every 3 Days' },
-        { value: '5days', label: 'Every 5 Days' },
-        { value: 'weekly', label: 'Weekly' },
+        { value: '1day', label: '1 Day' },
+        { value: '3days', label: '3 Days' },
+        { value: '5days', label: '5 Days' },
+        { value: '7days', label: '7 Days' },
     ]
 
     // Handle add update
@@ -872,12 +870,11 @@ const WarrantyDetail = () => {
                                             />
                                         ) : (
                                             <p className="text-base font-medium text-gray-900 dark:text-white">
-                                                {warranty.reminderFrequency === 'none' ? 'No Reminders' :
-                                                 warranty.reminderFrequency === '1day' ? 'Every 1 Day' :
-                                                 warranty.reminderFrequency === '2days' ? 'Every 2 Days' :
-                                                 warranty.reminderFrequency === '3days' ? 'Every 3 Days' :
-                                                 warranty.reminderFrequency === '5days' ? 'Every 5 Days' :
-                                                 warranty.reminderFrequency === 'weekly' ? 'Weekly' :
+                                                {warranty.reminderFrequency === '1day' ? '1 Day' :
+                                                 warranty.reminderFrequency === '3days' ? '3 Days' :
+                                                 warranty.reminderFrequency === '5days' ? '5 Days' :
+                                                 warranty.reminderFrequency === '7days' ? '7 Days' :
+                                                 warranty.reminderFrequency === 'weekly' ? '7 Days' : // Legacy support
                                                  '-'}
                                             </p>
                                         )}
