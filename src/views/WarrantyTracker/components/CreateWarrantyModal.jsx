@@ -5,6 +5,7 @@ import { useWarrantyStore } from '@/store/warrantyStore'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { components } from 'react-select'
 import { HiOutlineX, HiOutlinePlus } from 'react-icons/hi'
+import { USER_ROLES } from '@/constants/roles.constant'
 
 const reminderFrequencyOptions = [
     { value: '1day', label: '1 Day' },
@@ -171,7 +172,25 @@ const CreateWarrantyModal = ({ isOpen, onClose, warrantyToEdit = null }) => {
             try {
                 const response = await FirebaseDbService.users.getAll()
                 if (response.success) {
-                    setUsers(response.data || [])
+                    const allUsers = response.data || []
+
+                    // Only include Tatco users and admins for Assigned To / CC in Warranty Tracker
+                    const tatcoUsers = allUsers.filter(user => {
+                        const userRole = user.role
+                        if (!userRole) return false
+
+                        const roles = Array.isArray(userRole) ? userRole : [userRole]
+
+                        const hasTatcoRole = roles.some(r =>
+                            r === USER_ROLES.TATCO_USER ||
+                            r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+                        )
+                        const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
+
+                        return hasTatcoRole || hasAdminRole
+                    })
+
+                    setUsers(tatcoUsers)
                 }
             } catch (error) {
                 console.error('Failed to load users:', error)

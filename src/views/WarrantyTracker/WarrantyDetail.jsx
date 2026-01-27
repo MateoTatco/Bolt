@@ -30,6 +30,7 @@ import { useProjectsStore } from '@/store/projectsStore'
 import acronym from '@/utils/acronym'
 import useRandomBgColor from '@/utils/hooks/useRandomBgColor'
 import { getCurrentUserId } from '@/utils/notificationHelper'
+import { USER_ROLES } from '@/constants/roles.constant'
 import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
 import { Timestamp } from 'firebase/firestore'
@@ -64,13 +65,30 @@ const WarrantyDetail = () => {
     const loadProjects = useProjectsStore((state) => state.loadProjects)
     const bgColor = useRandomBgColor()
 
-    // Load users for display
+    // Load users for display (Tatco users and admins only)
     useEffect(() => {
         const loadUsers = async () => {
             try {
                 const response = await FirebaseDbService.users.getAll()
                 if (response.success) {
-                    setUsers(response.data || [])
+                    const allUsers = response.data || []
+
+                    const tatcoUsers = allUsers.filter(user => {
+                        const userRole = user.role
+                        if (!userRole) return false
+
+                        const roles = Array.isArray(userRole) ? userRole : [userRole]
+
+                        const hasTatcoRole = roles.some(r =>
+                            r === USER_ROLES.TATCO_USER ||
+                            r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+                        )
+                        const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
+
+                        return hasTatcoRole || hasAdminRole
+                    })
+
+                    setUsers(tatcoUsers)
                 }
             } catch (error) {
                 console.error('Failed to load users:', error)
