@@ -4781,22 +4781,27 @@ export const azureSqlGetAllProjectsProfitability = functions
                 // Query 18 did NOT have RedTeamImport = 0 filter, so power_bi_match should not include it
                 // 
                 // ============================================================================================
-                // FIX FOR MULTIPLE PRIME CONTRACTS (Jan 2026)
+                // FIX FOR MULTIPLE PRIME CONTRACTS (Jan 2026) - UPDATED (Jan 27, 2026)
                 // ============================================================================================
                 // Issue: Projects with multiple prime contracts were only showing the first contract amount
-                //        instead of the sum of all contracts.
+                //        instead of the sum of all contracts. However, some projects have contract REVISIONS
+                //        (same contract updated) rather than multiple separate contracts.
                 // 
-                // Solution: Calculate the sum of all prime contracts per project and use that value.
+                // Solution: 
+                // - For projects with multiple contracts from DIFFERENT contractors: SUM them (true multiple contracts)
+                // - For projects with multiple contracts from SAME contractor: Use MAX (contract revisions)
+                // - This matches Procore's behavior where revisions show only the latest revised amount
                 // 
                 // Behavior:
-                // - Projects with multiple prime contracts: Uses SUM of all contracts from PrimeContracts table
+                // - Projects with multiple separate contracts (different contractors): SUM all contracts ✅
+                // - Projects with contract revisions (same contractor): Use MAX(RevisedContractAmount) ✅
                 // - Projects with single prime contract: Uses stored value from ProjectProfitabilityArchive (unchanged)
                 // - Projects with no prime contracts: Uses stored value from ProjectProfitabilityArchive (unchanged)
-                // - Future projects with multiple contracts: Automatically handled correctly
                 // 
                 // Examples:
-                // - Project 335970001: Has 2 contracts ($957,882.77 + $1,779,753.78 = $2,737,636.55) ✅
-                // - Project 235840001: Has 2 contracts ($1,212,316.69 + $29,112.50 = $1,241,429.19) ✅
+                // - Project 335970001: Has 2 separate contracts → SUM ($957,882.77 + $1,779,753.78 = $2,737,636.55) ✅
+                // - Project 235840001: Has 2 separate contracts → SUM ($1,212,316.69 + $29,112.50 = $1,241,429.19) ✅
+                // - Project 10028 (Enid Strip): Has 2 revisions (same contractor) → MAX ($729,379.30) ✅
                 // - Other projects: Continue using stored value (no change) ✅
                 // ============================================================================================
                 const query = `
@@ -4815,23 +4820,40 @@ export const azureSqlGetAllProjectsProfitability = functions
                         WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                         GROUP BY ppa.ProjectNumber
                     ),
-                    PrimeContractTotals AS (
-                        -- Calculate the correct total by summing all prime contracts per project
+                    PrimeContractAnalysis AS (
+                        -- Analyze prime contracts to distinguish between multiple contracts vs revisions
                         -- IMPORTANT: PrimeContracts.ProjectId = Projects.ProcoreId (not Projects.ProjectId)
-                        -- This CTE will only have entries for projects that have prime contracts in PrimeContracts table
                         SELECT 
                             p.ProjectNumber,
-                            SUM(pc.RevisedContractAmount) AS TotalPrimeContractAmount
+                            COUNT(DISTINCT pc.ContractorId) AS UniqueContractorCount,
+                            COUNT(*) AS TotalContractCount,
+                            SUM(pc.RevisedContractAmount) AS SumOfAllContracts,
+                            MAX(pc.RevisedContractAmount) AS MaxRevisedAmount
                         FROM dbo.PrimeContracts pc
                         INNER JOIN dbo.Projects p ON pc.ProjectId = p.ProcoreId
                         WHERE pc.RevisedContractAmount > 0
                         GROUP BY p.ProjectNumber
+                    ),
+                    PrimeContractTotals AS (
+                        -- Determine correct total based on whether contracts are separate or revisions
+                        SELECT 
+                            pca.ProjectNumber,
+                            CASE 
+                                -- If multiple contractors, these are separate contracts → SUM them
+                                WHEN pca.UniqueContractorCount > 1 THEN pca.SumOfAllContracts
+                                -- If same contractor but multiple contracts, likely revisions → Use MAX (latest revised)
+                                WHEN pca.TotalContractCount > 1 THEN pca.MaxRevisedAmount
+                                -- Single contract → Use the amount (handled by fallback to archive value)
+                                ELSE pca.MaxRevisedAmount
+                            END AS TotalPrimeContractAmount
+                        FROM PrimeContractAnalysis pca
                     )
                     SELECT 
                         ppa.ProjectName,
-                        -- Use sum of all prime contracts if available (projects with multiple contracts),
-                        -- otherwise fall back to stored value (single contract or no contracts in PrimeContracts table)
-                        -- This ensures backward compatibility and correct handling of all scenarios
+                        -- Use calculated prime contract total if available:
+                        -- - Multiple separate contracts (different contractors) → SUM
+                        -- - Contract revisions (same contractor) → MAX (latest revised amount)
+                        -- Otherwise fall back to stored value from archive (backward compatible)
                         COALESCE(pct.TotalPrimeContractAmount, ppa.ProjectRevisedContractAmount) as ProjectRevisedContractAmount,
                         ppa.ProjectNumber,
                         ppa.ProjectManager,
