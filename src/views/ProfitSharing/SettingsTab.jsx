@@ -2,17 +2,18 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { Card, Button, Input, Table, Dialog, Notification, toast, Select, Tag, Avatar } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX, HiOutlineUserGroup, HiOutlineSearch, HiOutlineEye, HiOutlineChartBar } from 'react-icons/hi'
+import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineCheck, HiOutlineX, HiOutlineUserGroup, HiOutlineSearch, HiOutlineEye, HiOutlineChartBar, HiOutlineDownload } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useSelectedCompany } from '@/hooks/useSelectedCompany'
 import { useProfitSharingAccessContext } from '@/context/ProfitSharingAccessContext'
 import { useSessionUser } from '@/store/authStore'
 import { db } from '@/configs/firebase.config'
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, query, orderBy, where } from 'firebase/firestore'
 import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { components } from 'react-select'
 import React from 'react'
+import * as XLSX from 'xlsx'
 
 const DEFAULT_COMPANY_NAME = 'Tatco OKC'
 
@@ -196,7 +197,7 @@ const SettingsTab = () => {
     const navigate = useNavigate()
     const user = useSessionUser((state) => state.user)
     const { selectedCompanyId, setSelectedCompany, loading: loadingSelected } = useSelectedCompany()
-    const { refreshAccess } = useProfitSharingAccessContext()
+    const { refreshAccess, userRole, canEdit } = useProfitSharingAccessContext()
     const [companies, setCompanies] = useState([])
     const [loading, setLoading] = useState(true)
     const [showAddDialog, setShowAddDialog] = useState(false)
@@ -208,6 +209,10 @@ const SettingsTab = () => {
         locationOfBusiness: '',
         legalAddress: ''
     })
+    
+    // Payroll Export state
+    const [exportSelectedCompanies, setExportSelectedCompanies] = useState([])
+    const [exporting, setExporting] = useState(false)
 
     // User Management state
     const [accessRecords, setAccessRecords] = useState([])
@@ -901,6 +906,153 @@ const SettingsTab = () => {
             )
         } finally {
             setSaving(false)
+        }
+    }
+
+    // Payroll Export function
+    const handlePayrollExport = async () => {
+        if (exportSelectedCompanies.length === 0) {
+            toast.push(
+                <Notification type="warning" duration={2000} title="Validation">
+                    Please select at least one company to export
+                </Notification>
+            )
+            return
+        }
+
+        setExporting(true)
+        try {
+            const exportData = []
+
+            // Load all valuations
+            const valuationsRef = collection(db, 'valuations')
+            const valuationsQuery = query(valuationsRef, orderBy('valuationDate', 'desc'))
+            const valuationsSnapshot = await getDocs(valuationsQuery)
+            const allValuations = valuationsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                valuationDate: doc.data().valuationDate?.toDate ? doc.data().valuationDate.toDate() : (doc.data().valuationDate ? new Date(doc.data().valuationDate) : null),
+            }))
+
+            // Load all stakeholders
+            const stakeholdersResult = await FirebaseDbService.stakeholders.getAll()
+            if (!stakeholdersResult.success) {
+                throw new Error('Failed to load stakeholders')
+            }
+            const allStakeholders = stakeholdersResult.data
+
+            // Process each selected company
+            for (const companyId of exportSelectedCompanies) {
+                const company = companies.find(c => c.id === companyId)
+                const companyName = company?.name || 'Unknown Company'
+
+                // Get the most recent actual profit valuation for this company
+                const companyValuations = allValuations
+                    .filter(v => v.companyId === companyId && v.profitType === 'actual')
+                    .sort((a, b) => {
+                        const aDate = a.valuationDate?.getTime() || 0
+                        const bDate = b.valuationDate?.getTime() || 0
+                        return bDate - aDate // Most recent first
+                    })
+
+                if (companyValuations.length === 0) {
+                    // No actual profit for this company, skip it
+                    continue
+                }
+
+                const lastActualValuation = companyValuations[0]
+                const valuationDate = lastActualValuation.valuationDate instanceof Date 
+                    ? lastActualValuation.valuationDate 
+                    : new Date(lastActualValuation.valuationDate)
+
+                // Calculate price per share
+                const pricePerShare = lastActualValuation.pricePerShare || 
+                    (lastActualValuation.profitAmount && lastActualValuation.totalShares && lastActualValuation.totalShares > 0
+                        ? lastActualValuation.profitAmount / lastActualValuation.totalShares 
+                        : 0)
+
+                if (pricePerShare === 0) {
+                    // No valid price per share, skip this company
+                    continue
+                }
+
+                // Get all stakeholders for this company
+                const companyStakeholders = allStakeholders.filter(sh => sh.companyId === companyId)
+
+                // Calculate dollar amounts for each stakeholder
+                for (const stakeholder of companyStakeholders) {
+                    const awards = stakeholder.profitAwards || []
+                    let totalDollarAmount = 0
+
+                    for (const award of awards) {
+                        if (!award.sharesIssued || award.sharesIssued === 0) continue
+
+                        // Check if award was active during the valuation date
+                        const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
+                        const awardEnd = award.awardEndDate ? new Date(award.awardEndDate) : null
+                        const awardWasActive = awardStart && awardEnd && valuationDate >= awardStart && valuationDate <= awardEnd
+
+                        if (!awardWasActive) continue
+
+                        // Check planId match:
+                        // - If valuation has a planId, only include awards with matching planId
+                        // - If valuation has no planId (company-level), include all awards
+                        const usingCompanyFallback = !lastActualValuation.planId
+                        const planMatches = usingCompanyFallback || award.planId === lastActualValuation.planId
+
+                        if (planMatches) {
+                            const payout = award.sharesIssued * pricePerShare
+                            totalDollarAmount += payout
+                        }
+                    }
+
+                    // Only include stakeholders with a dollar amount > 0
+                    if (totalDollarAmount > 0) {
+                        exportData.push({
+                            'Company Name': companyName,
+                            'Employee Name': stakeholder.name || 'Unknown',
+                            'Dollar Amount': totalDollarAmount
+                        })
+                    }
+                }
+            }
+
+            if (exportData.length === 0) {
+                toast.push(
+                    <Notification type="warning" duration={2000} title="No Data">
+                        No payroll data found for the selected companies. Make sure there are actual profit entries and active awards.
+                    </Notification>
+                )
+                setExporting(false)
+                return
+            }
+
+            // Create Excel workbook
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Payroll Export')
+
+            // Generate filename with current date
+            const dateStr = new Date().toISOString().split('T')[0]
+            const filename = `Profit_Sharing_Payroll_Export_${dateStr}.xlsx`
+
+            // Write file and trigger download
+            XLSX.writeFile(wb, filename)
+
+            toast.push(
+                <Notification type="success" duration={2000} title="Success">
+                    Payroll export completed successfully
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Error exporting payroll:', error)
+            toast.push(
+                <Notification type="danger" duration={2000} title="Error">
+                    Failed to export payroll: {error.message || 'Unknown error'}
+                </Notification>
+            )
+        } finally {
+            setExporting(false)
         }
     }
 
@@ -1641,6 +1793,76 @@ const SettingsTab = () => {
                     </div>
                 )}
             </Card>
+
+            {/* Payroll Export Section - Admin Only */}
+            {canEdit && (
+                <Card className="p-6">
+                    <div className="mb-4">
+                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <HiOutlineDownload className="w-5 h-5" />
+                            Payroll Export
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Export employee dollar amounts based on the last actual profit entered for selected companies. The export will include Company Name, Employee Name, and Dollar Amount.
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">
+                                Select Companies *
+                            </label>
+                            <Select
+                                options={companies.map(c => ({ value: c.id, label: c.name }))}
+                                value={companies.filter(c => exportSelectedCompanies.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
+                                onChange={(selected) => {
+                                    const selectedIds = Array.isArray(selected) 
+                                        ? selected.map(opt => opt.value)
+                                        : selected 
+                                            ? [selected.value]
+                                            : []
+                                    setExportSelectedCompanies(selectedIds)
+                                }}
+                                placeholder="Select one or more companies..."
+                                isMulti
+                                isSearchable
+                                menuPortalTarget={document.body}
+                                menuPosition="fixed"
+                                styles={{
+                                    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                    menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                }}
+                                components={{
+                                    ValueContainer: CustomValueContainer,
+                                    MultiValue: CustomMultiValue,
+                                    MenuList: CustomMenuList,
+                                    Option: CustomOption,
+                                    Placeholder: CustomPlaceholder,
+                                }}
+                                controlShouldRenderValue={false}
+                                hideSelectedOptions={false}
+                            />
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {exportSelectedCompanies.length > 0 
+                                    ? `${exportSelectedCompanies.length} compan${exportSelectedCompanies.length > 1 ? 'ies' : 'y'} selected`
+                                    : 'Select companies to include in the export'}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <Button
+                                variant="solid"
+                                icon={<HiOutlineDownload />}
+                                onClick={handlePayrollExport}
+                                loading={exporting}
+                                disabled={exportSelectedCompanies.length === 0}
+                            >
+                                Export Payroll
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             {/* Add/Edit User Dialog */}
             <Dialog
