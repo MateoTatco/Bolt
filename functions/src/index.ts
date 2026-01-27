@@ -4788,20 +4788,22 @@ export const azureSqlGetAllProjectsProfitability = functions
                 //        (same contract updated) rather than multiple separate contracts.
                 // 
                 // Solution: 
-                // - For projects with multiple contracts from DIFFERENT contractors: SUM them (true multiple contracts)
-                // - For projects with multiple contracts from SAME contractor: Use MAX (contract revisions)
-                // - This matches Procore's behavior where revisions show only the latest revised amount
+                // - Use creation dates to distinguish between separate contracts vs revisions
+                // - Contracts created on SAME day = separate contracts → SUM them
+                // - Contracts created on DIFFERENT days = likely revisions → Use most recently updated amount
+                // - This matches real-world patterns where separate contracts are created together,
+                //   while revisions happen over time as contracts are updated
                 // 
                 // Behavior:
-                // - Projects with multiple separate contracts (different contractors): SUM all contracts ✅
-                // - Projects with contract revisions (same contractor): Use MAX(RevisedContractAmount) ✅
+                // - Projects with multiple contracts created same day: SUM all contracts ✅
+                // - Projects with contracts created different days (revisions): Use most recently updated amount ✅
                 // - Projects with single prime contract: Uses stored value from ProjectProfitabilityArchive (unchanged)
                 // - Projects with no prime contracts: Uses stored value from ProjectProfitabilityArchive (unchanged)
                 // 
                 // Examples:
-                // - Project 335970001: Has 2 separate contracts → SUM ($957,882.77 + $1,779,753.78 = $2,737,636.55) ✅
-                // - Project 235840001: Has 2 separate contracts → SUM ($1,212,316.69 + $29,112.50 = $1,241,429.19) ✅
-                // - Project 10028 (Enid Strip): Has 2 revisions (same contractor) → MAX ($729,379.30) ✅
+                // - Project 335970001 (Love's): 2 contracts created Dec 24 → SUM ($957,882.77 + $1,786,526.48 = $2,744,409.25) ✅
+                // - Project 235840001: 2 contracts (check creation dates) → SUM if same day ✅
+                // - Project 10028 (Enid Strip): 2 contracts created May vs June (different days) → Use most recent ($729,379.30) ✅
                 // - Other projects: Continue using stored value (no change) ✅
                 // ============================================================================================
                 const query = `
@@ -4820,29 +4822,49 @@ export const azureSqlGetAllProjectsProfitability = functions
                         WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                         GROUP BY ppa.ProjectNumber
                     ),
-                    PrimeContractAnalysis AS (
-                        -- Analyze prime contracts to distinguish between multiple contracts vs revisions
-                        -- IMPORTANT: PrimeContracts.ProjectId = Projects.ProcoreId (not Projects.ProjectId)
+                    PrimeContractDetails AS (
+                        -- Get all prime contract details with project numbers
                         SELECT 
                             p.ProjectNumber,
-                            COUNT(DISTINCT pc.ContractorId) AS UniqueContractorCount,
-                            COUNT(*) AS TotalContractCount,
-                            SUM(pc.RevisedContractAmount) AS SumOfAllContracts,
-                            MAX(pc.RevisedContractAmount) AS MaxRevisedAmount
+                            pc.RevisedContractAmount,
+                            pc.CreatedAt,
+                            pc.UpdatedAt,
+                            pc.ProjectId AS ProcoreProjectId,
+                            -- Use ROW_NUMBER to identify the most recently updated contract per project
+                            ROW_NUMBER() OVER (
+                                PARTITION BY p.ProjectNumber 
+                                ORDER BY pc.UpdatedAt DESC
+                            ) AS UpdateRank
                         FROM dbo.PrimeContracts pc
                         INNER JOIN dbo.Projects p ON pc.ProjectId = p.ProcoreId
                         WHERE pc.RevisedContractAmount > 0
-                        GROUP BY p.ProjectNumber
+                    ),
+                    PrimeContractAnalysis AS (
+                        -- Analyze prime contracts to distinguish between multiple contracts vs revisions
+                        -- IMPORTANT: PrimeContracts.ProjectId = Projects.ProcoreId (not Projects.ProjectId)
+                        -- Key insights:
+                        -- - Contracts created on SAME day = separate contracts → SUM
+                        -- - Contracts created on DIFFERENT days = likely revisions → Use most recently updated amount
+                        SELECT 
+                            pcd.ProjectNumber,
+                            COUNT(DISTINCT CAST(pcd.CreatedAt AS DATE)) AS UniqueCreationDates,
+                            COUNT(*) AS TotalContractCount,
+                            SUM(pcd.RevisedContractAmount) AS SumOfAllContracts,
+                            MAX(pcd.RevisedContractAmount) AS MaxRevisedAmount,
+                            -- Get the most recently updated contract amount (UpdateRank = 1)
+                            MAX(CASE WHEN pcd.UpdateRank = 1 THEN pcd.RevisedContractAmount END) AS MostRecentUpdatedAmount
+                        FROM PrimeContractDetails pcd
+                        GROUP BY pcd.ProjectNumber
                     ),
                     PrimeContractTotals AS (
                         -- Determine correct total based on whether contracts are separate or revisions
                         SELECT 
                             pca.ProjectNumber,
                             CASE 
-                                -- If multiple contractors, these are separate contracts → SUM them
-                                WHEN pca.UniqueContractorCount > 1 THEN pca.SumOfAllContracts
-                                -- If same contractor but multiple contracts, likely revisions → Use MAX (latest revised)
-                                WHEN pca.TotalContractCount > 1 THEN pca.MaxRevisedAmount
+                                -- If contracts created on SAME day, these are separate contracts → SUM them
+                                WHEN pca.UniqueCreationDates = 1 AND pca.TotalContractCount > 1 THEN pca.SumOfAllContracts
+                                -- If contracts created on DIFFERENT days, likely revisions → Use most recently updated amount
+                                WHEN pca.UniqueCreationDates > 1 THEN COALESCE(pca.MostRecentUpdatedAmount, pca.MaxRevisedAmount)
                                 -- Single contract → Use the amount (handled by fallback to archive value)
                                 ELSE pca.MaxRevisedAmount
                             END AS TotalPrimeContractAmount
@@ -4851,8 +4873,8 @@ export const azureSqlGetAllProjectsProfitability = functions
                     SELECT 
                         ppa.ProjectName,
                         -- Use calculated prime contract total if available:
-                        -- - Multiple separate contracts (different contractors) → SUM
-                        -- - Contract revisions (same contractor) → MAX (latest revised amount)
+                        -- - Contracts created same day → SUM (separate contracts)
+                        -- - Contracts created different days → Use most recently updated (revisions)
                         -- Otherwise fall back to stored value from archive (backward compatible)
                         COALESCE(pct.TotalPrimeContractAmount, ppa.ProjectRevisedContractAmount) as ProjectRevisedContractAmount,
                         ppa.ProjectNumber,
