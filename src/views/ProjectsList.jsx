@@ -458,6 +458,7 @@ const ProjectsList = () => {
         ProjectRevisedContractAmount: '',
         BidType: '',
     })
+    const [isGeneratingProjectNumber, setIsGeneratingProjectNumber] = useState(false)
 
     useEffect(() => {
         loadProjects()
@@ -723,9 +724,11 @@ const ProjectsList = () => {
     
     const resetWizard = async () => {
         setWizardStep(1)
-        // Generate unique project number when resetting wizard
+        setIsGeneratingProjectNumber(true)
+        console.log('🔢 Generating unique project number for new project...')
         try {
             const newProjectNumber = await generateUniqueProjectNumber(projects)
+            console.log('✅ Generated project number:', newProjectNumber)
             setWizardData({
                 ProjectName: '',
                 ProjectNumber: String(newProjectNumber),
@@ -751,7 +754,7 @@ const ProjectsList = () => {
                 BidType: '',
             })
         } catch (error) {
-            console.error('Error generating project number:', error)
+            console.error('❌ Error generating project number:', error)
             setWizardData({
                 ProjectName: '',
                 ProjectNumber: '',
@@ -776,12 +779,20 @@ const ProjectsList = () => {
                 ProjectRevisedContractAmount: '',
                 BidType: '',
             })
+        } finally {
+            setIsGeneratingProjectNumber(false)
         }
     }
 
     const handleCreateProject = async () => {
         if (!wizardData.ProjectName.trim()) {
             alert('Project Name is required')
+            return
+        }
+
+        // Strict requirement: Project Number must be present before creating/syncing
+        if (!wizardData.ProjectNumber || !String(wizardData.ProjectNumber).trim()) {
+            alert('Project Number is required and is auto-generated. Please wait for it to finish generating before creating the project.')
             return
         }
         
@@ -793,6 +804,7 @@ const ProjectsList = () => {
         setIsCreatingProject(true)
         
         try {
+            console.log('🚀 Creating project with ProjectNumber:', wizardData.ProjectNumber)
             const payload = {
                 ProjectName: wizardData.ProjectName,
                 ProjectNumber: wizardData.ProjectNumber ? parseFloat(wizardData.ProjectNumber) : null,
@@ -854,6 +866,15 @@ const ProjectsList = () => {
             }
             
             const project = projectResponse.data
+
+            // Strict requirement: ensure ProjectNumber exists before retrying Procore sync
+            if (!project.ProjectNumber || !String(project.ProjectNumber).trim()) {
+                console.error('Cannot retry Procore sync: project is missing ProjectNumber', {
+                    projectId: procoreErrorDialog.projectId,
+                })
+                alert('Cannot retry Procore sync because the project is missing a Project Number. Please delete this project and create a new one with a valid Project Number.')
+                return
+            }
             
             // Try to sync with Procore again
             const { ProcoreService } = await import('@/services/ProcoreService')
@@ -863,9 +884,13 @@ const ProjectsList = () => {
             const validation = validateProcoreProject(procoreProjectData)
             
             if (!validation.isValid) {
-                throw new Error(`Missing required fields: ${validation.missingFields.join(', ')}`)
+                throw new Error(`Missing required fields for Procore: ${validation.missingFields.join(', ')}`)
             }
             
+            console.log('🔁 Retrying Procore project creation for project:', {
+                projectId: procoreErrorDialog.projectId,
+                projectNumber: project.ProjectNumber,
+            })
             const procoreResult = await ProcoreService.createProject(procoreProjectData)
             
             if (procoreResult.success && procoreResult.procoreProjectId) {
@@ -1097,13 +1122,16 @@ const ProjectsList = () => {
                     <Button
                         variant="twoTone"
                         icon={<HiOutlinePlus />}
-                        onClick={() => {
-                            resetWizard()
+                        onClick={async () => {
+                            if (isGeneratingProjectNumber) return
+                            await resetWizard()
                             setIsCreateOpen(true)
                         }}
                         className="w-full sm:w-auto"
+                        loading={isGeneratingProjectNumber}
+                        disabled={isGeneratingProjectNumber}
                     >
-                        Create Project
+                        {isGeneratingProjectNumber ? 'Preparing...' : 'Create Project'}
                     </Button>
                     <Button
                         variant="solid"
@@ -1764,12 +1792,19 @@ const ProjectsList = () => {
                                         Project Number
                                         <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(Auto-generated)</span>
                                     </label>
-                                    <Input 
-                                        value={wizardData.ProjectNumber} 
-                                        readOnly
-                                        className="bg-gray-50 dark:bg-gray-700 cursor-not-allowed"
-                                        placeholder="Auto-generated project number"
-                                    />
+                                    <div className="space-y-1">
+                                        <Input 
+                                            value={wizardData.ProjectNumber} 
+                                            readOnly
+                                            className="bg-gray-50 dark:bg-gray-700 cursor-not-allowed"
+                                            placeholder="Auto-generated project number"
+                                        />
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            {wizardData.ProjectNumber
+                                                ? 'Ready – this number will be used for Procore sync.'
+                                                : 'Generating project number... please wait before creating the project.'}
+                                        </p>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-2">Address</label>
@@ -2062,7 +2097,10 @@ const ProjectsList = () => {
                         <ol className="text-xs text-blue-700 dark:text-blue-300 list-decimal list-inside space-y-1">
                             <li>Confirm the project details in Bolt, especially the Project Number: <strong>{procoreErrorDialog.projectData?.ProjectNumber || 'N/A'}</strong></li>
                             <li>Check your Procore permissions and required fields for project creation.</li>
-                            <li>Use the Retry Sync button below to attempt syncing the project again once any issues are resolved.</li>
+                            <li>
+                                Use the Retry Sync button below to attempt syncing the project again once any issues are resolved.
+                                Note: Retry will only work if the project has a valid Project Number.
+                            </li>
                         </ol>
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
