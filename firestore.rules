@@ -7,12 +7,14 @@ service cloud.firestore {
     // Helper function to check if user is assigned to warranty
     function isAssignedToWarranty() {
       return isAuthed() && 
+        resource.data.assignedTo != null &&
         request.auth.uid in resource.data.assignedTo;
     }
     
     // Helper function to check if user created the warranty
     function isWarrantyCreator() {
       return isAuthed() && 
+        resource.data.createdBy != null &&
         request.auth.uid == resource.data.createdBy;
     }
     
@@ -71,9 +73,20 @@ service cloud.firestore {
       allow update: if isAuthed() && 
         (isWarrantyCreator() || isAssignedToWarranty());
       
-      // Delete: Only the creator can delete warranties
-      // (Admins can delete via UI if needed, but this adds an extra layer)
-      allow delete: if isAuthed() && isWarrantyCreator();
+      // Delete: Any admin or Tatco user can delete warranties
+      // OR user must be the creator OR assigned to the warranty
+      allow delete: if isAuthed() && (
+        // Check if user is admin or has Tatco role by reading user document
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'tatco_user' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'tatco_user_profit_sharing' ||
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role is list &&
+          ('admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role ||
+           'tatco_user' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role ||
+           'tatco_user_profit_sharing' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role))) ||
+        // OR user is creator or assigned
+        isWarrantyCreator() || isAssignedToWarranty()
+      );
       
       // Subcollections: updates and attachments
       match /updates/{updateId} {
