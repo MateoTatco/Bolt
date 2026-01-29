@@ -947,7 +947,8 @@ const SettingsTab = () => {
                 const companyName = company?.name || 'Unknown Company'
 
                 // Get the most recent actual profit valuation for this company
-                const companyValuations = allValuations
+                // Try actual first, then fall back to estimated if no actual exists
+                let companyValuations = allValuations
                     .filter(v => v.companyId === companyId && v.profitType === 'actual')
                     .sort((a, b) => {
                         const aDate = a.valuationDate?.getTime() || 0
@@ -955,24 +956,40 @@ const SettingsTab = () => {
                         return bDate - aDate // Most recent first
                     })
 
+                // If no actual profits, try estimated profits
                 if (companyValuations.length === 0) {
-                    // No actual profit for this company, skip it
+                    companyValuations = allValuations
+                        .filter(v => v.companyId === companyId)
+                        .sort((a, b) => {
+                            const aDate = a.valuationDate?.getTime() || 0
+                            const bDate = b.valuationDate?.getTime() || 0
+                            return bDate - aDate
+                        })
+                }
+
+                if (companyValuations.length === 0) {
                     continue
                 }
 
-                const lastActualValuation = companyValuations[0]
-                const valuationDate = lastActualValuation.valuationDate instanceof Date 
-                    ? lastActualValuation.valuationDate 
-                    : new Date(lastActualValuation.valuationDate)
+                const lastValuation = companyValuations[0]
+                const valuationDate = lastValuation.valuationDate instanceof Date 
+                    ? lastValuation.valuationDate 
+                    : new Date(lastValuation.valuationDate)
+
+                // Format profit date for export (DD/MM/YYYY format)
+                const profitDateFormatted = valuationDate.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                })
 
                 // Calculate price per share
-                const pricePerShare = lastActualValuation.pricePerShare || 
-                    (lastActualValuation.profitAmount && lastActualValuation.totalShares && lastActualValuation.totalShares > 0
-                        ? lastActualValuation.profitAmount / lastActualValuation.totalShares 
+                const pricePerShare = lastValuation.pricePerShare || 
+                    (lastValuation.profitAmount && lastValuation.totalShares && lastValuation.totalShares > 0
+                        ? lastValuation.profitAmount / lastValuation.totalShares 
                         : 0)
 
                 if (pricePerShare === 0) {
-                    // No valid price per share, skip this company
                     continue
                 }
 
@@ -988,17 +1005,25 @@ const SettingsTab = () => {
                         if (!award.sharesIssued || award.sharesIssued === 0) continue
 
                         // Check if award was active during the valuation date
+                        // If award has no dates, include it (assume it's always active)
                         const awardStart = award.awardStartDate ? new Date(award.awardStartDate) : null
                         const awardEnd = award.awardEndDate ? new Date(award.awardEndDate) : null
-                        const awardWasActive = awardStart && awardEnd && valuationDate >= awardStart && valuationDate <= awardEnd
+                        
+                        // Award is active if:
+                        // 1. It has no dates (always active), OR
+                        // 2. It has dates and the valuation date falls within the range
+                        const awardWasActive = !awardStart || !awardEnd || (valuationDate >= awardStart && valuationDate <= awardEnd)
 
-                        if (!awardWasActive) continue
+                        if (!awardWasActive) {
+                            continue
+                        }
 
                         // Check planId match:
-                        // - If valuation has a planId, only include awards with matching planId
-                        // - If valuation has no planId (company-level), include all awards
-                        const usingCompanyFallback = !lastActualValuation.planId
-                        const planMatches = usingCompanyFallback || award.planId === lastActualValuation.planId
+                        // Use company-level fallback when planIds don't match (similar to StakeholderDetail)
+                        // This allows using the most recent company profit even if it's for a different plan
+                        const usingCompanyFallback = !lastValuation.planId || (award.planId && award.planId !== lastValuation.planId)
+                        // If using company fallback, include all awards. Otherwise, only include matching planIds
+                        const planMatches = usingCompanyFallback || award.planId === lastValuation.planId
 
                         if (planMatches) {
                             const payout = award.sharesIssued * pricePerShare
@@ -1011,7 +1036,8 @@ const SettingsTab = () => {
                         exportData.push({
                             'Company Name': companyName,
                             'Employee Name': stakeholder.name || 'Unknown',
-                            'Dollar Amount': totalDollarAmount
+                            'Dollar Amount': totalDollarAmount,
+                            'Profit Date': profitDateFormatted
                         })
                     }
                 }
@@ -1019,8 +1045,8 @@ const SettingsTab = () => {
 
             if (exportData.length === 0) {
                 toast.push(
-                    <Notification type="warning" duration={2000} title="No Data">
-                        No payroll data found for the selected companies. Make sure there are actual profit entries and active awards.
+                    <Notification type="warning" duration={3000} title="No Data">
+                        No payroll data found for the selected companies. Make sure there are profit entries and active awards.
                     </Notification>
                 )
                 setExporting(false)
@@ -1041,7 +1067,7 @@ const SettingsTab = () => {
 
             toast.push(
                 <Notification type="success" duration={2000} title="Success">
-                    Payroll export completed successfully
+                    Payroll export completed successfully. Exported {exportData.length} employee{exportData.length !== 1 ? 's' : ''}.
                 </Notification>
             )
         } catch (error) {
@@ -1500,6 +1526,77 @@ const SettingsTab = () => {
                 </Button>
             </div>
 
+            {/* Payroll Export Section - Admin Only */}
+            {canEdit && (
+                <Card className="p-6">
+                    <div className="mb-4">
+                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                            <HiOutlineDownload className="w-5 h-5" />
+                            Payroll Export
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Export employee dollar amounts based on the last profit entered for selected companies. The export will include Company Name, Employee Name, Dollar Amount, and Profit Date.
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">
+                                Select Companies *
+                            </label>
+                            <Select
+                                options={companies.map(c => ({ value: c.id, label: c.name }))}
+                                value={companies.filter(c => exportSelectedCompanies.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
+                                onChange={(selected) => {
+                                    const selectedIds = Array.isArray(selected) 
+                                        ? selected.map(opt => opt.value)
+                                        : selected 
+                                            ? [selected.value]
+                                            : []
+                                    setExportSelectedCompanies(selectedIds)
+                                }}
+                                placeholder="Select one or more companies..."
+                                isMulti
+                                isSearchable
+                                closeMenuOnSelect={false}
+                                menuPortalTarget={document.body}
+                                menuPosition="fixed"
+                                styles={{
+                                    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                    menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                }}
+                                components={{
+                                    ValueContainer: CustomValueContainer,
+                                    MultiValue: CustomMultiValue,
+                                    MenuList: CustomMenuList,
+                                    Option: CustomOption,
+                                    Placeholder: CustomPlaceholder,
+                                }}
+                                controlShouldRenderValue={false}
+                                hideSelectedOptions={false}
+                            />
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {exportSelectedCompanies.length > 0 
+                                    ? `${exportSelectedCompanies.length} compan${exportSelectedCompanies.length > 1 ? 'ies' : 'y'} selected`
+                                    : 'Select companies to include in the export'}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <Button
+                                variant="solid"
+                                icon={<HiOutlineDownload />}
+                                onClick={handlePayrollExport}
+                                loading={exporting}
+                                disabled={exportSelectedCompanies.length === 0}
+                            >
+                                Export Payroll
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
             <Card className="p-6">
                 <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Company Management</h3>
@@ -1793,76 +1890,6 @@ const SettingsTab = () => {
                     </div>
                 )}
             </Card>
-
-            {/* Payroll Export Section - Admin Only */}
-            {canEdit && (
-                <Card className="p-6">
-                    <div className="mb-4">
-                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                            <HiOutlineDownload className="w-5 h-5" />
-                            Payroll Export
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Export employee dollar amounts based on the last actual profit entered for selected companies. The export will include Company Name, Employee Name, and Dollar Amount.
-                        </p>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-2">
-                                Select Companies *
-                            </label>
-                            <Select
-                                options={companies.map(c => ({ value: c.id, label: c.name }))}
-                                value={companies.filter(c => exportSelectedCompanies.includes(c.id)).map(c => ({ value: c.id, label: c.name }))}
-                                onChange={(selected) => {
-                                    const selectedIds = Array.isArray(selected) 
-                                        ? selected.map(opt => opt.value)
-                                        : selected 
-                                            ? [selected.value]
-                                            : []
-                                    setExportSelectedCompanies(selectedIds)
-                                }}
-                                placeholder="Select one or more companies..."
-                                isMulti
-                                isSearchable
-                                menuPortalTarget={document.body}
-                                menuPosition="fixed"
-                                styles={{
-                                    menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-                                    menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                                }}
-                                components={{
-                                    ValueContainer: CustomValueContainer,
-                                    MultiValue: CustomMultiValue,
-                                    MenuList: CustomMenuList,
-                                    Option: CustomOption,
-                                    Placeholder: CustomPlaceholder,
-                                }}
-                                controlShouldRenderValue={false}
-                                hideSelectedOptions={false}
-                            />
-                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                {exportSelectedCompanies.length > 0 
-                                    ? `${exportSelectedCompanies.length} compan${exportSelectedCompanies.length > 1 ? 'ies' : 'y'} selected`
-                                    : 'Select companies to include in the export'}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end">
-                            <Button
-                                variant="solid"
-                                icon={<HiOutlineDownload />}
-                                onClick={handlePayrollExport}
-                                loading={exporting}
-                                disabled={exportSelectedCompanies.length === 0}
-                            >
-                                Export Payroll
-                            </Button>
-                        </div>
-                    </div>
-                </Card>
-            )}
 
             {/* Add/Edit User Dialog */}
             <Dialog
