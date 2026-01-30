@@ -13,6 +13,29 @@ const formatTime = (ts) => {
     }
 }
 
+const formatDateOnly = (date) => {
+    if (!date) return '-'
+    try {
+        let dateObj
+        if (date?.toDate) {
+            dateObj = date.toDate()
+        } else if (date instanceof Date) {
+            dateObj = date
+        } else if (typeof date === 'string') {
+            dateObj = new Date(date)
+        } else {
+            return '-'
+        }
+        
+        const day = String(dateObj.getDate()).padStart(2, '0')
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+        const year = dateObj.getFullYear()
+        return `${day}/${month}/${year}`
+    } catch {
+        return '-'
+    }
+}
+
 const getCollectionName = (entityType) => {
     if (entityType === 'warranty') return 'warranties'
     return `${entityType}s`
@@ -38,17 +61,50 @@ const IconForType = ({ type }) => {
 }
 
 const ActivityItem = ({ a }) => {
+    // Check if this is an expected completion date change
+    const isExpectedDateChange = a?.message?.toLowerCase().includes('expected completion date') || 
+                                  a?.metadata?.oldExpectedCompletionDate || 
+                                  (a?.metadata?.changes && a.metadata.changes.expectedCompletionDate)
+    
+    // Get the old and new dates for expected completion date changes
+    let oldDate = null
+    let newDate = null
+    
+    if (a?.metadata?.oldExpectedCompletionDate && a?.metadata?.newExpectedCompletionDate) {
+        oldDate = formatDateOnly(a.metadata.oldExpectedCompletionDate)
+        newDate = formatDateOnly(a.metadata.newExpectedCompletionDate)
+    } else if (a?.metadata?.changes?.expectedCompletionDate) {
+        const [fromVal, toVal] = a.metadata.changes.expectedCompletionDate
+        oldDate = formatDateOnly(fromVal)
+        newDate = formatDateOnly(toVal)
+    }
+    
+    // Format timestamp - use date only for expected completion date changes
+    const displayTime = isExpectedDateChange ? formatDateOnly(a?.createdAt) : formatTime(a?.createdAt)
+    
     return (
         <div className="flex gap-4">
             <div className="flex-1">
                 <div className="bg-white dark:bg-gray-800 rounded-xl border p-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div className="text-sm text-gray-600 dark:text-gray-300">
-                            <span className="font-semibold text-gray-900 dark:text-white">{a?.actor?.name || 'Someone'}</span> {a?.message}
+                            {isExpectedDateChange && oldDate && newDate ? (
+                                <>
+                                    <span className="font-semibold text-gray-900 dark:text-white">{a?.actor?.name || 'Someone'}</span>{' '}
+                                    changed expected completion date from{' '}
+                                    <span className="line-through text-gray-500">{oldDate === '-' ? 'Not set' : oldDate}</span>{' '}
+                                    to{' '}
+                                    <span className="font-medium text-gray-900 dark:text-white">{newDate}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="font-semibold text-gray-900 dark:text-white">{a?.actor?.name || 'Someone'}</span> {a?.message}
+                                </>
+                            )}
                         </div>
-                        <div className="text-xs text-gray-400">{formatTime(a?.createdAt)}</div>
+                        <div className="text-xs text-gray-400">{displayTime}</div>
                     </div>
-                    {a?.metadata?.changes && (
+                    {a?.metadata?.changes && !isExpectedDateChange && (
                         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-1">
                             {(() => {
                                 const entries = Object.entries(a.metadata.changes)
@@ -57,15 +113,42 @@ const ActivityItem = ({ a }) => {
                                     const s = String(v ?? '—')
                                     return s.length > 120 ? s.slice(0, 117) + '…' : s
                                 }
+                                const formatValue = (field, val) => {
+                                    // If this is expectedCompletionDate field, format as DD/MM/YYYY
+                                    if (field === 'expectedCompletionDate' && val) {
+                                        try {
+                                            // Handle ISO string format
+                                            if (typeof val === 'string' && val.includes('T')) {
+                                                return formatDateOnly(new Date(val))
+                                            }
+                                            // Handle Firestore timestamp
+                                            if (val?.toDate) {
+                                                return formatDateOnly(val.toDate())
+                                            }
+                                            // Handle Date object
+                                            if (val instanceof Date) {
+                                                return formatDateOnly(val)
+                                            }
+                                            // Try parsing as date
+                                            const date = new Date(val)
+                                            if (!isNaN(date.getTime())) {
+                                                return formatDateOnly(date)
+                                            }
+                                        } catch {
+                                            // Fall back to truncate if parsing fails
+                                        }
+                                    }
+                                    return truncate(val)
+                                }
                                 const visible = entries.slice(0, maxItems)
                                 return (
                                     <>
                                         {visible.map(([field, [fromVal, toVal]]) => (
                                             <div key={field} className="flex items-center gap-2">
                                                 <span className="font-medium text-gray-700 dark:text-gray-200">{field}:</span>
-                                                <span className="line-through text-gray-400">{truncate(fromVal)}</span>
+                                                <span className="line-through text-gray-400">{formatValue(field, fromVal)}</span>
                                                 <span className="text-gray-400">→</span>
-                                                <span className="text-gray-700 dark:text-gray-200">{truncate(toVal)}</span>
+                                                <span className="text-gray-700 dark:text-gray-200">{formatValue(field, toVal)}</span>
                                             </div>
                                         ))}
                                         {entries.length > maxItems && (

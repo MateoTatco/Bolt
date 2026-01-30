@@ -599,13 +599,13 @@ const WarrantyDetail = () => {
             <Card>
                 {/* Tabs */}
                 <div className="border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex gap-2 px-4 md:px-6">
+                    <div className="flex gap-2 px-4 md:px-6 overflow-x-auto">
                         <button
                             onClick={() => {
                                 setActiveTab('overview')
                                 navigate(`/warranty-tracker/${warrantyId}?tab=overview`, { replace: true })
                             }}
-                            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+                            className={`px-3 md:px-4 py-3 font-medium text-xs md:text-sm border-b-2 transition-colors whitespace-nowrap ${
                                 activeTab === 'overview'
                                     ? 'border-primary text-primary'
                                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
@@ -618,7 +618,7 @@ const WarrantyDetail = () => {
                                 setActiveTab('updates')
                                 navigate(`/warranty-tracker/${warrantyId}?tab=updates`, { replace: true })
                             }}
-                            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+                            className={`px-3 md:px-4 py-3 font-medium text-xs md:text-sm border-b-2 transition-colors whitespace-nowrap ${
                                 activeTab === 'updates'
                                     ? 'border-primary text-primary'
                                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
@@ -631,7 +631,7 @@ const WarrantyDetail = () => {
                                 setActiveTab('attachments')
                                 navigate(`/warranty-tracker/${warrantyId}?tab=attachments`, { replace: true })
                             }}
-                            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
+                            className={`px-3 md:px-4 py-3 font-medium text-xs md:text-sm border-b-2 transition-colors whitespace-nowrap ${
                                 activeTab === 'attachments'
                                     ? 'border-primary text-primary'
                                     : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
@@ -950,14 +950,14 @@ const WarrantyDetail = () => {
 
                     {/* Updates Tab */}
                     {activeTab === 'updates' && (
-                    <div className="space-y-8">
+                    <div className="space-y-8 overflow-x-hidden">
                             {/* Add Update Form */}
                             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                                     <HiOutlinePencil className="text-xl text-gray-400 dark:text-gray-500" />
                                     Add New Update
                                 </h2>
-                                <div className="flex gap-3">
+                                <div className="flex flex-col md:flex-row gap-3">
                                     <textarea
                                         value={newUpdateText}
                                         onChange={(e) => {
@@ -982,7 +982,7 @@ const WarrantyDetail = () => {
                                         onClick={handleAddUpdate}
                                         loading={addingUpdate}
                                         disabled={!newUpdateText.trim()}
-                                        className="px-6 self-start"
+                                        className="px-6 self-start md:self-start w-full md:w-auto"
                                     >
                                         Add Update
                                     </Button>
@@ -1047,13 +1047,13 @@ const WarrantyDetail = () => {
                             </div>
 
                             {/* Updates List */}
-                            <div className="space-y-6">
+                            <div className="space-y-6 min-w-0">
                                 {updates.length === 0 ? (
                                     <>
                                         {/* Created Warranty only (no updates yet) */}
                                         {warranty && (
-                                            <div className="relative flex gap-4">
-                                                <div className="relative z-10 flex-shrink-0">
+                                            <div className="relative flex gap-2 md:gap-4">
+                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                     <Avatar
                                                         size={40}
                                                         className={`${bgColor(getUserDisplayName(getUserById(warranty.createdBy)))} border-4 border-white dark:border-gray-900 shadow-md`}
@@ -1061,14 +1061,14 @@ const WarrantyDetail = () => {
                                                         {getUserInitials(getUserById(warranty.createdBy))}
                                                     </Avatar>
                                                 </div>
-                                                <Card className="flex-1 shadow-md">
-                                                    <div className="p-5">
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="flex items-center gap-2">
+                                                <Card className="flex-1 shadow-md min-w-0">
+                                                    <div className="p-3 md:p-5">
+                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
                                                                 <span className="font-semibold text-gray-900 dark:text-white">
                                                                     {getUserDisplayName(getUserById(warranty.createdBy))}
                                                                 </span>
-                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
                                                                     Created Warranty
                                                                 </Tag>
                                                             </div>
@@ -1077,8 +1077,8 @@ const WarrantyDetail = () => {
                                                                 <span>{formatDate(warranty.createdAt)}</span>
                                                             </div>
                                                         </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                                                                 {warranty.description || <span className="text-gray-400 italic">No description provided</span>}
                                                             </p>
                                                         </div>
@@ -1091,8 +1091,8 @@ const WarrantyDetail = () => {
                                     <>
                                         {/* Latest Update (always on top, highlighted) */}
                                         <div className="relative">
-                                            <div className="relative flex gap-4">
-                                                <div className="relative z-10 flex-shrink-0">
+                                            <div className="relative flex gap-2 md:gap-4">
+                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                     <Avatar
                                                         size={40}
                                                         className={`${bgColor(getUserDisplayName(getUserById(updates[0].createdBy)))} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
@@ -1100,14 +1100,14 @@ const WarrantyDetail = () => {
                                                         {getUserInitials(getUserById(updates[0].createdBy))}
                                                     </Avatar>
                                                 </div>
-                                                <Card className="flex-1 shadow-lg border-2 border-primary">
-                                                    <div className="p-5">
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="flex items-center gap-2">
+                                                <Card className="flex-1 shadow-lg border-2 border-primary min-w-0">
+                                                    <div className="p-3 md:p-5">
+                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
                                                                 <span className="font-semibold text-gray-900 dark:text-white">
                                                                     {updates[0].createdByName || getUserDisplayName(getUserById(updates[0].createdBy))}
                                                                 </span>
-                                                                <Tag className="bg-primary text-white">
+                                                                <Tag className="bg-primary text-white w-fit">
                                                                     Latest Update
                                                                 </Tag>
                                                             </div>
@@ -1116,8 +1116,8 @@ const WarrantyDetail = () => {
                                                                 <span>{formatDate(updates[0].createdAt)}</span>
                                                             </div>
                                                         </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                                                                 {updates[0].note}
                                                             </p>
                                                         </div>
@@ -1133,8 +1133,8 @@ const WarrantyDetail = () => {
                                             const updateDate = formatDate(update.createdAt)
 
                                             return (
-                                                <div key={update.id} className="relative flex gap-4">
-                                                    <div className="relative z-10 flex-shrink-0">
+                                                <div key={update.id} className="relative flex gap-2 md:gap-4">
+                                                    <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                         <Avatar
                                                             size={40}
                                                             className={`${bgColor(displayName)} border-4 border-white dark:border-gray-900 shadow-md`}
@@ -1142,9 +1142,9 @@ const WarrantyDetail = () => {
                                                             {update.createdByName ? acronym(update.createdByName) : getUserInitials(updateUser)}
                                                         </Avatar>
                                                     </div>
-                                                    <Card className="flex-1 shadow-md">
-                                                        <div className="p-5">
-                                                            <div className="flex items-center justify-between mb-3">
+                                                    <Card className="flex-1 shadow-md min-w-0">
+                                                        <div className="p-3 md:p-5">
+                                                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="font-semibold text-gray-900 dark:text-white">
                                                                         {displayName}
@@ -1155,8 +1155,8 @@ const WarrantyDetail = () => {
                                                                     <span>{updateDate}</span>
                                                                 </div>
                                                             </div>
-                                                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                                                                     {update.note}
                                                                 </p>
                                                             </div>
@@ -1168,8 +1168,8 @@ const WarrantyDetail = () => {
 
                                         {/* Original warranty request (created warranty) - always last */}
                                         {warranty && (
-                                            <div className="relative flex gap-4">
-                                                <div className="relative z-10 flex-shrink-0">
+                                            <div className="relative flex gap-2 md:gap-4">
+                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                     <Avatar
                                                         size={40}
                                                         className={`${bgColor(getUserDisplayName(getUserById(warranty.createdBy)))} border-4 border-white dark:border-gray-900 shadow-md`}
@@ -1177,14 +1177,14 @@ const WarrantyDetail = () => {
                                                         {getUserInitials(getUserById(warranty.createdBy))}
                                                     </Avatar>
                                                 </div>
-                                                <Card className="flex-1 shadow-md">
-                                                    <div className="p-5">
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="flex items-center gap-2">
+                                                <Card className="flex-1 shadow-md min-w-0">
+                                                    <div className="p-3 md:p-5">
+                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
                                                                 <span className="font-semibold text-gray-900 dark:text-white">
                                                                     {getUserDisplayName(getUserById(warranty.createdBy))}
                                                                 </span>
-                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
                                                                     Created Warranty
                                                                 </Tag>
                                                             </div>
@@ -1193,8 +1193,8 @@ const WarrantyDetail = () => {
                                                                 <span>{formatDate(warranty.createdAt)}</span>
                                                             </div>
                                                         </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
                                                                 {warranty.description || <span className="text-gray-400 italic">No description provided</span>}
                                                             </p>
                                                         </div>

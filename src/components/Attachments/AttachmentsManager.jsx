@@ -489,13 +489,13 @@ const AttachmentsManager = ({ entityType, entityId }) => {
     }
 
     const HeaderActions = (
-        <div className="grid grid-cols-2 md:flex md:items-center gap-2 w-full md:w-auto">
-            <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Grid</Button>
-            <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">List</Button>
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 w-full md:w-auto">
+            <Button size="sm" variant={view === 'grid' ? 'solid' : 'twoTone'} icon={<HiOutlineViewGrid />} onClick={()=>setView('grid')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none">Grid</Button>
+            <Button size="sm" variant={view === 'list' ? 'solid' : 'twoTone'} icon={<HiOutlineViewList />} onClick={()=>setView('list')} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none">List</Button>
             {entityType !== 'warranty' && (
-                <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">New Folder</Button>
+                <Button size="sm" variant="twoTone" onClick={()=>setNewFolderOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none">New Folder</Button>
             )}
-            <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 w-full md:w-auto">Upload</Button>
+            <Button variant="solid" icon={<HiOutlineUpload />} onClick={()=>setUploadOpen(true)} className="text-xs md:text-sm px-2 md:px-3 py-1.5 md:py-2 flex-1 md:flex-none">Upload</Button>
         </div>
     )
 
