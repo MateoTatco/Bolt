@@ -176,7 +176,7 @@ const WarrantyTracker = () => {
         return users.find(u => u.id === userId || u.uid === userId)
     }
 
-    // Format date helper - DD/MM/YYYY format
+    // Format date helper - MM/DD/YYYY format
     const formatDate = (date) => {
         if (!date) return '-'
         try {
@@ -194,7 +194,7 @@ const WarrantyTracker = () => {
             const day = String(dateObj.getDate()).padStart(2, '0')
             const month = String(dateObj.getMonth() + 1).padStart(2, '0')
             const year = dateObj.getFullYear()
-            return `${day}/${month}/${year}`
+            return `${month}/${day}/${year}`
         } catch {
             return '-'
         }
@@ -296,7 +296,7 @@ const WarrantyTracker = () => {
                         const day = String(dateObj.getDate()).padStart(2, '0')
                         const month = String(dateObj.getMonth() + 1).padStart(2, '0')
                         const year = dateObj.getFullYear()
-                        return `${day}/${month}/${year}`
+                        return `${month}/${day}/${year}`
                     } catch {
                         return ''
                     }

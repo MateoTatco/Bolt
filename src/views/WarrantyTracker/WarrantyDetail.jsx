@@ -236,7 +236,7 @@ const WarrantyDetail = () => {
         }
     }, [location.search, location.pathname, isEditing, navigate])
 
-    // Format date helper - DD/MM/YYYY format (with time for updates)
+    // Format date helper - MM/DD/YYYY format (with time for updates)
     const formatDate = (date) => {
         if (!date) return '-'
         try {
@@ -256,13 +256,13 @@ const WarrantyDetail = () => {
             const year = dateObj.getFullYear()
             const hours = String(dateObj.getHours()).padStart(2, '0')
             const minutes = String(dateObj.getMinutes()).padStart(2, '0')
-            return `${day}/${month}/${year} ${hours}:${minutes}`
+            return `${month}/${day}/${year} ${hours}:${minutes}`
         } catch {
             return '-'
         }
     }
 
-    // Format date only (no time) - DD/MM/YYYY format
+    // Format date only (no time) - MM/DD/YYYY format
     const formatDateOnly = (date) => {
         if (!date) return '-'
         try {
@@ -280,7 +280,7 @@ const WarrantyDetail = () => {
             const day = String(dateObj.getDate()).padStart(2, '0')
             const month = String(dateObj.getMonth() + 1).padStart(2, '0')
             const year = dateObj.getFullYear()
-            return `${day}/${month}/${year}`
+            return `${month}/${day}/${year}`
         } catch {
             return '-'
         }
