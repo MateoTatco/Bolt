@@ -4781,30 +4781,28 @@ export const azureSqlGetAllProjectsProfitability = functions
                 // Query 18 did NOT have RedTeamImport = 0 filter, so power_bi_match should not include it
                 // 
                 // ============================================================================================
-                // FIX FOR MULTIPLE PRIME CONTRACTS (Jan 2026) - UPDATED (Jan 27, 2026)
+                // FIX FOR MULTIPLE PRIME CONTRACTS (Jan 2026) - UPDATED (Feb 2026)
                 // ============================================================================================
                 // Issue: Projects with multiple prime contracts were only showing the first contract amount
-                //        instead of the sum of all contracts. However, some projects have contract REVISIONS
-                //        (same contract updated) rather than multiple separate contracts.
+                //        instead of the sum of all contracts. Some projects have eliminated/replaced contracts
+                //        that should be excluded from the sum.
                 // 
-                // Solution: 
-                // - Use creation dates to distinguish between separate contracts vs revisions
-                // - Contracts created on SAME day = separate contracts → SUM them
-                // - Contracts created on DIFFERENT days = likely revisions → Use most recently updated amount
-                // - This matches real-world patterns where separate contracts are created together,
-                //   while revisions happen over time as contracts are updated
+                // Solution (per Brett's instruction): 
+                // - ALWAYS SUM all active contracts (per Brett: "always be grabbing the grand total or the summation of all contracts")
+                // - Exclude eliminated contracts: Contracts where OutstandingBalance = RevisedContractAmount AND TotalPayments = 0
+                //   (These are contracts that were replaced/eliminated in Procore but still exist in our database)
                 // 
                 // Behavior:
-                // - Projects with multiple contracts created same day: SUM all contracts ✅
-                // - Projects with contracts created different days (revisions): Use most recently updated amount ✅
-                // - Projects with single prime contract: Uses stored value from ProjectProfitabilityArchive (unchanged)
-                // - Projects with no prime contracts: Uses stored value from ProjectProfitabilityArchive (unchanged)
+                // - Projects with multiple active contracts: SUM all active contracts ✅
+                // - Projects with eliminated contracts: Exclude eliminated contracts from sum ✅
+                // - Projects with single prime contract: Uses calculated sum (or stored value if no prime contracts) ✅
+                // - Projects with no prime contracts: Uses stored value from ProjectProfitabilityArchive (unchanged) ✅
                 // 
                 // Examples:
-                // - Project 335970001 (Love's): 2 contracts created Dec 24 → SUM ($957,882.77 + $1,786,526.48 = $2,744,409.25) ✅
-                // - Project 235840001: 2 contracts (check creation dates) → SUM if same day ✅
-                // - Project 10028 (Enid Strip): 2 contracts created May vs June (different days) → Use most recent ($729,379.30) ✅
-                // - Other projects: Continue using stored value (no change) ✅
+                // - Project 335970001 (Love's): 2 active contracts → SUM ($957,882.77 + $1,786,526.48 = $2,744,409.25) ✅
+                // - Project 235840001 (Dutch Bros): 2 active contracts → SUM ($1,198,623.48 + $42,805.71 = $1,241,429.19) ✅
+                // - Project 10028 (Enid Strip): 1 active + 1 eliminated → SUM only active ($729,379.30) ✅
+                // - Other projects: Continue using stored value if no prime contracts (no change) ✅
                 // ============================================================================================
                 const query = `
                     WITH MostRecentArchiveDate AS (
@@ -4823,59 +4821,37 @@ export const azureSqlGetAllProjectsProfitability = functions
                         GROUP BY ppa.ProjectNumber
                     ),
                     PrimeContractDetails AS (
-                        -- Get all prime contract details with project numbers
+                        -- Get all active prime contract details with project numbers
+                        -- Exclude eliminated contracts: Contracts where OutstandingBalance = RevisedContractAmount AND TotalPayments = 0
+                        -- These are contracts that were replaced/eliminated in Procore but still exist in our database
                         SELECT 
                             p.ProjectNumber,
                             pc.RevisedContractAmount,
-                            pc.CreatedAt,
-                            pc.UpdatedAt,
-                            pc.ProjectId AS ProcoreProjectId,
-                            -- Use ROW_NUMBER to identify the most recently updated contract per project
-                            ROW_NUMBER() OVER (
-                                PARTITION BY p.ProjectNumber 
-                                ORDER BY pc.UpdatedAt DESC
-                            ) AS UpdateRank
+                            pc.OutstandingBalance,
+                            pc.TotalPayments,
+                            pc.ProjectId AS ProcoreProjectId
                         FROM dbo.PrimeContracts pc
                         INNER JOIN dbo.Projects p ON pc.ProjectId = p.ProcoreId
                         WHERE pc.RevisedContractAmount > 0
-                    ),
-                    PrimeContractAnalysis AS (
-                        -- Analyze prime contracts to distinguish between multiple contracts vs revisions
-                        -- IMPORTANT: PrimeContracts.ProjectId = Projects.ProcoreId (not Projects.ProjectId)
-                        -- Key insights:
-                        -- - Contracts created on SAME day = separate contracts → SUM
-                        -- - Contracts created on DIFFERENT days = likely revisions → Use most recently updated amount
-                        SELECT 
-                            pcd.ProjectNumber,
-                            COUNT(DISTINCT CAST(pcd.CreatedAt AS DATE)) AS UniqueCreationDates,
-                            COUNT(*) AS TotalContractCount,
-                            SUM(pcd.RevisedContractAmount) AS SumOfAllContracts,
-                            MAX(pcd.RevisedContractAmount) AS MaxRevisedAmount,
-                            -- Get the most recently updated contract amount (UpdateRank = 1)
-                            MAX(CASE WHEN pcd.UpdateRank = 1 THEN pcd.RevisedContractAmount END) AS MostRecentUpdatedAmount
-                        FROM PrimeContractDetails pcd
-                        GROUP BY pcd.ProjectNumber
+                            -- Exclude eliminated contracts: full balance outstanding with no payments = eliminated/replaced
+                            AND NOT (
+                                pc.OutstandingBalance = pc.RevisedContractAmount 
+                                AND pc.TotalPayments = 0
+                            )
                     ),
                     PrimeContractTotals AS (
-                        -- Determine correct total based on whether contracts are separate or revisions
+                        -- Always SUM all active contracts (per Brett's instruction)
                         SELECT 
-                            pca.ProjectNumber,
-                            CASE 
-                                -- If contracts created on SAME day, these are separate contracts → SUM them
-                                WHEN pca.UniqueCreationDates = 1 AND pca.TotalContractCount > 1 THEN pca.SumOfAllContracts
-                                -- If contracts created on DIFFERENT days, likely revisions → Use most recently updated amount
-                                WHEN pca.UniqueCreationDates > 1 THEN COALESCE(pca.MostRecentUpdatedAmount, pca.MaxRevisedAmount)
-                                -- Single contract → Use the amount (handled by fallback to archive value)
-                                ELSE pca.MaxRevisedAmount
-                            END AS TotalPrimeContractAmount
-                        FROM PrimeContractAnalysis pca
+                            pcd.ProjectNumber,
+                            SUM(pcd.RevisedContractAmount) AS TotalPrimeContractAmount
+                        FROM PrimeContractDetails pcd
+                        GROUP BY pcd.ProjectNumber
                     )
                     SELECT 
                         ppa.ProjectName,
                         -- Use calculated prime contract total if available:
-                        -- - Contracts created same day → SUM (separate contracts)
-                        -- - Contracts created different days → Use most recently updated (revisions)
-                        -- Otherwise fall back to stored value from archive (backward compatible)
+                        -- - Always SUM all active contracts (excludes eliminated contracts)
+                        -- - Otherwise fall back to stored value from archive (backward compatible)
                         COALESCE(pct.TotalPrimeContractAmount, ppa.ProjectRevisedContractAmount) as ProjectRevisedContractAmount,
                         ppa.ProjectNumber,
                         ppa.ProjectManager,
@@ -4958,11 +4934,22 @@ export const azureSqlGetAllProjectsProfitability = functions
                         })(),
                         estimatedDifference: (() => {
                             const initial = parseFloat(row.EstimatedProjectProfit) || 0;
-                            const current = parseFloat(row.ProjectedProfit) || 0;
+                            // Use calculated currentProjectedProfit instead of stored ProjectedProfit for consistency
+                            const contractValue = parseFloat(row.ProjectRevisedContractAmount) || 0;
+                            const estCost = parseFloat(row.EstCostAtCompletion) || 0;
+                            const current = contractValue - estCost;
                             return current - initial;
                         })(),
                         jobToDateCost: parseFloat(row.JobCostToDate) || 0,
-                        percentProjectedProfit: parseFloat(row.ProjectedProfitPercentage) || 0,
+                        percentProjectedProfit: (() => {
+                            // Calculate on the fly to ensure accuracy with updated contract values
+                            const contractValue = parseFloat(row.ProjectRevisedContractAmount) || 0;
+                            const estCost = parseFloat(row.EstCostAtCompletion) || 0;
+                            const projectedProfit = contractValue - estCost;
+                            // Avoid division by zero
+                            if (contractValue === 0) return 0;
+                            return (projectedProfit / contractValue) * 100;
+                        })(),
                         balanceLeftOnContract: parseFloat(row.BalanceLeftOnContract) || 0,
                         percentCompleteRevenue: parseFloat(row.PercentCompleteBasedOnRevenue) || 0,
                         percentCompleteCost: parseFloat(row.PercentCompleteBasedOnCost) || 0,
