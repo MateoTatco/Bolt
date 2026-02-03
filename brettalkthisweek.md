@@ -772,3 +772,798 @@ Mateo Roldan Taborda 19 minutos 9 segundos
 Sounds good.
 Mateo Roldan Taborda 19 minutos 11 segundos
 Yeah, exactly. So you'll you'll be able to see it like on your regular view, but just rest assured nobody else is going to be able to see it unless they have admin or FD access, which at the moment it's just very few people.
+
+
+Second conversation
+
+Brett Tatum
+0 minutos 3 segundos0:03
+Brett Tatum 0 minutos 3 segundos
+Form or spreadsheet that captures where an individual labor resource needs to go the following day and then that information can be.
+0:14
+0 minutos 14 segundos
+Correct.
+BT
+
+Brett Tatum
+0 minutos 18 segundos0:18
+Brett Tatum 0 minutos 18 segundos
+Masks then out.
+Brett Tatum 0 minutos 21 segundos
+Um.
+Brett Tatum 0 minutos 23 segundos
+Be a text message to everyone who's on the list.
+MT
+
+Mateo Roldan Taborda
+0 minutos 27 segundos0:27
+Mateo Roldan Taborda 0 minutos 27 segundos
+Yes. So based on that, I would actually like to have your input. How would you like things to look like? What does an MVP for you going to work or the minimum requirements you want for this new module?
+Mateo Roldan Taborda 0 minutos 44 segundos
+To look to feel like. So I would like to get it directly from you so I can actually do a more tailored job to something that you're going to be using on a daily basis.
+BT
+
+Brett Tatum
+0 minutos 57 segundos0:57
+Brett Tatum 0 minutos 57 segundos
+So Harrison, do you have a sheet or something you guys wanna pull up and share?
+MT
+
+Mateo Roldan Taborda
+1 minuto 8 segundos1:08
+Mateo Roldan Taborda 1 minuto 8 segundos
+Oh, I think he's muted.
+BT
+
+Brett Tatum
+1 minuto 10 segundos1:10
+Brett Tatum 1 minuto 10 segundos
+Yeah, you're muted, buddy.
+HM
+
+Harrison McKee
+1 minuto 14 segundos1:14
+Harrison McKee 1 minuto 14 segundos
+I'm pulling it up. I'm just trying to get it from one screen to the other.
+Harrison McKee 1 minuto 19 segundos
+in the world. Just cancel it.
+Harrison McKee 1 minuto 26 segundos
+Mm.
+Harrison McKee 1 minuto 31 segundos
+Mhm.
+Harrison McKee 1 minuto 36 segundos
+OK, I've got it.
+Harrison McKee 1 minuto 39 segundos
+Here you go.
+BT
+
+Brett Tatum
+1 minuto 43 segundos1:43
+Brett Tatum 1 minuto 43 segundos
+There we go.
+HM
+
+Harrison McKee
+1 minuto 43 segundos1:43
+Harrison McKee 1 minuto 43 segundos
+This is kind of what we've got. It's hard to read when I'm this zoomed out, but I'll kind of go back to like last week's.
+MT
+
+Mateo Roldan Taborda
+1 minuto 44 segundos1:44
+Mateo Roldan Taborda 1 minuto 44 segundos
+Awesome.
+HM
+
+Harrison McKee
+1 minuto 54 segundos1:54
+Harrison McKee 1 minuto 54 segundos
+We'll start it off and we just fill out day of the week, date, employee or 1099's name, crew member name rather. Then it's who's who was off that week, what cost code they get.
+Harrison McKee 2 minutos 10 segundos
+Put to I can slow down and recap this here in a minute, but.
+BT
+Brett Tatum
+2 minutos 13 segundos2:13
+Brett Tatum 2 minutos 13 segundos
+Yeah.
+HM
+Harrison McKee
+2 minutos 15 segundos2:15
+Harrison McKee 2 minutos 15 segundos
+Hours worked for the W2 guys for that day.
+Harrison McKee 2 minutos 20 segundos
+Job location as referred to in red team.
+Harrison McKee 2 minutos 25 segundos
+What? What is their scheduled task for the day? What got changed once they got to site or throughout the day? Any notes in these note boxes kind of go two ways if Jamie or I have something to tell the crew.
+Harrison McKee 2 minutos 42 segundos
+IE Camila or Jose will put it in there and vice versa. At the end of the day, if they have something to respond with, they'll fill it out.
+Harrison McKee 2 minutos 51 segundos
+Task not completed or need more time. Explain the issues if we have to go back and then materials needed kind of moving forward and we've run that same column broken out day by day, just separated by a black line to go to Wednesday to go to Thursday.
+Harrison McKee 3 minutos 9 segundos
+So on and so forth. I mean, this is pretty basic, but it serves its purpose for right now. The biggest thing we're looking for is trying to get this in the hands of the guys actually performing the work.
+Mateo Roldan Taborda
+3 minutos 16 segundos3:16
+Mateo Roldan Taborda 3 minutos 16 segundos
+Hello.
+BT
+Brett Tatum
+3 minutos 16 segundos3:16
+Brett Tatum 3 minutos 16 segundos
+So.
+MT
+Mateo Roldan Taborda
+3 minutos 24 segundos3:24
+Mateo Roldan Taborda 3 minutos 24 segundos
+So quick question over here. So you're these the only person editing this Excel sheet. How many people? Everybody like all of the employees.
+HM
+Harrison McKee
+3 minutos 33 segundos3:33
+Harrison McKee 3 minutos 33 segundos
+No.
+Harrison McKee 3 minutos 34 segundos
+12345 We'll touch the sheet in one way, shape or form.
+MT
+Mateo Roldan Taborda
+3 minutos 42 segundos3:42
+Mateo Roldan Taborda 3 minutos 42 segundos
+OK, sounds good. Um, and they're going to be filling usually.
+Mateo Roldan Taborda 3 minutos 50 segundos
+Walk with me again. Which are the columns that they're going to be filling like the people?
+HM
+Harrison McKee
+3 minutos 55 segundos3:55
+Harrison McKee 3 minutos 55 segundos
+So like the project manager for instance, which is me and Jamie for now will come through here. This is, this is this week's jobs. So this is what's going on today. For tomorrow we will come in here and.
+MT
+Mateo Roldan Taborda
+4 minutos4:00
+Mateo Roldan Taborda 4 minutos
+Mhm.
+HM
+Harrison McKee
+4 minutos 10 segundos4:10
+Harrison McKee 4 minutos 10 segundos
+Put whatever task we may have, and for the sake of it, let's just say I'm going to send somebody to job number one tomorrow. If I know a specific person on the crew, I'll call it out.
+BT
+Brett Tatum
+4 minutos 18 segundos4:18
+Brett Tatum 4 minutos 18 segundos
+Mhm.
+HM
+Harrison McKee
+4 minutos 24 segundos4:24
+Harrison McKee 4 minutos 24 segundos
+And for right now, I'll just use Walker as an example. I'll call him out, but if I don't know, I leave it blank and let Jose assign. Jose is our crew leader. He assigns all the names.
+MT
+Mateo Roldan Taborda
+4 minutos 29 segundos4:29
+Mateo Roldan Taborda 4 minutos 29 segundos
+So.
+Mateo Roldan Taborda 4 minutos 38 segundos
+Mhm.
+HM
+Harrison McKee
+4 minutos 40 segundos4:40
+Harrison McKee 4 minutos 40 segundos
+To the blank slots as far as who he thinks will do best work in that case scenario. Then I get I fill out the job name, I fill out the address, I fill out what I want done out on that job tomorrow.
+MT
+Mateo Roldan Taborda
+4 minutos 43 segundos4:43
+Mateo Roldan Taborda 4 minutos 43 segundos
+OK.
+Mateo Roldan Taborda 4 minutos 48 segundos
+Got it.
+BT
+Brett Tatum
+4 minutos 57 segundos4:57
+Brett Tatum 4 minutos 57 segundos
+OK.
+HM
+Harrison McKee
+4 minutos 57 segundos4:57
+Harrison McKee 4 minutos 57 segundos
+Jose puts the names with it. Jose slash Camilla will put the names with it and the hours worked with it, and then the added tasks will come from Camilla and Jose's side. And that's more so to reflect back to us kind of if we tell them to go out there and do drywall install.
+MT
+Mateo Roldan Taborda
+4 minutos 58 segundos4:58
+Mateo Roldan Taborda 4 minutos 58 segundos
+OK.
+HM
+Harrison McKee
+5 minutos 17 segundos5:17
+Harrison McKee 5 minutos 17 segundos
+And they get there and all the windows on the front of the building are open and they got shifted to cover up windows instead of installing any drywall. We have a way of documenting that so we don't show up out there and the project management team thinks it should be drywalled and it's not drywalled.
+MT
+Mateo Roldan Taborda
+5 minutos 37 segundos5:37
+Mateo Roldan Taborda 5 minutos 37 segundos
+OK, makes sense.
+BT
+Brett Tatum
+5 minutos 37 segundos5:37
+Brett Tatum 5 minutos 37 segundos
+So, Harrison, let's break. Can we break this down into a couple of pieces? What's the information that needs to be communicated via text daily?
+HM
+Harrison McKee
+5 minutos 46 segundos5:46
+Harrison McKee 5 minutos 46 segundos
+The stuff that needs to be communicated daily is it needs to get to set employees with what day, date, job name, location and scope of work they're performing.
+
+Brett Tatum
+5 minutos 58 segundos5:58
+Brett Tatum 5 minutos 58 segundos
+Hey Mateo, tell me if you think I'm correct on this. I think our text message systems will have limitations on number of characters. Think that's gonna be the case?
+MT
+Mateo Roldan Taborda
+5 minutos 59 segundos5:59
+Mateo Roldan Taborda 5 minutos 59 segundos
+Sounds good.
+Mateo Roldan Taborda 6 minutos 10 segundos
+Not necessarily, but OK, yeah, not necessarily is going to have a a character limit, so I wouldn't worry about that, honestly.
+BT
+Brett Tatum
+6 minutos 12 segundos6:12
+Brett Tatum 6 minutos 12 segundos
+OK, good.
+Brett Tatum 6 minutos 21 segundos
+OK, OK, awesome. So that gives us plenty of flexibility to kind of craft how the message reads.
+MT
+Mateo Roldan Taborda
+6 minutos 27 segundos6:27
+Mateo Roldan Taborda 6 minutos 27 segundos
+Because the MVP that I was actually thinking, we can actually include everything that we're doing like you're doing on the Excel sheet. But the most critical piece of information that we actually need to pull to bolt right away would be the messaging system. So having somewhere.
+Mateo Roldan Taborda 6 minutos 46 segundos
+Kind of like centralized where you can message everybody on the go without having to do it individually.
+HM
+Harrison McKee
+6 minutos 51 segundos6:51
+Harrison McKee 6 minutos 51 segundos
+Or is it?
+Harrison McKee 6 minutos 53 segundos
+Are we trying to do this with in bolt?
+MT
+Mateo Roldan Taborda
+6 minutos 54 segundos6:54
+Mateo Roldan Taborda 6 minutos 54 segundos
+Yep.
+Mateo Roldan Taborda 6 minutos 56 segundos
+Within Vault, yes. Eventually this is going to go to Vault too. But the very first thing that we're going to be creating that I'm going to be creating for you is going to be a way to for you to select everybody who's working with you currently.
+HM
+Harrison McKee
+6 minutos 57 segundos6:57
+Harrison McKee 6 minutos 57 segundos
+OK, OK.
+Harrison McKee 7 minutos 1 segundo
+OK.
+MT
+Mateo Roldan Taborda
+7 minutos 11 segundos7:11
+Mateo Roldan Taborda 7 minutos 11 segundos
+Message them the job name, the address and the schedule tasks. Am I right? Those are the three critical information you guys need to to to deliver to everybody, right?
+HM
+Harrison McKee
+7 minutos 24 segundos7:24
+Harrison McKee 7 minutos 24 segundos
+So is there a way to make like individual groups within that I consider sending one last text? Is it?
+MT
+Mateo Roldan Taborda
+7 minutos 31 segundos7:31
+Mateo Roldan Taborda 7 minutos 31 segundos
+Sorry, I couldn't hear you well.
+HM
+Harrison McKee
+7 minutos 32 segundos7:32
+Harrison McKee 7 minutos 32 segundos
+I think she said. Is there a way to make groups? But I don't think it's going to be so much off of groups. I think like it the system will be smart enough to pull whatever job name is assigned where everybody's getting their individual texts. Thank you.
+BT
+Brett Tatum
+7 minutos 46 segundos7:46
+Brett Tatum 7 minutos 46 segundos
+Exactly, exactly.
+MT
+Mateo Roldan Taborda
+7 minutos 46 segundos7:46
+Mateo Roldan Taborda 7 minutos 46 segundos
+Yes, mm-hmm, yes.
+HM
+Harrison McKee
+7 minutos 48 segundos7:48
+Harrison McKee 7 minutos 48 segundos
+Like you're not gonna have to create a group text that sends the nine guys or whatever if she's gonna send.
+MT
+Mateo Roldan Taborda
+7 minutos 50 segundos7:50
+Mateo Roldan Taborda 7 minutos 50 segundos
+Oh.
+Mateo Roldan Taborda 7 minutos 52 segundos
+No, no, no. This is not going to be WhatsApp where you're going to have a this is not going to be a a messaging app where you go back and forward with everybody. It's just a way for you to send critical information about the job site to your employees.
+Mateo Roldan Taborda 8 minutos 8 segundos
+Pretty much kind of like how to do everything quickly for for everybody. Does that make sense?
+HM
+Harrison McKee
+8 minutos 9 segundos8:09
+Harrison McKee 8 minutos 9 segundos
+Yeah.
+Harrison McKee 8 minutos 16 segundos
+Correct. Yeah. I mean, the stuff that I think that's important is those first five that I talked about. I do think there would be a need to have.
+MT
+Mateo Roldan Taborda
+8 minutos 16 segundos8:16
+Mateo Roldan Taborda 8 minutos 16 segundos
+Yeah, OK. Uh.
+HM
+Harrison McKee
+8 minutos 25 segundos8:25
+Harrison McKee 8 minutos 25 segundos
+Just to kind of catch all bucket where you can put in if there's lock box codes, if there's special tools that need to get picked up at the shop.
+Harrison McKee 8 minutos 35 segundos
+Those kind of like fluid information that's not just name, address, time, you know what I mean? Like there needs to be a little bit of a flexible bucket that might have to get filled out for each individual job as needed, but it would be more of a one off. Hey, you've got to come by because there's two pallets of tile.
+Mateo Roldan Taborda
+8 minutos 50 segundos8:50
+Mateo Roldan Taborda 8 minutos 50 segundos
+Mhm.
+HM
+Harrison McKee
+8 minutos 55 segundos8:55
+Harrison McKee 8 minutos 55 segundos
+All that need to go with you to that job.
+MT
+Mateo Roldan Taborda
+8 minutos 58 segundos8:58
+Mateo Roldan Taborda 8 minutos 58 segundos
+Got it. Yeah, definitely. I'll I'll include somewhat some flexibility for you to customize the message if you need to as well for individuals. So yeah, no worries. The way this is going to work from my end and the way I'm going to be communicating updates to you, I'm going to focus on delivering to you an MVP.
+Mateo Roldan Taborda 9 minutos 18 segundos
+Based on that, we're going to shift our focus on delivering more in-depth updates for your team specifically. So think about these. You're going to be working for me for several weeks while I'll give you regular updates on the job done.
+HM
+Harrison McKee
+9 minutos 59 segundos9:59
+Harrison McKee 9 minutos 59 segundos
+Yeah, on the oh God.
+BT
+Brett Tatum
+10 minutos 1 segundo10:01
+Brett Tatum 10 minutos 1 segundo
+Go ahead, Mateo.
+HM
+Harrison McKee
+10 minutos 2 segundos10:02
+Harrison McKee 10 minutos 2 segundos
+Go ahead.
+Harrison McKee 10 minutos 3 segundos
+On the text message, is there a way to have the address like hyperlink to take them to like Google Maps or like the, you know, Apple Maps or something like that so that they can like they don't have to like type in the address and somehow it get, you know, messed up?
+MT
+Mateo Roldan Taborda
+10 minutos 16 segundos10:16
+Mateo Roldan Taborda 10 minutos 16 segundos
+Yeah, of course.
+HM
+Harrison McKee
+10 minutos 22 segundos10:22
+Harrison McKee 10 minutos 22 segundos
+From them trying to translate it to their mapping software.
+MT
+Mateo Roldan Taborda
+10 minutos 27 segundos10:27
+Mateo Roldan Taborda 10 minutos 27 segundos
+I believe so. So yeah, I can look into it to add the the hyperlink included as soon as you send it. So it's easier for them and for you as well without having to well, pretty much everybody having to type the address manually again in somewhere.
+Mateo Roldan Taborda 10 minutos 43 segundos
+In a different app, but yeah, I'll try to include that as well in the MVP for you.
+HM
+Harrison McKee
+10 minutos 47 segundos10:47
+Harrison McKee 10 minutos 47 segundos
+And.
+Harrison McKee 10 minutos 49 segundos
+One other question I had to add is like whenever we create more or less all what 30 of these guys are gonna have a different.
+Harrison McKee 10 minutos 58 segundos
+Rolodex or contact card built into the system. Is there a way to select which language they receive their texts in?
+MT
+Mateo Roldan Taborda
+11 minutos 3 segundos11:03
+Mateo Roldan Taborda 11 minutos 3 segundos
+Yep.
+Mateo Roldan Taborda 11 minutos 9 segundos
+I'm guessing you have guys who speak multiple languages.
+HM
+Harrison McKee
+11 minutos 12 segundos11:12
+Harrison McKee 11 minutos 12 segundos
+Yeah, we have.
+BT
+Brett Tatum
+11 minutos 13 segundos11:13
+Brett Tatum 11 minutos 13 segundos
+No, we have guys who speak one language. It's just not all the same language.
+MT
+Mateo Roldan Taborda
+11 minutos 17 segundos11:17
+Mateo Roldan Taborda 11 minutos 17 segundos
+Yeah, I gotcha. No. Yeah, definitely. One thing that I'm going to be working on is we're going to be adding all of your employees to Bolt. I'm guessing like for these to be able to work, some of the people will need somewhat access to Bolt. The people who are going to be getting the messages, no need, but I'm going to be creating something.
+Mateo Roldan Taborda 11 minutos 37 segundos
+Inside of this component called a detail page, which is basically going to be able to save preferences, names, emails, phone numbers, things that we're going to use to communicate with people automatically, right? So in that I can actually include the preferred language, either be I'm guessing Spanish for some of these guys.
+Mateo Roldan Taborda 11 minutos 57 segundos
+Or whatever other language they they speak so that the system knows in what language to send the message.
+Mateo Roldan Taborda 12 minutos 6 segundos
+Make sense?
+HM
+Harrison McKee
+12 minutos 6 segundos12:06
+Harrison McKee 12 minutos 6 segundos
+OK, yeah, makes sense.
+BT
+Brett Tatum
+12 minutos 8 segundos12:08
+Brett Tatum 12 minutos 8 segundos
+Now, Mateo, just thinking about the actual development of this, like the way that they're currently capturing the information, obviously what we're is what we're trying to recreate, but effectively what is gonna have to be created is.
+MT
+Mateo Roldan Taborda
+12 minutos 8 segundos12:08
+Mateo Roldan Taborda 12 minutos 8 segundos
+OK, awesome. Yep.
+Mateo Roldan Taborda 12 minutos 19 segundos
+Yeah.
+BT
+Brett Tatum
+12 minutos 24 segundos12:24
+Brett Tatum 12 minutos 24 segundos
+A date like I'm I'm saying a database, but it's a spread, you know, whatever we we gotta create a database of.
+Brett Tatum 12 minutos 32 segundos
+Projects like a, you know, like there has to be a way to add a new project. You put the address in there, you're gonna put the scheduled tasks in there. Like we won't be able to have it in a spreadsheet that just goes horizontally like this, basically.
+Harrison McKee
+12 minutos 49 segundos12:49
+Harrison McKee 12 minutos 49 segundos
+Brilliant.
+MT
+Mateo Roldan Taborda
+12 minutos 50 segundos12:50
+Mateo Roldan Taborda 12 minutos 50 segundos
+Yeah, it's going to be different.
+BT
+Brett Tatum
+12 minutos 51 segundos12:51
+Brett Tatum 12 minutos 51 segundos
+Yeah. So we'll, I think once you kind of get just the first pass, Mateo, we probably need to make sure like just before you tie in any of the back end, just from a user interface, you know, make sure we're having a quick follow up call to.
+MT
+Mateo Roldan Taborda
+13 minutos13:00
+Mateo Roldan Taborda 13 minutos
+Mhm.
+Mateo Roldan Taborda 13 minutos 7 segundos
+No, absolutely.
+BT
+Brett Tatum
+13 minutos 7 segundos13:07
+Brett Tatum 13 minutos 7 segundos
+To make sure it's usable for those guys.
+MT
+Mateo Roldan Taborda
+13 minutos 10 segundos13:10
+Mateo Roldan Taborda 13 minutos 10 segundos
+Absolutely. That's going to come kind of like in a second phase of development. Again, as I said before, what I want to get for you, the MVP, I want to get a way for you to communicate with the crew as easy as possible without as few clicks as possible for you guys, right?
+Mateo Roldan Taborda 13 minutos 28 segundos
+Then after that's done, we can discuss how to create, how to try to recreate all of these in a more intuitive way for the whole team so that you don't have to rely on an Excel sheet, but in a more advanced or more.
+Mateo Roldan Taborda 13 minutos 44 segundos
+Tailor system for all of.
+Mateo Roldan Taborda 13 minutos 48 segundos
+That works.
+HM
+Harrison McKee
+13 minutos 50 segundos13:50
+Harrison McKee 13 minutos 50 segundos
+Yeah, I was wondering if we could basically put the Excel sheet itself into Bolt more or less, if that makes sense or something similar. And Brett, I know we talked about it, but like to where it's even if it's just the job name itself and the job address box.
+Harrison McKee 14 minutos 7 segundos
+Breeze or pulls like from honest like a drop down or a search that ties back to red team in some way, shape or form.
+BT
+Brett Tatum
+14 minutos 14 segundos14:14
+Brett Tatum 14 minutos 14 segundos
+Yeah.
+Brett Tatum 14 minutos 18 segundos
+So that piece is gonna be Mateo and I've already talked about that, and it's certainly part of the development for this, but kind of like a phase two or a phase three because there's a bigger component there. Like can we actually run background tasks to pull reports out of red team, save them somewhere so that data can be accessed?
+Brett Tatum 14 minutos 37 segundos
+Out of the gate, I think it makes more sense to just get a usable product where you either type in a job or we create a little just job Rolodex within bolt.
+Brett Tatum 14 minutos 50 segundos
+Um, and then work our way towards that like integration piece.
+MT
+Mateo Roldan Taborda
+14 minutos 54 segundos14:54
+Mateo Roldan Taborda 14 minutos 54 segundos
+Yes, because at at the moment, Harrison, there's a thing that happens with like a third party apps. Not everybody wants to share the access of their apps with everyone else. And at the moment that red team develop their their own tool, they don't share.
+HM
+Harrison McKee
+14 minutos 55 segundos14:55
+Harrison McKee 14 minutos 55 segundos
+OK.
+MT
+Mateo Roldan Taborda
+15 minutos 13 segundos15:13
+Mateo Roldan Taborda 15 minutos 13 segundos
+Those kind of things on how to connect to their app publicly, right? So we need to look for ways on how we can actually get around that, which isn't as easy as it sounds. It's a bit more difficult to do it. For example, there are other tools that the company currently uses, such as Procore.
+Mateo Roldan Taborda 15 minutos 32 segundos
+That allows us to connect directly with them, but with Red Tim, it's a little bit more difficult to do so. So that's something definitely we are looking into, but.
+Mateo Roldan Taborda 15 minutos 45 segundos
+It's we still need to know the full scope on how things are going to be developed on our end.
+HM
+Harrison McKee
+15 minutos 47 segundos15:47
+Harrison McKee 15 minutos 47 segundos
+Or.
+Harrison McKee 15 minutos 50 segundos
+I mean for right now, yes, I'm I'm guessing it's as easy as whenever we have the job created and dropped into red team, we just add that to the To Do List, create the job in red team, create the folder, create the job in bolt.
+MT
+Mateo Roldan Taborda
+15 minutos 58 segundos15:58
+Mateo Roldan Taborda 15 minutos 58 segundos
+Yeah.
+BT
+Brett Tatum
+15 minutos 59 segundos15:59
+Brett Tatum 15 minutos 59 segundos
+Yeah.
+MT
+Mateo Roldan Taborda
+16 minutos 2 segundos16:02
+Mateo Roldan Taborda 16 minutos 2 segundos
+Yeah, and don't worry, I'm just going to try to make everything as simple as possible so you don't have, so you guys don't have to juggle through 1000 things. So yeah, Brett already has the experience of working with me for a few months. So trust me, I'm going to make sure to take care to take care of you guys as much as possible.
+HM
+Harrison McKee
+16 minutos 7 segundos16:07
+Harrison McKee 16 minutos 7 segundos
+Yeah.
+BT
+Brett Tatum
+16 minutos 17 segundos16:17
+Brett Tatum 16 minutos 17 segundos
+Yeah.
+HM
+Harrison McKee
+16 minutos 22 segundos16:22
+Harrison McKee 16 minutos 22 segundos
+Awesome.
+BT
+Brett Tatum
+16 minutos 22 segundos16:22
+Brett Tatum 16 minutos 22 segundos
+You're you're, yeah, we're in good hands on getting this, this build.
+Brett Tatum 16 minutos 30 segundos
+Just as we're thinking about how this could work in the future, Harrison, is there any need or want for the ability to respond back to text messages that then potentially could infill information?
+HM
+Harrison McKee
+16 minutos 42 segundos16:42
+Harrison McKee 16 minutos 42 segundos
+I think that would be like I could see.
+Harrison McKee 16 minutos 47 segundos
+Depending on how complex or how easy it is to use, I could see where it would be beneficial to get something back like arrived at site message. So like you've got a automated way of basically tracking when the guy showed up.
+Harrison McKee 17 minutos 5 segundos
+Or at least verifying that they did show up that day, even if it wasn't first thing, you just have kind of have a verification that they made it to site. And then I think at the end of the day it'd be nice to have like a prompt to get pictures or something back.
+MT
+Mateo Roldan Taborda
+17 minutos 5 segundos17:05
+Mateo Roldan Taborda 17 minutos 5 segundos
+Mhm.
+HM
+Harrison McKee
+17 minutos 21 segundos17:21
+Harrison McKee 17 minutos 21 segundos
+Show me what you did today. Yeah, it might be I hung drywall and they just take a picture of drywall hanging on studs, but at least you have some sort of documentation proof, something to show for what they did.
+MT
+Mateo Roldan Taborda
+17 minutos 36 segundos17:36
+Mateo Roldan Taborda 17 minutos 36 segundos
+Yeah, definitely. I'll I'll look into it with while I develop.
+HM
+Harrison McKee
+17 minutos 39 segundos17:39
+Harrison McKee 17 minutos 39 segundos
+The the biggest thing I think of, I'm sorry, I said the biggest thing I think of is the guys in the field are very like everything's text message. They don't go into the app every time we've tried to have like log your time with an app or respond back with emails.
+Harrison McKee 17 minutos 55 segundos
+I guess too cumbersome. The easiest thing to do is keep it as simple as possible. We've had good luck with asking them like, hey, I'll call them and shoot me some text pictures and I'll get pictures in a few minutes. So like, I know that they'll do that if it's something as easy as just texting.
+MT
+Mateo Roldan Taborda
+17 minutos 59 segundos17:59
+Mateo Roldan Taborda 17 minutos 59 segundos
+Yeah.
+Mateo Roldan Taborda 18 minutos 14 segundos
+Yeah, definitely. I'll I'll I'll help you out guys with something like that. The easiest way that I can actually think to accomplish that is that as soon as we send them the message, we send something like type one. If you arrive to to, I don't know how you call that in English to to the site, to the job site and if they type.
+Brett Tatum
+18 minutos 20 segundos18:20
+Brett Tatum 18 minutos 20 segundos
+Yeah.
+HM
+Harrison McKee
+18 minutos 33 segundos18:33
+Harrison McKee 18 minutos 33 segundos
+Yeah.
+MT
+Mateo Roldan Taborda
+18 minutos 33 segundos18:33
+Mateo Roldan Taborda 18 minutos 33 segundos
+One, the system recognizes that and logs them into an update saying these are all of the people who have replied who haven't replied, so you have somewhat more control to everybody.
+HM
+Harrison McKee
+18 minutos 45 segundos18:45
+Harrison McKee 18 minutos 45 segundos
+Yep. Thank you.
+MT
+Mateo Roldan Taborda
+18 minutos 46 segundos18:46
+Mateo Roldan Taborda 18 minutos 46 segundos
+Like you'll be able to visualize what I mean better, like down the road, but it's something that might be worth like to keep it simple, you know?
+HM
+Harrison McKee
+18 minutos 56 segundos18:56
+Harrison McKee 18 minutos 56 segundos
+So if they have like a start time, so like if the text message sends them like a start time of like 7:00 AM or 8:00 AM, is there a way to send that text one or something like maybe 30 minutes or an hour before they're supposed to arrive? That way they know to text cause like if you send it.
+Harrison McKee 19 minutos 16 segundos
+If we send out the text the night before and then they get that text message right away, they're not going to remember to respond.
+MT
+Mateo Roldan Taborda
+19 minutos 22 segundos19:22
+Mateo Roldan Taborda 19 minutos 22 segundos
+Yeah, absolutely. We can schedule reminders as you guys please. So that's not gonna be an issue whatsoever. It's just a matter of discussing down that later down the road. So we know what kind of schedule reminders we want to send out to the team.
+HM
+Harrison McKee
+19 minutos 30 segundos19:30
+Harrison McKee 19 minutos 30 segundos
+OK.
+Harrison McKee 19 minutos 38 segundos
+OK, awesome.
+MT
+Mateo Roldan Taborda
+19 minutos 39 segundos19:39
+Mateo Roldan Taborda 19 minutos 39 segundos
+Mm.
+Mateo Roldan Taborda 19 minutos 41 segundos
+So the way this is going to work, just so you guys know, I require a two week screen where I'm going to be focusing the first week of that on the front end, then the second. Once you're happy with the front end, I'm going to be circling back to the back end, which is basically giving out the actual functionality to to to the app with.
+Mateo Roldan Taborda 20 minutos 1 segundo
+Them bolt. So you kind of like guys know that everything's going to be working together. Within those two weeks, I'm going to be giving you regular updates where like all of the work is done and if you find something that you don't like or you want to change, just let me know.
+HM
+Harrison McKee
+20 minutos 20 segundos20:20
+Harrison McKee 20 minutos 20 segundos
+Sounds good. I appreciate it.
+MT
+Mateo Roldan Taborda
+20 minutos 22 segundos20:22
+Mateo Roldan Taborda 20 minutos 22 segundos
+Then just one more thing about for you Brett, please give me the emails that I can use to communicate with Harrison as well and I guess in case I can find them on teams as well or not.
+BT
+Brett Tatum
+20 minutos 37 segundos20:37
+Brett Tatum 20 minutos 37 segundos
+Oh yeah, yeah, they're. Do you use your teams, Harrison?
+HM
+Harrison McKee
+20 minutos 41 segundos20:41
+Harrison McKee 20 minutos 41 segundos
+Yeah, Teams is for me and Mateo. We'll both use teams.
+MT
+Mateo Roldan Taborda
+20 minutos 41 segundos20:41
+Mateo Roldan Taborda 20 minutos 41 segundos
+OK.
+Mateo Roldan Taborda 20 minutos 45 segundos
+OK, sounds good. Then I'll be able to find you over there. Just shoot me your e-mail so I can send you the updates as well. And then, yeah, we'll take it from there.
+BT
+Brett Tatum
+20 minutos 54 segundos20:54
+Brett Tatum 20 minutos 54 segundos
+I'm gonna, I'm gonna create a group here with Mateo.
+MT
+Mateo Roldan Taborda
+20 minutos 56 segundos20:56
+Mateo Roldan Taborda 20 minutos 56 segundos
+OK, that works too.
+BT
+Brett Tatum
+21 minutos 2 segundos21:02
+Brett Tatum 21 minutos 2 segundos
+Mateo.
+HM
+Harrison McKee
+21 minutos 3 segundos21:03
+Harrison McKee 21 minutos 3 segundos
+Mhm.
+BT
+Brett Tatum
+21 minutos 4 segundos21:04
+Brett Tatum 21 minutos 4 segundos
+It's gonna be great for him.
+HM
+Harrison McKee
+21 minutos 6 segundos21:06
+Harrison McKee 21 minutos 6 segundos
+It's gonna be working.
+BT
+Brett Tatum
+21 minutos 9 segundos21:09
+Brett Tatum 21 minutos 9 segundos
+Um.
+Brett Tatum 21 minutos 12 segundos
+Perfect. This is gonna be the FD. What do you guys call this on your end, Harrison?
+HM
+Harrison McKee
+21 minutos 19 segundos21:19
+Harrison McKee 21 minutos 19 segundos
+Operations or crew tracker.
+BT
+Brett Tatum
+21 minutos 22 segundos21:22
+Brett Tatum 21 minutos 22 segundos
+Of the crew tracker.
+HM
+Harrison McKee
+21 minutos 29 segundos21:29
+Harrison McKee 21 minutos 29 segundos
+Or lightning, you know, lightning bolt.
+Brett Tatum
+21 minutos 32 segundos21:32
+Brett Tatum 21 minutos 32 segundos
+Lightning.
+HM
+Harrison McKee
+21 minutos 33 segundos21:33
+Harrison McKee 21 minutos 33 segundos
+I told Mateo, I was like, when they asked me what we're gonna call it, I'm gonna tell him for stage worldwide, wide, wide with three wides at the end.
+BT
+Brett Tatum
+21 minutos 39 segundos21:39
+Brett Tatum 21 minutos 39 segundos
+Yes.
+Brett Tatum 21 minutos 42 segundos
+I like that. How we choose most of our names around here, for what it's worth, Harrison, is we go ask Simon, figure out what he absolutely despises, and then go with that.
+MT
+Mateo Roldan Taborda
+21 minutos 42 segundos21:42
+Mateo Roldan Taborda 21 minutos 42 segundos
+That's funny.
+BT
+Brett Tatum
+21 minutos 52 segundos21:52
+Brett Tatum 21 minutos 52 segundos
+Oh.
+HM
+Harrison McKee
+21 minutos 54 segundos21:54
+Harrison McKee 21 minutos 54 segundos
+I think it's awesome.
+MT
+Mateo Roldan Taborda
+21 minutos 55 segundos21:55
+Mateo Roldan Taborda 21 minutos 55 segundos
+That's awesome. Well, it's a pleasure to meet you guys. I'm really looking forward to this piece of development. Something that really excites me is actually to jump into new phases of development, something that is going to be challenging but yet useful for the whole team. So bear with me, this is going to be, I'm going to be asking a lot of questions to you guys.
+BT
+Brett Tatum
+21 minutos 56 segundos21:56
+Brett Tatum 21 minutos 56 segundos
+OK.
+MT
+Mateo Roldan Taborda
+22 minutos 15 segundos22:15
+Mateo Roldan Taborda 22 minutos 15 segundos
+And then I'm going to make sure to build the best possible solution for for the whole team.
+HM
+Harrison McKee
+22 minutos 21 segundos22:21
+Harrison McKee 22 minutos 21 segundos
+Awesome. Thank you. Thanks, Mateo.
+MT
+Mateo Roldan Taborda
+22 minutos 22 segundos22:22
+Mateo Roldan Taborda 22 minutos 22 segundos
+Yeah. Have a wonderful day, guys.
+BT
+Brett Tatum
+22 minutos 22 segundos22:22
+Brett Tatum 22 minutos 22 segundos
+Perfect. Thanks guys.
+HM
+Harrison McKee
+22 minutos 25 segundos22:25
+Harrison McKee 22 minutos 25 segundos
+You too. Bye.
+MT
+Mateo Roldan Taborda
+22 minutos 26 segundos22:26
+Mateo Roldan Taborda 22 minutos 26 segundos
+Bye, bye.

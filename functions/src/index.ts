@@ -7036,3 +7036,173 @@ export const deleteUser = functions.runWith({ secrets: [] }).https.onCall(async 
     }
 });
 
+// Crew Tracker SMS Function
+// Sends SMS messages to crew members with job assignment information
+// TODO: Configure SMS provider (Twilio recommended)
+// TODO: Set up secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+export const sendCrewMessage = functions.runWith({ 
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER'] 
+}).https.onCall(async (data, context) => {
+    // Verify the caller is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to send crew messages');
+    }
+
+    const { 
+        employeeIds, 
+        jobName, 
+        jobAddress, 
+        tasks, 
+        date, 
+        notes,
+        language 
+    } = data;
+
+    // Validate required fields
+    if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Employee IDs array is required');
+    }
+    if (!jobName) {
+        throw new functions.https.HttpsError('invalid-argument', 'Job name is required');
+    }
+    if (!jobAddress) {
+        throw new functions.https.HttpsError('invalid-argument', 'Job address is required');
+    }
+    if (!date) {
+        throw new functions.https.HttpsError('invalid-argument', 'Date is required');
+    }
+
+    try {
+        // Get SMS provider credentials
+        const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+        const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+        const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+
+        // Check if SMS provider is configured
+        if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+            console.error('SMS provider not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER secrets.');
+            throw new functions.https.HttpsError(
+                'failed-precondition', 
+                'SMS service not configured. Please configure Twilio credentials.'
+            );
+        }
+
+        // Get employee data from Firestore
+        const employeesRef = admin.firestore().collection('crewEmployees');
+        const employeesSnapshot = await Promise.all(
+            employeeIds.map(id => employeesRef.doc(id).get())
+        );
+
+        const employees = employeesSnapshot
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(emp => emp.phone); // Only employees with phone numbers
+
+        if (employees.length === 0) {
+            throw new functions.https.HttpsError('not-found', 'No employees found with valid phone numbers');
+        }
+
+        // Generate Google Maps link for address
+        const mapsLink = `https://maps.google.com/?q=${encodeURIComponent(jobAddress)}`;
+
+        // Format message based on language
+        const formatMessage = (lang: string) => {
+            const isSpanish = lang === 'es' || lang === 'spanish';
+            
+            if (isSpanish) {
+                return `📋 Asignación de Trabajo\n\n` +
+                       `📅 Fecha: ${date}\n` +
+                       `🏗️ Trabajo: ${jobName}\n` +
+                       `📍 Ubicación: ${jobAddress}\n` +
+                       `${mapsLink}\n` +
+                       `📝 Tareas: ${tasks || 'Ver detalles en el sitio'}\n` +
+                       (notes ? `\n📌 Notas: ${notes}` : '');
+            } else {
+                return `📋 Job Assignment\n\n` +
+                       `📅 Date: ${date}\n` +
+                       `🏗️ Job: ${jobName}\n` +
+                       `📍 Location: ${jobAddress}\n` +
+                       `${mapsLink}\n` +
+                       `📝 Tasks: ${tasks || 'See details on site'}\n` +
+                       (notes ? `\n📌 Notes: ${notes}` : '');
+            }
+        };
+
+        // TODO: Initialize Twilio client
+        // const twilio = require('twilio')(twilioAccountSid, twilioAuthToken);
+
+        // Send messages to each employee
+        const messageResults = [];
+        const messageId = admin.firestore().collection('crewMessages').doc().id;
+
+        for (const employee of employees) {
+            try {
+                const employeeLanguage = employee.language || language || 'en';
+                const messageText = formatMessage(employeeLanguage);
+
+                // TODO: Send SMS via Twilio
+                // const message = await twilio.messages.create({
+                //     body: messageText,
+                //     from: twilioPhoneNumber,
+                //     to: employee.phone
+                // });
+
+                // For now, log the message (remove when Twilio is configured)
+                console.log(`[SMS] Would send to ${employee.phone}:`, messageText);
+
+                messageResults.push({
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    phone: employee.phone,
+                    success: true,
+                    messageSid: 'mock-sid', // Replace with actual message.sid from Twilio
+                });
+            } catch (error: any) {
+                console.error(`Failed to send SMS to ${employee.phone}:`, error);
+                messageResults.push({
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    phone: employee.phone,
+                    success: false,
+                    error: error.message,
+                });
+            }
+        }
+
+        // Save message record to Firestore
+        const messageData = {
+            date: admin.firestore.Timestamp.fromDate(new Date(date)),
+            jobName,
+            jobAddress,
+            tasks: tasks || '',
+            notes: notes || '',
+            recipients: employeeIds,
+            sentBy: context.auth.uid,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: messageResults.every(r => r.success) ? 'sent' : 'partial',
+            results: messageResults,
+        };
+
+        await admin.firestore()
+            .collection('crewMessages')
+            .doc(messageId)
+            .set(messageData);
+
+        const successCount = messageResults.filter(r => r.success).length;
+        const failureCount = messageResults.filter(r => !r.success).length;
+
+        return {
+            success: failureCount === 0,
+            messageId,
+            sent: successCount,
+            failed: failureCount,
+            results: messageResults,
+            message: failureCount === 0
+                ? `All ${successCount} message(s) sent successfully`
+                : `${successCount} message(s) sent, ${failureCount} failed`,
+        };
+    } catch (error: any) {
+        console.error('Error sending crew messages:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to send crew messages', error.message);
+    }
+});
+

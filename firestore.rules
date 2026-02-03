@@ -181,5 +181,41 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthed();
     }
+    
+    // Crew Tracker Collections
+    // Access restricted to FD Construction users and Admins at application level
+    // Rules here provide additional security at the database level
+    
+    // Crew Employees collection
+    match /crewEmployees/{employeeId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
+    }
+    
+    // Crew Jobs collection
+    match /crewJobs/{jobId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
+    }
+    
+    // Crew Messages collection
+    match /crewMessages/{messageId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
+    }
+    
+    // Crew Assignments collection (for future use)
+    match /crewAssignments/{assignmentId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
+    }
   }
 }

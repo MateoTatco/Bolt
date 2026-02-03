@@ -79,6 +79,17 @@ const baseNavigationConfig = [
         module: MODULES.WARRANTY_TRACKER,
     },
     {
+        key: 'crewTracker',
+        path: '/crew-tracker',
+        title: 'Crew Tracker',
+        translateKey: 'nav.crewTracker',
+        icon: 'crewTracker',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+        module: MODULES.CREW_TRACKER,
+    },
+    {
         key: 'advancedFeatures',
         path: '/advanced-features',
         title: 'Advanced Features Dashboard',

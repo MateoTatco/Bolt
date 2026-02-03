@@ -35,6 +35,7 @@ export const MODULES = {
     PROJECT_PROFITABILITY: 'projectProfitability',
     PROFIT_SHARING: 'profitSharing',
     WARRANTY_TRACKER: 'warrantyTracker',
+    CREW_TRACKER: 'crewTracker',
 }
 
 // Role to modules mapping
@@ -53,10 +54,12 @@ export const ROLE_MODULES = {
         MODULES.WARRANTY_TRACKER,
     ],
     [USER_ROLES.FD_CONSTRUCTION_USER]: [
-        // Currently only profit sharing, but structure allows for future modules
+        MODULES.CREW_TRACKER,
+        // Currently only crew tracker, but structure allows for future modules
     ],
     [USER_ROLES.FD_CONSTRUCTION_USER_WITH_PROFIT_SHARING]: [
         MODULES.PROFIT_SHARING,
+        MODULES.CREW_TRACKER,
         // Future: Add other FD Construction modules here
     ],
     [USER_ROLES.ON_THE_MARK_USER]: [
@@ -88,6 +91,7 @@ export const ROLE_MODULES = {
         MODULES.PROJECT_PROFITABILITY,
         MODULES.PROFIT_SHARING,
         MODULES.WARRANTY_TRACKER,
+        MODULES.CREW_TRACKER,
     ],
 }
 

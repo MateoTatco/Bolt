@@ -11,6 +11,7 @@ import {
     PiGiftDuotone,
     PiAddressBookDuotone,
     PiShieldCheckDuotone,
+    PiUsersThreeDuotone,
 } from 'react-icons/pi'
 
 const navigationIcon = {
@@ -20,6 +21,7 @@ const navigationIcon = {
     projectProfitability: <PiCurrencyDollarDuotone />,
     profitSharing: <PiGiftDuotone />,
     warrantyTracker: <PiShieldCheckDuotone />,
+    crewTracker: <PiUsersThreeDuotone />,
     singleMenu: <PiAcornDuotone />,
     collapseMenu: <PiArrowsInDuotone />,
     groupSingleMenu: <PiBookOpenUserDuotone />,
