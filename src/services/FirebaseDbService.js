@@ -2323,6 +2323,190 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // Crew Jobs collection
+    crewJobs: {
+        // Get all jobs
+        getAll: async (filters = {}) => {
+            try {
+                let q = query(collection(db, 'crewJobs'))
+                
+                // Apply filters if provided
+                if (filters.active !== undefined && filters.active !== null) {
+                    q = query(q, where('active', '==', filters.active))
+                }
+                
+                // Try to add orderBy, but handle gracefully if it fails
+                let snapshot
+                try {
+                    q = query(q, orderBy('name', 'asc'))
+                    snapshot = await getDocs(q)
+                } catch (orderError) {
+                    console.warn('OrderBy failed, fetching without order and sorting client-side:', orderError)
+                    snapshot = await getDocs(q)
+                }
+                
+                let jobs = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                
+                // Client-side sort if orderBy wasn't applied
+                jobs.sort((a, b) => {
+                    const nameA = (a.name || '').toLowerCase()
+                    const nameB = (b.name || '').toLowerCase()
+                    return nameA.localeCompare(nameB)
+                })
+                
+                return { success: true, data: jobs }
+            } catch (error) {
+                console.error('Firebase get all crew jobs error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single job
+        getById: async (id) => {
+            try {
+                const jobRef = doc(db, 'crewJobs', id)
+                const jobSnap = await getDoc(jobRef)
+                if (jobSnap.exists()) {
+                    return { success: true, data: { id: jobSnap.id, ...jobSnap.data() } }
+                } else {
+                    return { success: false, error: 'Job not found' }
+                }
+            } catch (error) {
+                console.error('Firebase get crew job by id error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new job
+        create: async (jobData) => {
+            try {
+                const jobsRef = collection(db, 'crewJobs')
+                const docRef = await addDoc(jobsRef, {
+                    ...jobData,
+                    active: jobData.active !== undefined ? jobData.active : true,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...jobData } }
+            } catch (error) {
+                console.error('Firebase create crew job error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update job
+        update: async (id, jobData) => {
+            try {
+                const jobRef = doc(db, 'crewJobs', id)
+                await updateDoc(jobRef, {
+                    ...jobData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id, ...jobData } }
+            } catch (error) {
+                console.error('Firebase update crew job error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete job
+        delete: async (id) => {
+            try {
+                const jobRef = doc(db, 'crewJobs', id)
+                await deleteDoc(jobRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete crew job error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Subscribe to real-time updates
+        subscribe: (callback, filters = {}) => {
+            try {
+                let q = query(collection(db, 'crewJobs'))
+                
+                if (filters.active !== undefined && filters.active !== null) {
+                    q = query(q, where('active', '==', filters.active))
+                }
+                
+                // Try to add orderBy, but handle gracefully if it fails
+                let finalQuery = q
+                try {
+                    finalQuery = query(q, orderBy('name', 'asc'))
+                } catch (orderError) {
+                    // If orderBy fails, use query without orderBy
+                    console.warn('OrderBy failed in subscription, will sort client-side:', orderError)
+                    finalQuery = q
+                }
+                
+                return onSnapshot(finalQuery, (snapshot) => {
+                    let jobs = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }))
+                    
+                    // Client-side sort if orderBy wasn't applied
+                    jobs.sort((a, b) => {
+                        const nameA = (a.name || '').toLowerCase()
+                        const nameB = (b.name || '').toLowerCase()
+                        return nameA.localeCompare(nameB)
+                    })
+                    
+                    callback(jobs)
+                }, (error) => {
+                    console.error('Firebase crew jobs subscription error:', error)
+                    callback([])
+                })
+            } catch (error) {
+                console.error('Firebase crew jobs subscribe error:', error)
+                return () => {} // Return empty unsubscribe function
+            }
+        },
+
+        // Add update to job (subcollection)
+        addUpdate: async (jobId, updateData) => {
+            try {
+                await ensureAuthUser()
+                const updatesRef = collection(db, 'crewJobs', jobId, 'updates')
+                const now = serverTimestamp()
+                const docRef = await addDoc(updatesRef, {
+                    ...updateData,
+                    createdAt: now
+                })
+                
+                // Update job's lastUpdateDate and lastUpdateText
+                const jobRef = doc(db, 'crewJobs', jobId)
+                await updateDoc(jobRef, {
+                    lastUpdateDate: now,
+                    lastUpdateText: updateData.note || '',
+                    updatedAt: now
+                })
+
+                // Log activity entry for this update
+                try {
+                    await logActivity('crewJob', jobId, {
+                        type: 'update',
+                        message: 'added an update',
+                        metadata: {
+                            note: updateData.note || '',
+                        },
+                    })
+                } catch (activityError) {
+                    console.error('Failed to log job update activity', activityError)
+                }
+
+                return { success: true, data: { id: docRef.id, ...updateData } }
+            } catch (error) {
+                console.error('Firebase add job update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing

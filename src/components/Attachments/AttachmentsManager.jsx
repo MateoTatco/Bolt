@@ -42,6 +42,7 @@ const formatUpdatedAt = (ts) => {
 // Helper to get collection name (handles irregular plurals)
 const getCollectionName = (entityType) => {
     if (entityType === 'warranty') return 'warranties'
+    if (entityType === 'crewJob') return 'crewJobs'
     return `${entityType}s`
 }
 

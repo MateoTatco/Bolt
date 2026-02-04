@@ -200,6 +200,40 @@ service cloud.firestore {
       allow create: if isAuthed();
       allow update: if isAuthed();
       allow delete: if isAuthed();
+      
+      // Subcollections: updates and attachments
+      match /updates/{updateId} {
+        // Read: Authenticated users can read updates
+        allow read: if isAuthed();
+        // Create: Authenticated users can add updates
+        allow create: if isAuthed();
+        // Update/Delete: Only creator of the update can modify it
+        allow update, delete: if isAuthed() && 
+          request.auth.uid == resource.data.createdBy;
+      }
+      
+      match /attachments/{attachmentId} {
+        // Use same rules as other entity attachments (files/folders)
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+        match /{subcollection=**}/{docId} {
+          allow read: if isAuthed();
+          allow write: if isAuthed();
+        }
+      }
+      
+      // Files subcollection (for attachments)
+      match /files/{fileId} {
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+      }
+
+      // Activities subcollection (for unified activity timeline)
+      match /activities/{activityId} {
+        // Authenticated users can read and write activities for jobs
+        allow read: if isAuthed();
+        allow write: if isAuthed();
+      }
     }
     
     // Crew Messages collection

@@ -30,6 +30,12 @@ service firebase.storage {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
     }
+    
+    // Crew Jobs attachments
+    match /crewJobs/{jobId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
   }
 }
 

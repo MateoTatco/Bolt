@@ -4,25 +4,25 @@ import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 
-export const useCrewEmployeeStore = create((set, get) => ({
-    employees: [],
+export const useCrewJobStore = create((set, get) => ({
+    jobs: [],
     filters: {
         search: '',
-        active: null, // true | false | null (all) - default to show all
+        active: true, // true | false | null (all)
     },
-    selectedEmployeeId: null,
+    selectedJobId: null,
     loading: false,
     error: null,
     realtimeListener: null,
 
-    setSelectedEmployeeId: (id) => set({ selectedEmployeeId: id }),
+    setSelectedJobId: (id) => set({ selectedJobId: id }),
 
     setFilters: (partial) => set((state) => ({
         filters: { ...state.filters, ...partial },
     })),
 
-    // Load employees from Firebase
-    loadEmployees: async () => {
+    // Load jobs from Firebase
+    loadJobs: async () => {
         set({ loading: true, error: null })
         try {
             const filters = get().filters
@@ -34,22 +34,22 @@ export const useCrewEmployeeStore = create((set, get) => ({
                 queryFilters.active = filters.active
             }
             
-            const response = await FirebaseDbService.crewEmployees.getAll(queryFilters)
+            const response = await FirebaseDbService.crewJobs.getAll(queryFilters)
             if (response.success) {
                 // Apply client-side search filter if provided
-                let filteredEmployees = response.data || []
+                let filteredJobs = response.data || []
                 
                 if (filters.search) {
                     const searchLower = filters.search.toLowerCase()
-                    filteredEmployees = filteredEmployees.filter(emp => 
-                        emp.name?.toLowerCase().includes(searchLower) ||
-                        emp.phone?.toLowerCase().includes(searchLower) ||
-                        emp.email?.toLowerCase().includes(searchLower)
+                    filteredJobs = filteredJobs.filter(job => 
+                        job.name?.toLowerCase().includes(searchLower) ||
+                        job.address?.toLowerCase().includes(searchLower) ||
+                        job.tasks?.toLowerCase().includes(searchLower)
                     )
                 }
                 
                 set({ 
-                    employees: filteredEmployees, 
+                    jobs: filteredJobs, 
                     loading: false 
                 })
             } else {
@@ -61,13 +61,13 @@ export const useCrewEmployeeStore = create((set, get) => ({
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    'Failed to load employees',
+                    'Failed to load jobs',
                 ),
             )
         }
     },
 
-    // Setup real-time listener
+    // Setup real-time listener - load all jobs, filter client-side
     setupRealtimeListener: () => {
         const currentListener = get().realtimeListener
         if (currentListener) {
@@ -76,25 +76,23 @@ export const useCrewEmployeeStore = create((set, get) => ({
 
         const filters = get().filters
         
+        // Don't filter by active in the query - load all jobs
         const queryFilters = {}
-        if (filters.active !== null && filters.active !== undefined) {
-            queryFilters.active = filters.active
-        }
 
-        const unsubscribe = FirebaseDbService.crewEmployees.subscribe((employees) => {
+        const unsubscribe = FirebaseDbService.crewJobs.subscribe((jobs) => {
             // Apply client-side search filter if provided
-            let filteredEmployees = employees
+            let filteredJobs = jobs
             
             if (filters.search) {
                 const searchLower = filters.search.toLowerCase()
-                filteredEmployees = employees.filter(emp => 
-                    emp.name?.toLowerCase().includes(searchLower) ||
-                    emp.phone?.toLowerCase().includes(searchLower) ||
-                    emp.email?.toLowerCase().includes(searchLower)
+                filteredJobs = jobs.filter(job => 
+                    job.name?.toLowerCase().includes(searchLower) ||
+                    job.address?.toLowerCase().includes(searchLower) ||
+                    job.tasks?.toLowerCase().includes(searchLower)
                 )
             }
             
-            set({ employees: filteredEmployees })
+            set({ jobs: filteredJobs })
         }, queryFilters)
 
         set({ realtimeListener: unsubscribe })
@@ -109,21 +107,21 @@ export const useCrewEmployeeStore = create((set, get) => ({
         }
     },
 
-    // Create employee
-    createEmployee: async (employeeData) => {
+    // Create job
+    createJob: async (jobData) => {
         set({ loading: true, error: null })
         try {
-            const response = await FirebaseDbService.crewEmployees.create(employeeData)
+            const response = await FirebaseDbService.crewJobs.create(jobData)
             if (response.success) {
                 toast.push(
                     React.createElement(
                         Notification,
                         { type: 'success', duration: 2500, title: 'Success' },
-                        'Employee created successfully',
+                        'Job created successfully',
                     ),
                 )
-                // Reload employees
-                await get().loadEmployees()
+                // Reload jobs
+                await get().loadJobs()
                 return { success: true, data: response.data }
             } else {
                 throw new Error(response.error)
@@ -134,28 +132,28 @@ export const useCrewEmployeeStore = create((set, get) => ({
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to create employee: ${error.message}`,
+                    `Failed to create job: ${error.message}`,
                 ),
             )
             return { success: false, error: error.message }
         }
     },
 
-    // Update employee
-    updateEmployee: async (id, employeeData) => {
+    // Update job
+    updateJob: async (id, jobData) => {
         set({ loading: true, error: null })
         try {
-            const response = await FirebaseDbService.crewEmployees.update(id, employeeData)
+            const response = await FirebaseDbService.crewJobs.update(id, jobData)
             if (response.success) {
                 toast.push(
                     React.createElement(
                         Notification,
                         { type: 'success', duration: 2500, title: 'Success' },
-                        'Employee updated successfully',
+                        'Job updated successfully',
                     ),
                 )
-                // Reload employees
-                await get().loadEmployees()
+                // Reload jobs
+                await get().loadJobs()
                 return { success: true, data: response.data }
             } else {
                 throw new Error(response.error)
@@ -166,28 +164,28 @@ export const useCrewEmployeeStore = create((set, get) => ({
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to update employee: ${error.message}`,
+                    `Failed to update job: ${error.message}`,
                 ),
             )
             return { success: false, error: error.message }
         }
     },
 
-    // Delete employee
-    deleteEmployee: async (id) => {
+    // Delete job
+    deleteJob: async (id) => {
         set({ loading: true, error: null })
         try {
-            const response = await FirebaseDbService.crewEmployees.delete(id)
+            const response = await FirebaseDbService.crewJobs.delete(id)
             if (response.success) {
                 toast.push(
                     React.createElement(
                         Notification,
                         { type: 'success', duration: 2500, title: 'Success' },
-                        'Employee deleted successfully',
+                        'Job deleted successfully',
                     ),
                 )
-                // Reload employees
-                await get().loadEmployees()
+                // Reload jobs
+                await get().loadJobs()
                 return { success: true }
             } else {
                 throw new Error(response.error)
@@ -198,7 +196,7 @@ export const useCrewEmployeeStore = create((set, get) => ({
                 React.createElement(
                     Notification,
                     { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to delete employee: ${error.message}`,
+                    `Failed to delete job: ${error.message}`,
                 ),
             )
             return { success: false, error: error.message }
