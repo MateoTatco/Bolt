@@ -78,6 +78,12 @@ export const protectedRoutes = [
         authority: [],
     },
     {
+        key: 'crewEmployeeDetail',
+        path: '/crew-tracker/employees/:employeeId',
+        component: lazy(() => import('@/views/CrewTracker/EmployeeDetail')),
+        authority: [],
+    },
+    {
         key: 'createProfitPlan',
         path: '/profit-sharing/create-plan',
         component: lazy(() => import('@/views/ProfitSharing/CreateProfitPlan')),

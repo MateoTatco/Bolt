@@ -2176,6 +2176,153 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // CREW EMPLOYEES COLLECTION
+    crewEmployees: {
+        // Get all employees
+        getAll: async (filters = {}) => {
+            try {
+                let q = query(collection(db, 'crewEmployees'))
+                
+                // Filter by active status if provided
+                if (filters.active !== undefined && filters.active !== null) {
+                    q = query(q, where('active', '==', filters.active))
+                }
+                
+                // Try to order by name, but handle index errors gracefully
+                let snapshot
+                try {
+                    q = query(q, orderBy('name', 'asc'))
+                    snapshot = await getDocs(q)
+                } catch (orderError) {
+                    // If orderBy fails (likely due to missing index), fetch without orderBy
+                    // and sort client-side
+                    console.warn('OrderBy failed, fetching without order and sorting client-side:', orderError)
+                    snapshot = await getDocs(q)
+                }
+                
+                let employees = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }))
+                
+                // Client-side sort if orderBy wasn't applied
+                employees.sort((a, b) => {
+                    const nameA = (a.name || '').toLowerCase()
+                    const nameB = (b.name || '').toLowerCase()
+                    return nameA.localeCompare(nameB)
+                })
+                
+                return { success: true, data: employees }
+            } catch (error) {
+                console.error('Firebase get all crew employees error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Get single employee
+        getById: async (id) => {
+            try {
+                const employeeRef = doc(db, 'crewEmployees', id)
+                const employeeSnap = await getDoc(employeeRef)
+                if (employeeSnap.exists()) {
+                    return { success: true, data: { id: employeeSnap.id, ...employeeSnap.data() } }
+                } else {
+                    return { success: false, error: 'Employee not found' }
+                }
+            } catch (error) {
+                console.error('Firebase get crew employee by id error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Create new employee
+        create: async (employeeData) => {
+            try {
+                const employeesRef = collection(db, 'crewEmployees')
+                const docRef = await addDoc(employeesRef, {
+                    ...employeeData,
+                    active: employeeData.active !== undefined ? employeeData.active : true,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id: docRef.id, ...employeeData } }
+            } catch (error) {
+                console.error('Firebase create crew employee error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Update employee
+        update: async (id, employeeData) => {
+            try {
+                const employeeRef = doc(db, 'crewEmployees', id)
+                await updateDoc(employeeRef, {
+                    ...employeeData,
+                    updatedAt: serverTimestamp()
+                })
+                return { success: true, data: { id, ...employeeData } }
+            } catch (error) {
+                console.error('Firebase update crew employee error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Delete employee
+        delete: async (id) => {
+            try {
+                const employeeRef = doc(db, 'crewEmployees', id)
+                await deleteDoc(employeeRef)
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete crew employee error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Subscribe to real-time updates
+        subscribe: (callback, filters = {}) => {
+            try {
+                let q = query(collection(db, 'crewEmployees'))
+                
+                if (filters.active !== undefined && filters.active !== null) {
+                    q = query(q, where('active', '==', filters.active))
+                }
+                
+                // Try to add orderBy, but handle gracefully if it fails
+                let finalQuery = q
+                try {
+                    finalQuery = query(q, orderBy('name', 'asc'))
+                } catch (orderError) {
+                    // If orderBy fails, use query without orderBy
+                    console.warn('OrderBy failed in subscription, will sort client-side:', orderError)
+                    finalQuery = q
+                }
+                
+                return onSnapshot(finalQuery, (snapshot) => {
+                    let employees = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }))
+                    
+                    // Client-side sort if orderBy wasn't applied
+                    employees.sort((a, b) => {
+                        const nameA = (a.name || '').toLowerCase()
+                        const nameB = (b.name || '').toLowerCase()
+                        return nameA.localeCompare(nameB)
+                    })
+                    
+                    callback(employees)
+                }, (error) => {
+                    console.error('Firebase crew employees subscription error:', error)
+                    callback([])
+                })
+            } catch (error) {
+                console.error('Firebase crew employees subscribe error:', error)
+                return () => {} // Return empty unsubscribe function
+            }
+        },
+    },
 }
 
 // Utility functions for data processing
