@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem, DatePicker } from '@/components/ui'
 import { HiOutlineX } from 'react-icons/hi'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
+import { Timestamp } from 'firebase/firestore'
 
 const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
     const [formData, setFormData] = useState({
@@ -10,6 +11,7 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
         tasks: '',
         active: true,
         assignedEmployees: [],
+        expectedCompletionDate: null,
     })
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
@@ -29,6 +31,7 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                 tasks: job.tasks || '',
                 active: job.active !== undefined ? job.active : true,
                 assignedEmployees: job.assignedEmployees || [],
+                expectedCompletionDate: job.expectedCompletionDate?.toDate ? job.expectedCompletionDate.toDate() : (job.expectedCompletionDate || null),
             })
         } else {
             setFormData({
@@ -37,6 +40,7 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                 tasks: '',
                 active: true,
                 assignedEmployees: [],
+                expectedCompletionDate: null,
             })
         }
         setErrors({})
@@ -80,6 +84,11 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                 name: formData.name.trim(),
                 address: formData.address.trim(),
                 tasks: formData.tasks.trim() || null,
+                expectedCompletionDate: formData.expectedCompletionDate 
+                    ? (formData.expectedCompletionDate instanceof Date 
+                        ? Timestamp.fromDate(formData.expectedCompletionDate) 
+                        : formData.expectedCompletionDate)
+                    : null,
             }
 
             await onSave(jobData)
@@ -169,6 +178,19 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                                 menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
                                 menu: (provided) => ({ ...provided, zIndex: 10000 }),
                             }}
+                        />
+                    </FormItem>
+
+                    <FormItem label="Expected Completion Date">
+                        <DatePicker
+                            inputtable
+                            inputtableBlurClose={false}
+                            inputFormat="MM/DD/YYYY"
+                            value={formData.expectedCompletionDate}
+                            onChange={(date) => {
+                                handleChange('expectedCompletionDate', date)
+                            }}
+                            placeholder="Select expected completion date (optional)"
                         />
                     </FormItem>
 

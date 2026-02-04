@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router'
-import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Alert, Avatar } from '@/components/ui'
+import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Alert, Avatar, DatePicker } from '@/components/ui'
 import { 
     HiOutlineArrowLeft, 
     HiOutlinePencil, 
@@ -11,7 +11,8 @@ import {
     HiOutlineDocumentText,
     HiOutlineOfficeBuilding,
     HiOutlineUserGroup,
-    HiOutlineCheckCircle
+    HiOutlineCheckCircle,
+    HiOutlineCalendar
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewJobStore } from '@/store/crewJobStore'
@@ -42,10 +43,26 @@ const JobDetail = () => {
     const [editFormData, setEditFormData] = useState({})
     const [saving, setSaving] = useState(false)
     const [employees, setEmployees] = useState([])
+    const [users, setUsers] = useState([])
     
     const { updateJob } = useCrewJobStore()
     const { employees: allEmployees, loadEmployees } = useCrewEmployeeStore()
     const bgColor = useRandomBgColor()
+
+    // Load users for display
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const response = await FirebaseDbService.users.getAll()
+                if (response.success) {
+                    setUsers(response.data || [])
+                }
+            } catch (error) {
+                console.error('Failed to load users:', error)
+            }
+        }
+        loadUsers()
+    }, [])
 
     // Load employees
     useEffect(() => {
@@ -122,6 +139,7 @@ const JobDetail = () => {
                 tasks: job.tasks || '',
                 active: job.active !== undefined ? job.active : true,
                 assignedEmployees: job.assignedEmployees || [],
+                expectedCompletionDate: job.expectedCompletionDate?.toDate ? job.expectedCompletionDate.toDate() : (job.expectedCompletionDate || null),
             })
         }
     }, [isEditing, job])
@@ -190,6 +208,35 @@ const JobDetail = () => {
         return employees.find(emp => emp.id === employeeId)
     }
 
+    // Get user by ID
+    const getUserById = (userId) => {
+        return users.find(u => u.id === userId || u.uid === userId)
+    }
+
+    // Get user display name
+    const getUserDisplayName = (user) => {
+        if (!user) return 'Unknown'
+        if (user.firstName && user.lastName) {
+            return `${user.firstName} ${user.lastName}`.trim()
+        } else if (user.firstName) {
+            return user.firstName
+        } else if (user.lastName) {
+            return user.lastName
+        } else {
+            return user.userName || 
+                   user.displayName || 
+                   user.email?.split('@')[0] || 
+                   'Unknown'
+        }
+    }
+
+    // Get user initials
+    const getUserInitials = (user) => {
+        if (!user) return '?'
+        const name = getUserDisplayName(user)
+        return acronym(name)
+    }
+
     // Employee options for selects
     const employeeOptions = useMemo(() => {
         return employees
@@ -207,10 +254,13 @@ const JobDetail = () => {
         setAddingUpdate(true)
         try {
             const currentUserId = getCurrentUserId()
+            const currentUser = currentUserId ? getUserById(currentUserId) : null
+            const displayName = currentUser ? getUserDisplayName(currentUser) : 'Unknown User'
+            
             const updateData = {
                 note: newUpdateText.trim(),
                 createdBy: currentUserId || 'unknown',
-                createdByName: 'User', // You can enhance this to get actual user name
+                createdByName: displayName,
             }
             
             const response = await FirebaseDbService.crewJobs.addUpdate(jobId, updateData)
@@ -241,6 +291,11 @@ const JobDetail = () => {
                 tasks: editFormData.tasks.trim() || null,
                 active: editFormData.active,
                 assignedEmployees: editFormData.assignedEmployees || [],
+                expectedCompletionDate: editFormData.expectedCompletionDate 
+                    ? (editFormData.expectedCompletionDate instanceof Date 
+                        ? Timestamp.fromDate(editFormData.expectedCompletionDate) 
+                        : editFormData.expectedCompletionDate)
+                    : null,
             }
             await updateJob(jobId, jobData)
             setIsEditing(false)
@@ -535,6 +590,32 @@ const JobDetail = () => {
                                 )}
                             </div>
 
+                            {/* Expected Completion Date Section */}
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <HiOutlineCalendar className="text-xl text-gray-400 dark:text-gray-500" />
+                                    Expected Completion Date
+                                </h2>
+                                {isEditing ? (
+                                    <DatePicker
+                                        inputtable
+                                        inputtableBlurClose={false}
+                                        inputFormat="MM/DD/YYYY"
+                                        value={editFormData.expectedCompletionDate}
+                                        onChange={(date) => {
+                                            setEditFormData({ ...editFormData, expectedCompletionDate: date })
+                                        }}
+                                        placeholder="Select expected completion date (optional)"
+                                    />
+                                ) : (
+                                    <p className="text-base font-medium text-gray-900 dark:text-white">
+                                        {job.expectedCompletionDate 
+                                            ? formatDateOnly(job.expectedCompletionDate) 
+                                            : <span className="text-gray-400 dark:text-gray-500">Not set</span>}
+                                    </p>
+                                )}
+                            </div>
+
                             {/* Status Section */}
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -547,9 +628,18 @@ const JobDetail = () => {
                                             { value: true, label: 'Active' },
                                             { value: false, label: 'Inactive' },
                                         ]}
-                                        value={editFormData.active !== undefined ? editFormData.active : true}
+                                        value={(() => {
+                                            const statusOptions = [
+                                                { value: true, label: 'Active' },
+                                                { value: false, label: 'Inactive' },
+                                            ]
+                                            const currentValue = editFormData.active !== undefined ? editFormData.active : (job?.active !== false)
+                                            return statusOptions.find(opt => opt.value === currentValue) || statusOptions[0]
+                                        })()}
                                         onChange={(selected) => {
-                                            setEditFormData({ ...editFormData, active: selected?.value ?? true })
+                                            if (selected) {
+                                                setEditFormData({ ...editFormData, active: selected.value })
+                                            }
                                         }}
                                         menuPortalTarget={document.body}
                                         menuPosition="fixed"
@@ -612,41 +702,45 @@ const JobDetail = () => {
                             <div className="space-y-6 min-w-0">
                                 {updates.length === 0 ? (
                                     <>
-                                        {job && (
-                                            <div className="relative flex gap-2 md:gap-4">
-                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
-                                                    <Avatar
-                                                        size={40}
-                                                        className={`${bgColor('User')} border-4 border-white dark:border-gray-900 shadow-md`}
-                                                    >
-                                                        {acronym('User')}
-                                                    </Avatar>
-                                                </div>
-                                                <Card className="flex-1 shadow-md min-w-0">
-                                                    <div className="p-3 md:p-5">
-                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
-                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                                                <span className="font-semibold text-gray-900 dark:text-white">
-                                                                    System
-                                                                </span>
-                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
-                                                                    Job Created
-                                                                </Tag>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                                                <HiOutlineClock className="text-base" />
-                                                                <span>{formatDate(job.createdAt)}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
-                                                                Job created: {job.name}
-                                                            </p>
-                                                        </div>
+                                        {job && (() => {
+                                            const creatorUser = getUserById(job.createdBy)
+                                            const creatorName = getUserDisplayName(creatorUser)
+                                            return (
+                                                <div className="relative flex gap-2 md:gap-4">
+                                                    <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
+                                                        <Avatar
+                                                            size={40}
+                                                            className={`${bgColor(creatorName)} border-4 border-white dark:border-gray-900 shadow-md`}
+                                                        >
+                                                            {getUserInitials(creatorUser)}
+                                                        </Avatar>
                                                     </div>
-                                                </Card>
-                                            </div>
-                                        )}
+                                                    <Card className="flex-1 shadow-md min-w-0">
+                                                        <div className="p-3 md:p-5">
+                                                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                                <div className="flex flex-col md:flex-row md:items-center gap-2">
+                                                                    <span className="font-semibold text-gray-900 dark:text-white">
+                                                                        {creatorName}
+                                                                    </span>
+                                                                    <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
+                                                                        Job Created
+                                                                    </Tag>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                    <HiOutlineClock className="text-base" />
+                                                                    <span>{formatDate(job.createdAt)}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
+                                                                    Job created: {job.name}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                </div>
+                                            )
+                                        })()}
                                     </>
                                 ) : (
                                     <>
@@ -654,19 +748,36 @@ const JobDetail = () => {
                                         <div className="relative">
                                             <div className="relative flex gap-2 md:gap-4">
                                                 <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
-                                                    <Avatar
-                                                        size={40}
-                                                        className={`${bgColor(updates[0].createdByName || 'User')} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
-                                                    >
-                                                        {acronym(updates[0].createdByName || 'User')}
-                                                    </Avatar>
+                                                    {(() => {
+                                                        const updateUser = getUserById(updates[0].createdBy)
+                                                        const storedName = updates[0].createdByName
+                                                        // If stored name is "User" or empty, use actual user lookup
+                                                        const displayName = (storedName && storedName !== 'User') 
+                                                            ? storedName 
+                                                            : getUserDisplayName(updateUser)
+                                                        return (
+                                                            <Avatar
+                                                                size={40}
+                                                                className={`${bgColor(displayName)} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
+                                                            >
+                                                                {acronym(displayName)}
+                                                            </Avatar>
+                                                        )
+                                                    })()}
                                                 </div>
                                                 <Card className="flex-1 shadow-lg border-2 border-primary min-w-0">
                                                     <div className="p-3 md:p-5">
                                                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
                                                             <div className="flex flex-col md:flex-row md:items-center gap-2">
                                                                 <span className="font-semibold text-gray-900 dark:text-white">
-                                                                    {updates[0].createdByName || 'User'}
+                                                                    {(() => {
+                                                                        const updateUser = getUserById(updates[0].createdBy)
+                                                                        const storedName = updates[0].createdByName
+                                                                        // If stored name is "User" or empty, use actual user lookup
+                                                                        return (storedName && storedName !== 'User') 
+                                                                            ? storedName 
+                                                                            : getUserDisplayName(updateUser)
+                                                                    })()}
                                                                 </span>
                                                                 <Tag className="bg-primary text-white w-fit">
                                                                     Latest Update
@@ -689,14 +800,20 @@ const JobDetail = () => {
 
                                         {/* Previous updates */}
                                         {updates.slice(1).map((update) => {
+                                            const updateUser = getUserById(update.createdBy)
+                                            const storedName = update.createdByName
+                                            // If stored name is "User" or empty, use actual user lookup
+                                            const displayName = (storedName && storedName !== 'User') 
+                                                ? storedName 
+                                                : getUserDisplayName(updateUser)
                                             return (
                                                 <div key={update.id} className="relative flex gap-2 md:gap-4">
                                                     <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                         <Avatar
                                                             size={40}
-                                                            className={`${bgColor(update.createdByName || 'User')} border-4 border-white dark:border-gray-900 shadow-md`}
+                                                            className={`${bgColor(displayName)} border-4 border-white dark:border-gray-900 shadow-md`}
                                                         >
-                                                            {acronym(update.createdByName || 'User')}
+                                                            {acronym(displayName)}
                                                         </Avatar>
                                                     </div>
                                                     <Card className="flex-1 shadow-md min-w-0">
@@ -704,7 +821,7 @@ const JobDetail = () => {
                                                             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="font-semibold text-gray-900 dark:text-white">
-                                                                        {update.createdByName || 'User'}
+                                                                        {displayName}
                                                                     </span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -724,41 +841,45 @@ const JobDetail = () => {
                                         })}
 
                                         {/* Original job creation */}
-                                        {job && (
-                                            <div className="relative flex gap-2 md:gap-4">
-                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
-                                                    <Avatar
-                                                        size={40}
-                                                        className={`${bgColor('System')} border-4 border-white dark:border-gray-900 shadow-md`}
-                                                    >
-                                                        {acronym('System')}
-                                                    </Avatar>
-                                                </div>
-                                                <Card className="flex-1 shadow-md min-w-0">
-                                                    <div className="p-3 md:p-5">
-                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
-                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                                                <span className="font-semibold text-gray-900 dark:text-white">
-                                                                    System
-                                                                </span>
-                                                                <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
-                                                                    Job Created
-                                                                </Tag>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                                                <HiOutlineClock className="text-base" />
-                                                                <span>{formatDate(job.createdAt)}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
-                                                                Job created: {job.name}
-                                                            </p>
-                                                        </div>
+                                        {job && (() => {
+                                            const creatorUser = getUserById(job.createdBy)
+                                            const creatorName = getUserDisplayName(creatorUser)
+                                            return (
+                                                <div className="relative flex gap-2 md:gap-4">
+                                                    <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
+                                                        <Avatar
+                                                            size={40}
+                                                            className={`${bgColor(creatorName)} border-4 border-white dark:border-gray-900 shadow-md`}
+                                                        >
+                                                            {getUserInitials(creatorUser)}
+                                                        </Avatar>
                                                     </div>
-                                                </Card>
-                                            </div>
-                                        )}
+                                                    <Card className="flex-1 shadow-md min-w-0">
+                                                        <div className="p-3 md:p-5">
+                                                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                                <div className="flex flex-col md:flex-row md:items-center gap-2">
+                                                                    <span className="font-semibold text-gray-900 dark:text-white">
+                                                                        {creatorName}
+                                                                    </span>
+                                                                    <Tag className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 w-fit">
+                                                                        Job Created
+                                                                    </Tag>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                    <HiOutlineClock className="text-base" />
+                                                                    <span>{formatDate(job.createdAt)}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
+                                                                    Job created: {job.name}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                </div>
+                                            )
+                                        })()}
                                     </>
                                 )}
                             </div>

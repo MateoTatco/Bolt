@@ -2384,10 +2384,13 @@ export const FirebaseDbService = {
         // Create new job
         create: async (jobData) => {
             try {
+                await ensureAuthUser()
+                const currentUserId = getCurrentUserId()
                 const jobsRef = collection(db, 'crewJobs')
                 const docRef = await addDoc(jobsRef, {
                     ...jobData,
                     active: jobData.active !== undefined ? jobData.active : true,
+                    createdBy: currentUserId || null,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
                 })

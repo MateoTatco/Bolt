@@ -68,6 +68,13 @@ const CrewTracker = () => {
         }
     }, [employeeFilters.search])
 
+    // Load employees when on jobs tab (for Assigned Employees column)
+    useEffect(() => {
+        if (activeTab === 'jobs') {
+            loadEmployees()
+        }
+    }, [activeTab, loadEmployees])
+
     // Load jobs and setup real-time listener - load all jobs
     useEffect(() => {
         if (activeTab === 'jobs') {
@@ -268,46 +275,171 @@ const CrewTracker = () => {
         {
             header: 'Job Name',
             accessorKey: 'name',
-            size: 250,
+            size: 300,
             cell: ({ row }) => {
                 const job = row.original
                 return (
-                    <span className="font-medium">{job.name || '-'}</span>
+                    <Tooltip title={job.name || '-'}>
+                        <span className="font-medium block max-w-[280px] truncate">{job.name || '-'}</span>
+                    </Tooltip>
                 )
             },
         },
         {
             header: 'Address',
             accessorKey: 'address',
-            size: 300,
+            size: 350,
             cell: ({ row }) => {
                 const address = row.original.address
                 if (!address) return <span className="text-sm text-gray-400">-</span>
                 const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
                 return (
-                    <a
-                        href={googleMapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline"
-                    >
-                        {address}
-                    </a>
+                    <Tooltip title={address}>
+                        <a
+                            href={googleMapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline block max-w-[330px] truncate"
+                        >
+                            {address}
+                        </a>
+                    </Tooltip>
                 )
             },
         },
         {
             header: 'Tasks',
             accessorKey: 'tasks',
-            size: 200,
+            size: 400,
             cell: ({ row }) => {
                 const tasks = row.original.tasks
-                if (!tasks) return <span className="text-gray-400">-</span>
+                if (!tasks) return <span className="text-sm text-gray-400">-</span>
+                // Truncate if too long
+                const maxLength = 80
+                const displayText = tasks.length > maxLength 
+                    ? `${tasks.substring(0, maxLength)}...` 
+                    : tasks
                 return (
-                    <span className="text-sm line-clamp-2" title={tasks}>
-                        {tasks}
-                    </span>
+                    <Tooltip title={tasks}>
+                        <span className="text-sm block max-w-[380px] truncate">
+                            {displayText}
+                        </span>
+                    </Tooltip>
                 )
+            },
+        },
+        {
+            header: 'Assigned Employees',
+            accessorKey: 'assignedEmployees',
+            size: 250,
+            cell: ({ row }) => {
+                const job = row.original
+                const assignedIds = job.assignedEmployees || []
+                if (assignedIds.length === 0) return <span className="text-sm text-gray-400">-</span>
+                const assignedNames = assignedIds
+                    .map(id => {
+                        const emp = employees.find(e => e.id === id)
+                        return emp ? emp.name : null
+                    })
+                    .filter(Boolean)
+                const displayText = assignedNames.join(', ')
+                return (
+                    <Tooltip title={displayText}>
+                        <span className="text-sm block max-w-[230px] truncate">
+                            {displayText || '-'}
+                        </span>
+                    </Tooltip>
+                )
+            },
+        },
+        {
+            header: 'Updates',
+            accessorKey: 'updates',
+            size: 400,
+            cell: ({ row }) => {
+                const job = row.original
+                const lastUpdate = job.lastUpdateDate
+                const lastUpdateText = job.lastUpdateText || ''
+                
+                if (!lastUpdate) {
+                    return <span className="text-sm text-gray-400">No updates</span>
+                }
+                
+                // Format date only (no time) helper
+                const formatDateOnly = (date) => {
+                    if (!date) return '-'
+                    try {
+                        let dateObj
+                        if (date?.toDate) {
+                            dateObj = date.toDate()
+                        } else if (date instanceof Date) {
+                            dateObj = date
+                        } else if (typeof date === 'string') {
+                            dateObj = new Date(date)
+                        } else {
+                            return '-'
+                        }
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+                        const day = String(dateObj.getDate()).padStart(2, '0')
+                        const year = dateObj.getFullYear()
+                        return `${month}/${day}/${year}`
+                    } catch {
+                        return '-'
+                    }
+                }
+                
+                // Truncate text if too long
+                const maxLength = 80
+                const displayText = lastUpdateText.length > maxLength 
+                    ? `${lastUpdateText.substring(0, maxLength)}...` 
+                    : lastUpdateText || 'Update'
+                
+                return (
+                    <Tooltip
+                        title={
+                            <div>
+                                <div className="font-semibold mb-1">{formatDateOnly(lastUpdate)}</div>
+                                {lastUpdateText && <div className="text-sm">{lastUpdateText}</div>}
+                            </div>
+                        }
+                    >
+                        <div className="cursor-pointer">
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                {formatDateOnly(lastUpdate)}
+                            </div>
+                            <div className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[380px]">
+                                {displayText}
+                            </div>
+                        </div>
+                    </Tooltip>
+                )
+            },
+        },
+        {
+            header: 'Expected Completion',
+            accessorKey: 'expectedCompletionDate',
+            size: 150,
+            cell: ({ row }) => {
+                const date = row.original.expectedCompletionDate
+                if (!date) return <span className="text-sm text-gray-400">-</span>
+                try {
+                    let dateObj
+                    if (date?.toDate) {
+                        dateObj = date.toDate()
+                    } else if (date instanceof Date) {
+                        dateObj = date
+                    } else if (typeof date === 'string') {
+                        dateObj = new Date(date)
+                    } else {
+                        return <span className="text-sm text-gray-400">-</span>
+                    }
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+                    const day = String(dateObj.getDate()).padStart(2, '0')
+                    const year = dateObj.getFullYear()
+                    return <span className="text-sm">{month}/{day}/{year}</span>
+                } catch {
+                    return <span className="text-sm text-gray-400">-</span>
+                }
             },
         },
         {
@@ -369,7 +501,7 @@ const CrewTracker = () => {
                 )
             },
         },
-    ], [navigate, updateJob])
+    ], [navigate, updateJob, employees])
 
     // Filtered jobs - separate active and inactive
     const activeJobs = useMemo(() => {

@@ -6,6 +6,7 @@ import { notifyActivityAdded, getCurrentUserId, getUsersToNotify } from '@/utils
 
 const getCollectionName = (entityType) => {
     if (entityType === 'warranty') return 'warranties'
+    if (entityType === 'crewJob') return 'crewJobs'
     return `${entityType}s`
 }
 
