@@ -7041,7 +7041,7 @@ export const deleteUser = functions.runWith({ secrets: [] }).https.onCall(async 
 // TODO: Configure SMS provider (Twilio recommended)
 // TODO: Set up secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
 export const sendCrewMessage = functions.runWith({ 
-    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER'] 
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_MESSAGING_SERVICE_SID'] 
 }).https.onCall(async (data, context) => {
     // Verify the caller is authenticated
     if (!context.auth) {
@@ -7075,17 +7075,23 @@ export const sendCrewMessage = functions.runWith({
     try {
         // Get SMS provider credentials
         const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-        const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-        const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+        const twilioApiKeySid = process.env.TWILIO_API_KEY_SID;
+        const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+        const twilioMessagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
         // Check if SMS provider is configured
-        if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-            console.error('SMS provider not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER secrets.');
+        if (!twilioAccountSid || !twilioApiKeySid || !twilioApiKeySecret || !twilioMessagingServiceSid) {
+            console.error('SMS provider not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, and TWILIO_MESSAGING_SERVICE_SID secrets.');
             throw new functions.https.HttpsError(
                 'failed-precondition', 
                 'SMS service not configured. Please configure Twilio credentials.'
             );
         }
+
+        // Initialize Twilio client with API Key (more secure than Auth Token)
+        const twilio = require('twilio')(twilioApiKeySid, twilioApiKeySecret, {
+            accountSid: twilioAccountSid
+        });
 
         // Get employee data from Firestore
         const employeesRef = admin.firestore().collection('crewEmployees');
@@ -7093,8 +7099,16 @@ export const sendCrewMessage = functions.runWith({
             employeeIds.map(id => employeesRef.doc(id).get())
         );
 
-        const employees = employeesSnapshot
-            .map(doc => ({ id: doc.id, ...doc.data() }))
+        interface Employee {
+            id: string;
+            name?: string;
+            phone?: string;
+            language?: string;
+            active?: boolean;
+        }
+
+        const employees: Employee[] = employeesSnapshot
+            .map(doc => ({ id: doc.id, ...doc.data() } as Employee))
             .filter(emp => emp.phone); // Only employees with phone numbers
 
         if (employees.length === 0) {
@@ -7127,9 +7141,6 @@ export const sendCrewMessage = functions.runWith({
             }
         };
 
-        // TODO: Initialize Twilio client
-        // const twilio = require('twilio')(twilioAccountSid, twilioAuthToken);
-
         // Send messages to each employee
         const messageResults = [];
         const messageId = admin.firestore().collection('crewMessages').doc().id;
@@ -7139,22 +7150,22 @@ export const sendCrewMessage = functions.runWith({
                 const employeeLanguage = employee.language || language || 'en';
                 const messageText = formatMessage(employeeLanguage);
 
-                // TODO: Send SMS via Twilio
-                // const message = await twilio.messages.create({
-                //     body: messageText,
-                //     from: twilioPhoneNumber,
-                //     to: employee.phone
-                // });
+                // Send SMS via Twilio using Messaging Service
+                const message = await twilio.messages.create({
+                    body: messageText,
+                    messagingServiceSid: twilioMessagingServiceSid,
+                    to: employee.phone
+                });
 
-                // For now, log the message (remove when Twilio is configured)
-                console.log(`[SMS] Would send to ${employee.phone}:`, messageText);
+                console.log(`[SMS] Sent to ${employee.phone} (${employee.name}):`, message.sid);
 
                 messageResults.push({
                     employeeId: employee.id,
                     employeeName: employee.name,
                     phone: employee.phone,
                     success: true,
-                    messageSid: 'mock-sid', // Replace with actual message.sid from Twilio
+                    messageSid: message.sid,
+                    status: message.status,
                 });
             } catch (error: any) {
                 console.error(`Failed to send SMS to ${employee.phone}:`, error);
@@ -7164,6 +7175,7 @@ export const sendCrewMessage = functions.runWith({
                     phone: employee.phone,
                     success: false,
                     error: error.message,
+                    errorCode: error.code,
                 });
             }
         }
@@ -7203,6 +7215,143 @@ export const sendCrewMessage = functions.runWith({
     } catch (error: any) {
         console.error('Error sending crew messages:', error);
         throw new functions.https.HttpsError('internal', 'Failed to send crew messages', error.message);
+    }
+});
+
+// Receive incoming SMS messages from Twilio
+export const receiveCrewMessage = functions.runWith({
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET']
+}).https.onRequest(async (req, res) => {
+    // Twilio requires a response within 10 seconds
+    res.set('Content-Type', 'text/xml');
+
+    // Only accept POST requests
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    try {
+        const {
+            MessageSid,
+            From,
+            To,
+            Body,
+            AccountSid,
+            NumMedia
+        } = req.body;
+
+        // Verify the request is from Twilio (optional but recommended)
+        const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+        if (AccountSid !== twilioAccountSid) {
+            console.warn('Received SMS from unknown Twilio account:', AccountSid);
+            // Still process it, but log the warning
+        }
+
+        console.log(`[SMS Received] From: ${From}, To: ${To}, MessageSid: ${MessageSid}`);
+
+        // Find employee by phone number
+        const employeesRef = admin.firestore().collection('crewEmployees');
+        const employeesSnapshot = await employeesRef
+            .where('phone', '==', From)
+            .limit(1)
+            .get();
+
+        let employeeId = null;
+        let employeeName = 'Unknown';
+
+        if (!employeesSnapshot.empty) {
+            const employeeDoc = employeesSnapshot.docs[0];
+            employeeId = employeeDoc.id;
+            const employeeData = employeeDoc.data();
+            employeeName = employeeData.name || 'Unknown';
+        }
+
+        // Save incoming message to Firestore
+        const incomingMessageData = {
+            messageSid: MessageSid,
+            from: From,
+            to: To,
+            body: Body,
+            employeeId: employeeId,
+            employeeName: employeeName,
+            receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+            processed: false, // Can be used to track if message was processed/responded to
+            numMedia: NumMedia || '0',
+        };
+
+        await admin.firestore()
+            .collection('crewMessages')
+            .doc(MessageSid)
+            .set(incomingMessageData, { merge: true });
+
+        // Also save to a subcollection for easier querying by employee
+        if (employeeId) {
+            await admin.firestore()
+                .collection('crewEmployees')
+                .doc(employeeId)
+                .collection('messages')
+                .doc(MessageSid)
+                .set({
+                    ...incomingMessageData,
+                    direction: 'inbound'
+                }, { merge: true });
+        }
+
+        // Respond to Twilio with TwiML (optional - can send auto-reply)
+        // For now, just acknowledge receipt
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <!-- Message received and saved -->
+</Response>`;
+
+        res.status(200).send(twiml);
+
+    } catch (error: any) {
+        console.error('Error processing incoming SMS:', error);
+        
+        // Still respond to Twilio to avoid retries
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <!-- Error processing message -->
+</Response>`;
+        
+        res.status(200).send(twiml);
+    }
+});
+
+// Handle delivery status callbacks from Twilio
+export const crewMessageStatusCallback = functions.https.onRequest(async (req, res) => {
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    try {
+        const {
+            MessageSid,
+            MessageStatus,
+            ErrorCode,
+            ErrorMessage
+        } = req.body;
+
+        console.log(`[SMS Status] MessageSid: ${MessageSid}, Status: ${MessageStatus}`);
+
+        // Update message status in Firestore
+        await admin.firestore()
+            .collection('crewMessages')
+            .doc(MessageSid)
+            .update({
+                status: MessageStatus,
+                errorCode: ErrorCode || null,
+                errorMessage: ErrorMessage || null,
+                statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+        res.status(200).send('OK');
+    } catch (error: any) {
+        console.error('Error processing status callback:', error);
+        res.status(200).send('OK'); // Always respond OK to Twilio
     }
 });
 
