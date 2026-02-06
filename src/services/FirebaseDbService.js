@@ -2323,7 +2323,7 @@ export const FirebaseDbService = {
             }
         },
     },
-
+    
     // Crew Jobs collection
     crewJobs: {
         // Get all jobs
@@ -2507,6 +2507,81 @@ export const FirebaseDbService = {
             } catch (error) {
                 console.error('Firebase add job update error:', error)
                 return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // CREW MESSAGES COLLECTION
+    crewMessages: {
+        // Get all crew messages (most recent first)
+        getAll: async () => {
+            try {
+                let q = query(collection(db, 'crewMessages'))
+
+                // Try to order by sentAt (most recent first), fall back gracefully
+                let snapshot
+                try {
+                    q = query(q, orderBy('sentAt', 'desc'))
+                    snapshot = await getDocs(q)
+                } catch (orderError) {
+                    console.warn('OrderBy failed for crewMessages, fetching without order and sorting client-side:', orderError)
+                    snapshot = await getDocs(q)
+                }
+
+                let messages = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                }))
+
+                // Client-side sort if orderBy wasn't applied
+                messages.sort((a, b) => {
+                    const aTime = (a.sentAt?.toDate ? a.sentAt.toDate() : (a.date?.toDate ? a.date.toDate() : null)) || 0
+                    const bTime = (b.sentAt?.toDate ? b.sentAt.toDate() : (b.date?.toDate ? b.date.toDate() : null)) || 0
+                    return bTime - aTime
+                })
+
+                return { success: true, data: messages }
+            } catch (error) {
+                console.error('Firebase get all crew messages error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        // Subscribe to real-time updates
+        subscribe: (callback) => {
+            try {
+                let q = query(collection(db, 'crewMessages'))
+
+                // Try to order by sentAt, fall back gracefully
+                let finalQuery = q
+                try {
+                    finalQuery = query(q, orderBy('sentAt', 'desc'))
+                } catch (orderError) {
+                    console.warn('OrderBy failed in crewMessages subscription, will sort client-side:', orderError)
+                    finalQuery = q
+                }
+
+                return onSnapshot(finalQuery, (snapshot) => {
+                    let messages = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                    }))
+
+                    // Client-side sort if orderBy wasn't applied
+                    messages.sort((a, b) => {
+                        const aTime = (a.sentAt?.toDate ? a.sentAt.toDate() : (a.date?.toDate ? a.date.toDate() : null)) || 0
+                        const bTime = (b.sentAt?.toDate ? b.sentAt.toDate() : (b.date?.toDate ? b.date.toDate() : null)) || 0
+                        return bTime - aTime
+                    })
+
+                    callback(messages)
+                }, (error) => {
+                    console.error('Firebase crew messages subscription error:', error)
+                    callback([])
+                })
+            } catch (error) {
+                console.error('Firebase crew messages subscribe error:', error)
+                return () => {} // Return empty unsubscribe function
             }
         },
     },

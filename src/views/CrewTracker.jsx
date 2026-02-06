@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, Card, Input, Select, Tag, Tooltip } from '@/components/ui'
+import { Button, Card, Input, Select, Tag, Tooltip, DatePicker, Alert } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
 import { useCrewJobStore } from '@/store/crewJobStore'
@@ -9,8 +9,13 @@ import {
     HiOutlineEye, 
     HiOutlinePencil, 
     HiOutlineTrash,
-    HiOutlineRefresh 
+    HiOutlineRefresh,
+    HiOutlineChatAlt2,
+    HiOutlineStatusOnline,
+    HiOutlineExclamationCircle,
+    HiOutlineClock
 } from 'react-icons/hi'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 import EmployeeFormModal from './CrewTracker/components/EmployeeFormModal'
 import JobFormModal from './CrewTracker/components/JobFormModal'
 
@@ -22,6 +27,19 @@ const CrewTracker = () => {
     const [editingEmployee, setEditingEmployee] = useState(null)
     const [showJobModal, setShowJobModal] = useState(false)
     const [editingJob, setEditingJob] = useState(null)
+
+    // Messaging state
+    const [selectedJobIdForMessage, setSelectedJobIdForMessage] = useState(null)
+    const [selectedEmployeeIdsForMessage, setSelectedEmployeeIdsForMessage] = useState([])
+    const [messageDate, setMessageDate] = useState(new Date())
+    const [messageNotes, setMessageNotes] = useState('')
+    const [messageLanguage, setMessageLanguage] = useState('auto') // 'auto' | 'en' | 'es'
+    const [sendingMessages, setSendingMessages] = useState(false)
+    const [sendError, setSendError] = useState('')
+    const [sendSuccess, setSendSuccess] = useState('')
+    const [messageHistory, setMessageHistory] = useState([])
+    const [messageHistoryLoading, setMessageHistoryLoading] = useState(false)
+    const [messageHistoryError, setMessageHistoryError] = useState('')
 
     const {
         employees,
@@ -48,6 +66,29 @@ const CrewTracker = () => {
         updateJob,
         deleteJob,
     } = useCrewJobStore()
+
+    // Helper: format date as MM/DD/YYYY
+    const formatDateOnly = (date) => {
+        if (!date) return '-'
+        try {
+            let dateObj
+            if (date?.toDate) {
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return '-'
+            }
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            const year = dateObj.getFullYear()
+            return `${month}/${day}/${year}`
+        } catch {
+            return '-'
+        }
+    }
 
     // Load employees and setup real-time listener
     useEffect(() => {
@@ -99,6 +140,51 @@ const CrewTracker = () => {
             loadJobs()
         }
     }, [jobFilters.search])
+
+    // Load employees & jobs when on Messages tab (for composer)
+    useEffect(() => {
+        if (activeTab === 'messages') {
+            loadEmployees()
+            loadJobs()
+        }
+    }, [activeTab, loadEmployees, loadJobs])
+
+    // Load message history (with realtime updates) when Messages tab is active
+    useEffect(() => {
+        if (activeTab !== 'messages') {
+            return
+        }
+
+        const loadHistoryOnce = async () => {
+            setMessageHistoryLoading(true)
+            setMessageHistoryError('')
+            try {
+                const response = await FirebaseDbService.crewMessages.getAll()
+                if (response.success) {
+                    setMessageHistory(response.data || [])
+                } else {
+                    setMessageHistoryError(response.error || 'Failed to load message history')
+                }
+            } catch (error) {
+                console.error('Failed to load crew message history:', error)
+                setMessageHistoryError(error.message || 'Failed to load message history')
+            } finally {
+                setMessageHistoryLoading(false)
+            }
+        }
+
+        loadHistoryOnce()
+
+        const unsubscribe = FirebaseDbService.crewMessages.subscribe((messages) => {
+            setMessageHistory(messages || [])
+        })
+
+        return () => {
+            if (unsubscribe) {
+                unsubscribe()
+            }
+        }
+    }, [activeTab])
 
     // Format phone number for display
     const formatPhoneDisplay = (phone) => {
@@ -516,6 +602,114 @@ const CrewTracker = () => {
         return jobSubTab === 'active' ? activeJobs : inactiveJobs
     }, [jobSubTab, activeJobs, inactiveJobs])
 
+    // Job & employee options for messaging composer
+    const jobOptionsForMessages = useMemo(() => {
+        return jobs
+            .filter(job => job.active !== false)
+            .map(job => ({
+                value: job.id,
+                label: job.address ? `${job.name || 'Untitled Job'} — ${job.address}` : (job.name || 'Untitled Job'),
+            }))
+    }, [jobs])
+
+    const employeeOptionsForMessages = useMemo(() => {
+        return employees
+            .filter(emp => emp.active !== false && emp.phone)
+            .map(emp => ({
+                value: emp.id,
+                label: `${emp.name || 'Unnamed'} (${formatPhoneDisplay(emp.phone)})${emp.language === 'es' ? ' — ES' : ' — EN'}`,
+            }))
+    }, [employees])
+
+    const selectedJobForMessage = useMemo(
+        () => jobs.find(job => job.id === selectedJobIdForMessage) || null,
+        [jobs, selectedJobIdForMessage]
+    )
+
+    // When job selection changes, default employees & notes from job
+    useEffect(() => {
+        if (!selectedJobForMessage) return
+        const assigned = selectedJobForMessage.assignedEmployees || []
+        setSelectedEmployeeIdsForMessage(assigned)
+
+        // If no custom notes yet, suggest notes based on tasks
+        if (!messageNotes && selectedJobForMessage.tasks) {
+            setMessageNotes(selectedJobForMessage.tasks)
+        }
+    }, [selectedJobForMessage]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleSendMessages = async () => {
+        if (!selectedJobForMessage) {
+            setSendError('Please select a job to send messages for.')
+            setSendSuccess('')
+            return
+        }
+        if (!selectedEmployeeIdsForMessage || selectedEmployeeIdsForMessage.length === 0) {
+            setSendError('Please select at least one employee to send messages to.')
+            setSendSuccess('')
+            return
+        }
+        if (!messageDate) {
+            setSendError('Please select a date for this assignment.')
+            setSendSuccess('')
+            return
+        }
+
+        setSendingMessages(true)
+        setSendError('')
+        setSendSuccess('')
+
+        try {
+            const { getFunctions, httpsCallable } = await import('firebase/functions')
+            const functions = getFunctions()
+            const sendCrewMessageFn = httpsCallable(functions, 'sendCrewMessage')
+
+            const payload = {
+                employeeIds: selectedEmployeeIdsForMessage,
+                jobName: selectedJobForMessage.name,
+                jobAddress: selectedJobForMessage.address,
+                tasks: selectedJobForMessage.tasks || '',
+                date: formatDateOnly(messageDate),
+                notes: messageNotes || '',
+            }
+
+            if (messageLanguage && messageLanguage !== 'auto') {
+                payload.language = messageLanguage
+            }
+
+            console.log('[SMS] Sending payload:', payload)
+            const result = await sendCrewMessageFn(payload)
+            const data = result?.data || {}
+
+            console.log('[SMS] Function response:', data)
+
+            if (data.failed > 0) {
+                // Show detailed error if some failed
+                const failedResults = (data.results || []).filter(r => !r.success)
+                const errorDetails = failedResults.map(r => 
+                    `${r.employeeName || 'Unknown'}: ${r.error || 'Failed'}`
+                ).join('; ')
+                setSendError(
+                    `${data.failed} message(s) failed. ${errorDetails}`
+                )
+            } else {
+                setSendError('')
+            }
+
+            setSendSuccess(
+                data.message ||
+                `Messages sent. ${data.sent || 0} succeeded${data.failed ? `, ${data.failed} failed` : ''}.`
+            )
+        } catch (error) {
+            console.error('[SMS] Failed to send crew messages:', error)
+            const errorMessage = error?.message || error?.code || 'Failed to send messages. Please try again.'
+            setSendError(`Error: ${errorMessage}. Check browser console and Firebase Functions logs for details.`)
+            setSendSuccess('')
+        } finally {
+            setSendingMessages(false)
+        }
+    }
+
     return (
         <div className="flex flex-col gap-4">
             {/* Header */}
@@ -707,10 +901,284 @@ const CrewTracker = () => {
                     )}
 
                     {activeTab === 'messages' && (
-                        <div className="pt-4">
-                            <p className="text-gray-600 dark:text-gray-400">
-                                Messages history coming soon...
-                            </p>
+                        <div className="pt-4 space-y-6">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                    <HiOutlineChatAlt2 className="text-xl" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                        Send job details via SMS
+                                    </h2>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        Select a job and crew members to send a concise assignment text with date, address,
+                                        Google Maps link, and tasks in English or Spanish.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Alerts */}
+                            {sendError && (
+                                <Alert type="danger" showIcon>
+                                    {sendError}
+                                </Alert>
+                            )}
+                            {sendSuccess && (
+                                <Alert type="success" showIcon>
+                                    {sendSuccess}
+                                </Alert>
+                            )}
+                            {messageHistoryError && (
+                                <Alert type="danger" showIcon>
+                                    {messageHistoryError}
+                                </Alert>
+                            )}
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Composer */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            Job
+                                        </label>
+                                        <Select
+                                            placeholder="Select a job"
+                                            options={jobOptionsForMessages}
+                                            value={jobOptionsForMessages.find(opt => opt.value === selectedJobIdForMessage) || null}
+                                            onChange={(option) => {
+                                                setSelectedJobIdForMessage(option ? option.value : null)
+                                            }}
+                                            isClearable
+                                            menuPortalTarget={document.body}
+                                            menuPosition="fixed"
+                                            styles={{
+                                                menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                                                menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            Crew members
+                                        </label>
+                                        <Select
+                                            placeholder="Select one or more employees"
+                                            isMulti
+                                            options={employeeOptionsForMessages}
+                                            value={employeeOptionsForMessages.filter(opt =>
+                                                selectedEmployeeIdsForMessage.includes(opt.value)
+                                            )}
+                                            onChange={(selected) => {
+                                                const ids = selected ? selected.map(s => s.value) : []
+                                                setSelectedEmployeeIdsForMessage(ids)
+                                            }}
+                                            closeMenuOnSelect={false}
+                                            menuPortalTarget={document.body}
+                                            menuPosition="fixed"
+                                            styles={{
+                                                menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                                                menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                                            }}
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            Only active employees with a phone number appear here.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Date
+                                            </label>
+                                            <DatePicker
+                                                inputtable
+                                                inputtableBlurClose={false}
+                                                inputFormat="MM/DD/YYYY"
+                                                value={messageDate}
+                                                onChange={(date) => setMessageDate(date)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Language
+                                            </label>
+                                            <Select
+                                                options={[
+                                                    { value: 'auto', label: 'Per employee preference (default)' },
+                                                    { value: 'en', label: 'Force English' },
+                                                    { value: 'es', label: 'Force Spanish' },
+                                                ]}
+                                                value={
+                                                    [
+                                                        { value: 'auto', label: 'Per employee preference (default)' },
+                                                        { value: 'en', label: 'Force English' },
+                                                        { value: 'es', label: 'Force Spanish' },
+                                                    ].find(opt => opt.value === messageLanguage)
+                                                }
+                                                onChange={(option) => setMessageLanguage(option?.value || 'auto')}
+                                                menuPortalTarget={document.body}
+                                                menuPosition="fixed"
+                                                styles={{
+                                                    menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                                                    menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            Notes (optional)
+                                        </label>
+                                        <Input
+                                            textArea
+                                            rows={4}
+                                            placeholder="Extra instructions, gate codes, or meeting points..."
+                                            value={messageNotes}
+                                            onChange={(e) => setMessageNotes(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Preview */}
+                                    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-4 text-sm text-gray-700 dark:text-gray-200">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <HiOutlineStatusOnline className="text-primary" />
+                                            <span className="font-semibold">Preview (English)</span>
+                                        </div>
+                                        <p className="whitespace-pre-line leading-relaxed text-xs sm:text-sm">
+                                            {selectedJobForMessage ? (
+                                                [
+                                                    '📋 Job Assignment',
+                                                    '',
+                                                    `📅 Date: ${formatDateOnly(messageDate)}`,
+                                                    `🏗️ Job: ${selectedJobForMessage.name || '-'}`,
+                                                    `📍 Location: ${selectedJobForMessage.address || '-'}`,
+                                                    selectedJobForMessage.tasks
+                                                        ? `📝 Tasks: ${selectedJobForMessage.tasks}`
+                                                        : '📝 Tasks: See details on site',
+                                                    messageNotes ? `📌 Notes: ${messageNotes}` : null,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join('\n')
+                                            ) : (
+                                                'Select a job and crew members to see the message preview.'
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex justify-end">
+                                        <Button
+                                            variant="solid"
+                                            icon={<HiOutlineChatAlt2 />}
+                                            loading={sendingMessages}
+                                            disabled={sendingMessages}
+                                            onClick={handleSendMessages}
+                                        >
+                                            Send SMS
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Message history */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <HiOutlineClock className="text-lg text-gray-400 dark:text-gray-500" />
+                                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                Recent messages
+                                            </h3>
+                                        </div>
+                                        {messageHistoryLoading && (
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                Loading...
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {(!messageHistory || messageHistory.length === 0) && !messageHistoryLoading ? (
+                                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 px-4 py-8 text-center">
+                                            <HiOutlineExclamationCircle className="mb-2 text-2xl text-gray-300 dark:text-gray-600" />
+                                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                No messages sent yet
+                                            </p>
+                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-xs">
+                                                Once you start sending job assignments, they will appear here with status
+                                                and recipients.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                                            {messageHistory.map((msg) => {
+                                                const sentAt = msg.sentAt || msg.date
+                                                const status = msg.status || 'sent'
+                                                const results = Array.isArray(msg.results) ? msg.results : []
+                                                const sentCount = results.filter(r => r.success).length
+                                                const failedCount = results.filter(r => !r.success).length
+                                                const totalRecipients = (msg.recipients && msg.recipients.length) || results.length || 0
+
+                                                return (
+                                                    <div
+                                                        key={msg.id}
+                                                        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-3 text-xs sm:text-sm"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div>
+                                                                <div className="font-medium text-gray-900 dark:text-white truncate max-w-[220px]">
+                                                                    {msg.jobName || 'Job assignment'}
+                                                                </div>
+                                                                {msg.jobAddress && (
+                                                                    <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[220px]">
+                                                                        {msg.jobAddress}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex flex-col items-end gap-1">
+                                                                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                                                    {formatDateOnly(sentAt)}
+                                                                </span>
+                                                                <span
+                                                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                                        status === 'sent'
+                                                                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                                                            : status === 'partial'
+                                                                            ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                                                            : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                                                    }`}
+                                                                >
+                                                                    {status === 'sent'
+                                                                        ? 'Sent'
+                                                                        : status === 'partial'
+                                                                        ? 'Partial'
+                                                                        : status || 'Unknown'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-600 dark:text-gray-400">
+                                                            {totalRecipients > 0 && (
+                                                                <span>
+                                                                    Recipients: {sentCount}/{totalRecipients} sent
+                                                                    {failedCount ? `, ${failedCount} failed` : ''}
+                                                                </span>
+                                                            )}
+                                                            {msg.tasks && (
+                                                                <span className="truncate max-w-[220px]">
+                                                                    Tasks: {msg.tasks}
+                                                                </span>
+                                                            )}
+                                                            {msg.notes && (
+                                                                <span className="truncate max-w-[220px]">
+                                                                    Notes: {msg.notes}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

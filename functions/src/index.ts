@@ -7094,6 +7094,7 @@ export const sendCrewMessage = functions.runWith({
         });
 
         // Get employee data from Firestore
+        console.log(`[SMS] Fetching employees: ${employeeIds.join(', ')}`);
         const employeesRef = admin.firestore().collection('crewEmployees');
         const employeesSnapshot = await Promise.all(
             employeeIds.map(id => employeesRef.doc(id).get())
@@ -7111,7 +7112,10 @@ export const sendCrewMessage = functions.runWith({
             .map(doc => ({ id: doc.id, ...doc.data() } as Employee))
             .filter(emp => emp.phone); // Only employees with phone numbers
 
+        console.log(`[SMS] Found ${employees.length} employees with phone numbers out of ${employeeIds.length} requested`);
+
         if (employees.length === 0) {
+            console.error('[SMS] No employees found with valid phone numbers');
             throw new functions.https.HttpsError('not-found', 'No employees found with valid phone numbers');
         }
 
@@ -7141,6 +7145,27 @@ export const sendCrewMessage = functions.runWith({
             }
         };
 
+        // Helper: normalize phone numbers to E.164 (assume US if missing country code)
+        const normalizePhoneNumber = (phone: string | undefined): string | undefined => {
+            if (!phone) return phone;
+
+            const trimmed = phone.trim();
+            if (trimmed.startsWith('+')) {
+                return trimmed;
+            }
+
+            // Strip all non-digits
+            const digitsOnly = trimmed.replace(/\D/g, '');
+
+            // If it's a 10-digit US number, prepend +1
+            if (digitsOnly.length === 10) {
+                return `+1${digitsOnly}`;
+            }
+
+            // Fallback: return original (Twilio will validate)
+            return trimmed;
+        };
+
         // Send messages to each employee
         const messageResults = [];
         const messageId = admin.firestore().collection('crewMessages').doc().id;
@@ -7150,39 +7175,71 @@ export const sendCrewMessage = functions.runWith({
                 const employeeLanguage = employee.language || language || 'en';
                 const messageText = formatMessage(employeeLanguage);
 
+                const normalizedPhone = normalizePhoneNumber(employee.phone);
+                if (!normalizedPhone) {
+                    throw new Error('Missing or invalid phone number');
+                }
+
+                console.log(`[SMS] Attempting to send to ${normalizedPhone} (${employee.name || employee.id}), language: ${employeeLanguage}`);
+
                 // Send SMS via Twilio using Messaging Service
                 const message = await twilio.messages.create({
                     body: messageText,
                     messagingServiceSid: twilioMessagingServiceSid,
-                    to: employee.phone
+                    to: normalizedPhone
                 });
 
-                console.log(`[SMS] Sent to ${employee.phone} (${employee.name}):`, message.sid);
+                console.log(`[SMS] ✅ Successfully sent to ${normalizedPhone} (${employee.name}):`, message.sid, `Status: ${message.status}`);
 
                 messageResults.push({
                     employeeId: employee.id,
                     employeeName: employee.name,
-                    phone: employee.phone,
+                    phone: normalizedPhone,
                     success: true,
                     messageSid: message.sid,
                     status: message.status,
                 });
             } catch (error: any) {
-                console.error(`Failed to send SMS to ${employee.phone}:`, error);
+                const normalizedPhone = normalizePhoneNumber(employee.phone);
+                console.error(`[SMS] ❌ Failed to send SMS to ${normalizedPhone || employee.phone} (${employee.name || employee.id}):`, {
+                    error: error.message,
+                    code: error.code,
+                    status: error.status,
+                    moreInfo: error.moreInfo,
+                    stack: error.stack
+                });
                 messageResults.push({
                     employeeId: employee.id,
                     employeeName: employee.name,
-                    phone: employee.phone,
+                    phone: normalizedPhone || employee.phone,
                     success: false,
-                    error: error.message,
+                    error: error.message || 'Unknown error',
                     errorCode: error.code,
                 });
             }
         }
 
+        // Parse date string (MM/DD/YYYY format)
+        let parsedDate: Date;
+        try {
+            // Handle MM/DD/YYYY format
+            if (date.includes('/')) {
+                const [month, day, year] = date.split('/').map(Number);
+                parsedDate = new Date(year, month - 1, day);
+            } else {
+                parsedDate = new Date(date);
+            }
+            if (isNaN(parsedDate.getTime())) {
+                throw new Error('Invalid date format');
+            }
+        } catch (dateError) {
+            console.error('Failed to parse date:', date, dateError);
+            parsedDate = new Date(); // Fallback to current date
+        }
+
         // Save message record to Firestore
         const messageData = {
-            date: admin.firestore.Timestamp.fromDate(new Date(date)),
+            date: admin.firestore.Timestamp.fromDate(parsedDate),
             jobName,
             jobAddress,
             tasks: tasks || '',
