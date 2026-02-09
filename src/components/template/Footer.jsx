@@ -13,17 +13,15 @@ const FooterContent = () => {
             </span>
             <div className="">
                 <a
-                    className="text-gray"
-                    href="/#"
-                    onClick={(e) => e.preventDefault()}
+                    className="text-gray hover:text-primary transition-colors"
+                    href="/terms-and-conditions"
                 >
                     Term & Conditions
                 </a>
                 <span className="mx-2 text-muted"> | </span>
                 <a
-                    className="text-gray"
-                    href="/#"
-                    onClick={(e) => e.preventDefault()}
+                    className="text-gray hover:text-primary transition-colors"
+                    href="/privacy-policy"
                 >
                     Privacy & Policy
                 </a>

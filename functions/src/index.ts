@@ -7182,14 +7182,47 @@ export const sendCrewMessage = functions.runWith({
 
                 console.log(`[SMS] Attempting to send to ${normalizedPhone} (${employee.name || employee.id}), language: ${employeeLanguage}`);
 
+                // Get the status callback URL for delivery tracking
+                const statusCallbackUrl = `https://us-central1-tatco-crm.cloudfunctions.net/crewMessageStatusCallback`;
+
                 // Send SMS via Twilio using Messaging Service
                 const message = await twilio.messages.create({
                     body: messageText,
                     messagingServiceSid: twilioMessagingServiceSid,
-                    to: normalizedPhone
+                    to: normalizedPhone,
+                    statusCallback: statusCallbackUrl // Track delivery status
                 });
 
-                console.log(`[SMS] ✅ Successfully sent to ${normalizedPhone} (${employee.name}):`, message.sid, `Status: ${message.status}`);
+                console.log(`[SMS] ✅ Message accepted by Twilio:`, {
+                    messageSid: message.sid,
+                    to: normalizedPhone,
+                    employeeName: employee.name,
+                    status: message.status,
+                    dateCreated: message.dateCreated,
+                    dateSent: message.dateSent,
+                    errorCode: message.errorCode,
+                    errorMessage: message.errorMessage
+                });
+
+                // Save individual message to Firestore for tracking
+                const individualMessageData = {
+                    messageSid: message.sid,
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    phone: normalizedPhone,
+                    jobName,
+                    jobAddress,
+                    date,
+                    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+                    status: message.status, // Initial status (usually 'queued' or 'accepted')
+                    direction: 'outbound',
+                };
+
+                // Save to Firestore (will be updated by status callback)
+                await admin.firestore()
+                    .collection('crewMessages')
+                    .doc(message.sid)
+                    .set(individualMessageData, { merge: true });
 
                 messageResults.push({
                     employeeId: employee.id,
@@ -7237,7 +7270,7 @@ export const sendCrewMessage = functions.runWith({
             parsedDate = new Date(); // Fallback to current date
         }
 
-        // Save message record to Firestore
+        // Save batch message record to Firestore (summary of all messages sent)
         const messageData = {
             date: admin.firestore.Timestamp.fromDate(parsedDate),
             jobName,
@@ -7249,6 +7282,8 @@ export const sendCrewMessage = functions.runWith({
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
             status: messageResults.every(r => r.success) ? 'sent' : 'partial',
             results: messageResults,
+            batchId: messageId, // Identifier for this batch
+            type: 'batch', // Distinguish from individual messages
         };
 
         await admin.firestore()
@@ -7392,18 +7427,28 @@ export const crewMessageStatusCallback = functions.https.onRequest(async (req, r
             ErrorMessage
         } = req.body;
 
-        console.log(`[SMS Status] MessageSid: ${MessageSid}, Status: ${MessageStatus}`);
+        console.log(`[SMS Status] MessageSid: ${MessageSid}, Status: ${MessageStatus}`, {
+            errorCode: ErrorCode,
+            errorMessage: ErrorMessage
+        });
 
-        // Update message status in Firestore
-        await admin.firestore()
-            .collection('crewMessages')
-            .doc(MessageSid)
-            .update({
-                status: MessageStatus,
-                errorCode: ErrorCode || null,
-                errorMessage: ErrorMessage || null,
-                statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+        // Update individual message status in Firestore
+        // Use set with merge to handle both individual messages and batch records
+        // This will create the document if it doesn't exist, or update it if it does
+        try {
+            await admin.firestore()
+                .collection('crewMessages')
+                .doc(MessageSid)
+                .set({
+                    status: MessageStatus,
+                    errorCode: ErrorCode || null,
+                    errorMessage: ErrorMessage || null,
+                    statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                }, { merge: true });
+        } catch (firestoreError: any) {
+            // Log error but don't fail the callback (Twilio expects 200 OK)
+            console.error(`[SMS Status] Error updating Firestore for ${MessageSid}:`, firestoreError);
+        }
 
         res.status(200).send('OK');
     } catch (error: any) {
