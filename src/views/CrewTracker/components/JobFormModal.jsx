@@ -1,46 +1,28 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem, DatePicker } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
 import { HiOutlineX } from 'react-icons/hi'
-import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
-import { Timestamp } from 'firebase/firestore'
 
 const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
     const [formData, setFormData] = useState({
         name: '',
         address: '',
-        tasks: '',
         active: true,
-        assignedEmployees: [],
-        expectedCompletionDate: null,
     })
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
-    const { employees, loadEmployees } = useCrewEmployeeStore()
-
-    useEffect(() => {
-        if (isOpen) {
-            loadEmployees()
-        }
-    }, [isOpen, loadEmployees])
 
     useEffect(() => {
         if (job) {
             setFormData({
                 name: job.name || '',
                 address: job.address || '',
-                tasks: job.tasks || '',
                 active: job.active !== undefined ? job.active : true,
-                assignedEmployees: job.assignedEmployees || [],
-                expectedCompletionDate: job.expectedCompletionDate?.toDate ? job.expectedCompletionDate.toDate() : (job.expectedCompletionDate || null),
             })
         } else {
             setFormData({
                 name: '',
                 address: '',
-                tasks: '',
                 active: true,
-                assignedEmployees: [],
-                expectedCompletionDate: null,
             })
         }
         setErrors({})
@@ -83,12 +65,6 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                 ...formData,
                 name: formData.name.trim(),
                 address: formData.address.trim(),
-                tasks: formData.tasks.trim() || null,
-                expectedCompletionDate: formData.expectedCompletionDate 
-                    ? (formData.expectedCompletionDate instanceof Date 
-                        ? Timestamp.fromDate(formData.expectedCompletionDate) 
-                        : formData.expectedCompletionDate)
-                    : null,
             }
 
             await onSave(jobData)
@@ -137,60 +113,6 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
                             value={formData.address}
                             onChange={(e) => handleChange('address', e.target.value)}
                             placeholder="Enter job address"
-                        />
-                    </FormItem>
-
-                    <FormItem
-                        label="Scheduled Tasks"
-                    >
-                        <Input
-                            textArea
-                            value={formData.tasks}
-                            onChange={(e) => handleChange('tasks', e.target.value)}
-                            placeholder="Enter scheduled tasks for this job"
-                            rows={4}
-                        />
-                    </FormItem>
-
-                    <FormItem label="Assigned Employees">
-                        <Select
-                            isMulti
-                            options={employees
-                                .filter(emp => emp.active !== false)
-                                .map(emp => ({
-                                    value: emp.id,
-                                    label: emp.name,
-                                }))}
-                            value={employees
-                                .filter(emp => emp.active !== false)
-                                .map(emp => ({
-                                    value: emp.id,
-                                    label: emp.name,
-                                }))
-                                .filter(opt => (formData.assignedEmployees || []).includes(opt.value))}
-                            onChange={(selected) => {
-                                handleChange('assignedEmployees', selected ? selected.map(s => s.value) : [])
-                            }}
-                            placeholder="Select employees (active only)"
-                            menuPortalTarget={document.body}
-                            menuPosition="fixed"
-                            styles={{
-                                menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
-                                menu: (provided) => ({ ...provided, zIndex: 10000 }),
-                            }}
-                        />
-                    </FormItem>
-
-                    <FormItem label="Expected Completion Date">
-                        <DatePicker
-                            inputtable
-                            inputtableBlurClose={false}
-                            inputFormat="MM/DD/YYYY"
-                            value={formData.expectedCompletionDate}
-                            onChange={(date) => {
-                                handleChange('expectedCompletionDate', date)
-                            }}
-                            placeholder="Select expected completion date (optional)"
                         />
                     </FormItem>
 

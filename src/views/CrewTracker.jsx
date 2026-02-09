@@ -14,7 +14,9 @@ import {
     HiOutlineStatusOnline,
     HiOutlineExclamationCircle,
     HiOutlineClock,
+    HiOutlineDownload,
 } from 'react-icons/hi'
+import * as XLSX from 'xlsx'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import EmployeeFormModal from './CrewTracker/components/EmployeeFormModal'
 import JobFormModal from './CrewTracker/components/JobFormModal'
@@ -132,13 +134,6 @@ const CrewTracker = () => {
             loadEmployees()
         }
     }, [employeeFilters.search])
-
-    // Load employees when on jobs tab (for Assigned Employees column)
-    useEffect(() => {
-        if (activeTab === 'jobs') {
-            loadEmployees()
-        }
-    }, [activeTab, loadEmployees])
 
     // Load jobs and setup real-time listener - load all jobs
     useEffect(() => {
@@ -495,6 +490,15 @@ const CrewTracker = () => {
         return employees
     }, [employees])
 
+    // Count active/inactive employees
+    const activeEmployees = useMemo(() => {
+        return employees.filter(emp => emp.active !== false)
+    }, [employees])
+
+    const inactiveEmployees = useMemo(() => {
+        return employees.filter(emp => emp.active === false)
+    }, [employees])
+
     // Table columns for jobs
     const jobColumns = useMemo(() => [
         {
@@ -530,141 +534,6 @@ const CrewTracker = () => {
                         </a>
                     </Tooltip>
                 )
-            },
-        },
-        {
-            header: 'Tasks',
-            accessorKey: 'tasks',
-            size: 400,
-            cell: ({ row }) => {
-                const tasks = row.original.tasks
-                if (!tasks) return <span className="text-sm text-gray-400">-</span>
-                // Truncate if too long
-                const maxLength = 80
-                const displayText = tasks.length > maxLength 
-                    ? `${tasks.substring(0, maxLength)}...` 
-                    : tasks
-                return (
-                    <Tooltip title={tasks}>
-                        <span className="text-sm block max-w-[380px] truncate">
-                            {displayText}
-                        </span>
-                    </Tooltip>
-                )
-            },
-        },
-        {
-            header: 'Assigned Employees',
-            accessorKey: 'assignedEmployees',
-            size: 250,
-            cell: ({ row }) => {
-                const job = row.original
-                const assignedIds = job.assignedEmployees || []
-                if (assignedIds.length === 0) return <span className="text-sm text-gray-400">-</span>
-                const assignedNames = assignedIds
-                    .map(id => {
-                        const emp = employees.find(e => e.id === id)
-                        return emp ? emp.name : null
-                    })
-                    .filter(Boolean)
-                const displayText = assignedNames.join(', ')
-                return (
-                    <Tooltip title={displayText}>
-                        <span className="text-sm block max-w-[230px] truncate">
-                            {displayText || '-'}
-                        </span>
-                    </Tooltip>
-                )
-            },
-        },
-        {
-            header: 'Updates',
-            accessorKey: 'updates',
-            size: 400,
-            cell: ({ row }) => {
-                const job = row.original
-                const lastUpdate = job.lastUpdateDate
-                const lastUpdateText = job.lastUpdateText || ''
-                
-                if (!lastUpdate) {
-                    return <span className="text-sm text-gray-400">No updates</span>
-                }
-                
-                // Format date only (no time) helper
-                const formatDateOnly = (date) => {
-                    if (!date) return '-'
-                    try {
-                        let dateObj
-                        if (date?.toDate) {
-                            dateObj = date.toDate()
-                        } else if (date instanceof Date) {
-                            dateObj = date
-                        } else if (typeof date === 'string') {
-                            dateObj = new Date(date)
-                        } else {
-                            return '-'
-                        }
-                        const month = String(dateObj.getMonth() + 1).padStart(2, '0')
-                        const day = String(dateObj.getDate()).padStart(2, '0')
-                        const year = dateObj.getFullYear()
-                        return `${month}/${day}/${year}`
-                    } catch {
-                        return '-'
-                    }
-                }
-                
-                // Truncate text if too long
-                const maxLength = 80
-                const displayText = lastUpdateText.length > maxLength 
-                    ? `${lastUpdateText.substring(0, maxLength)}...` 
-                    : lastUpdateText || 'Update'
-                
-                return (
-                    <Tooltip
-                        title={
-                            <div>
-                                <div className="font-semibold mb-1">{formatDateOnly(lastUpdate)}</div>
-                                {lastUpdateText && <div className="text-sm">{lastUpdateText}</div>}
-                            </div>
-                        }
-                    >
-                        <div className="cursor-pointer">
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                                {formatDateOnly(lastUpdate)}
-                            </div>
-                            <div className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[380px]">
-                                {displayText}
-                            </div>
-                        </div>
-                    </Tooltip>
-                )
-            },
-        },
-        {
-            header: 'Expected Completion',
-            accessorKey: 'expectedCompletionDate',
-            size: 150,
-            cell: ({ row }) => {
-                const date = row.original.expectedCompletionDate
-                if (!date) return <span className="text-sm text-gray-400">-</span>
-                try {
-                    let dateObj
-                    if (date?.toDate) {
-                        dateObj = date.toDate()
-                    } else if (date instanceof Date) {
-                        dateObj = date
-                    } else if (typeof date === 'string') {
-                        dateObj = new Date(date)
-                    } else {
-                        return <span className="text-sm text-gray-400">-</span>
-                    }
-                    const month = String(dateObj.getMonth() + 1).padStart(2, '0')
-                    const day = String(dateObj.getDate()).padStart(2, '0')
-                    const year = dateObj.getFullYear()
-                    return <span className="text-sm">{month}/{day}/{year}</span>
-                } catch {
-                    return <span className="text-sm text-gray-400">-</span>
-                }
             },
         },
         {
@@ -726,7 +595,7 @@ const CrewTracker = () => {
                 )
             },
         },
-    ], [navigate, updateJob, employees])
+    ], [navigate, updateJob])
 
     // Filtered jobs - separate active and inactive
     const activeJobs = useMemo(() => {
@@ -1089,6 +958,55 @@ const CrewTracker = () => {
         document.addEventListener('mouseup', handleMouseUp)
     }
 
+    const handleExportScheduleToExcel = () => {
+        try {
+            const validAssignments = scheduleAssignments.filter(
+                (row) => row.employeeId && row.jobId,
+            )
+
+            if (validAssignments.length === 0) {
+                alert('No assignments to export. Please add at least one row with an employee and a job.')
+                return
+            }
+
+            // Prepare export data
+            const exportData = validAssignments.map((row) => {
+                const employee = employees.find((e) => e.id === row.employeeId)
+                const job = jobs.find((j) => j.id === row.jobId)
+
+                return {
+                    'Day': getDayOfWeek(scheduleDate),
+                    'Date': formatDateOnly(scheduleDate),
+                    'Employee Name': employee?.name || row.employeeName || '',
+                    'Cost Code': row.costCode || '',
+                    'W2 Hours Worked': row.w2Hours || '',
+                    'Job Name': job?.name || row.jobName || '',
+                    'Address': job?.address || row.jobAddress || '',
+                    'Scheduled Tasks': row.scheduledTasks || '',
+                    'Added Tasks': row.addedTasks || '',
+                    'Notes': row.notes || '',
+                    'Tasks Not Completed / Need More Time': row.tasksNotCompleted || '',
+                    'Materials Needed': row.materialsNeeded || '',
+                }
+            })
+
+            // Create workbook and worksheet
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+
+            // Generate filename with date
+            const dateStr = formatDateOnly(scheduleDate).replace(/\//g, '-')
+            const filename = `Crew_Schedule_${dateStr}.xlsx`
+
+            // Write file and trigger download
+            XLSX.writeFile(wb, filename)
+        } catch (error) {
+            console.error('Failed to export schedule to Excel:', error)
+            alert('Failed to export schedule to Excel. Please try again.')
+        }
+    }
+
     const handleSaveSchedule = async () => {
         setScheduleError('')
         setScheduleSendSuccess('')
@@ -1349,47 +1267,86 @@ const CrewTracker = () => {
             <Card>
                 <div className="p-4 md:p-6 space-y-4">
                     {/* Tab Navigation */}
-                    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
-                        <button
-                            onClick={() => setActiveTab('employees')}
-                            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                activeTab === 'employees'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                            }`}
-                        >
-                            Employees ({employees.length})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('jobs')}
-                            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                activeTab === 'jobs'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                            }`}
-                        >
-                            Jobs ({activeJobs.length + inactiveJobs.length})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('messages')}
-                            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                activeTab === 'messages'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                            }`}
-                        >
-                            Messages
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('schedule')}
-                            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                activeTab === 'schedule'
-                                    ? 'border-primary text-primary'
-                                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                            }`}
-                        >
-                            Schedule
-                        </button>
+                    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 items-center justify-between">
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setActiveTab('employees')}
+                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                    activeTab === 'employees'
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                Employees
+                                <Tag className="bg-primary/10 text-primary border-primary/20">
+                                    {activeEmployees.length}
+                                </Tag>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('jobs')}
+                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                    activeTab === 'jobs'
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                Jobs
+                                <Tag className="bg-primary/10 text-primary border-primary/20">
+                                    {activeJobs.length + inactiveJobs.length}
+                                </Tag>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('schedule')}
+                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                                    activeTab === 'schedule'
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                Schedule
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('messages')}
+                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                                    activeTab === 'messages'
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                Messages
+                            </button>
+                        </div>
+                        {/* Job sub-tabs on the right */}
+                        {activeTab === 'jobs' && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setJobSubTab('active')}
+                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                        jobSubTab === 'active'
+                                            ? 'border-primary text-primary'
+                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                    }`}
+                                >
+                                    Active Jobs
+                                    <Tag className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300 dark:border-green-700">
+                                        {activeJobs.length}
+                                    </Tag>
+                                </button>
+                                <button
+                                    onClick={() => setJobSubTab('inactive')}
+                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                        jobSubTab === 'inactive'
+                                            ? 'border-primary text-primary'
+                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                    }`}
+                                >
+                                    Inactive Jobs
+                                    <Tag className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-300 dark:border-gray-700">
+                                        {inactiveJobs.length}
+                                    </Tag>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Tab Content */}
@@ -1439,30 +1396,6 @@ const CrewTracker = () => {
 
                     {activeTab === 'jobs' && (
                         <>
-                            {/* Job Sub-Tabs */}
-                            <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 mb-4">
-                                <button
-                                    onClick={() => setJobSubTab('active')}
-                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                        jobSubTab === 'active'
-                                            ? 'border-primary text-primary'
-                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                                    }`}
-                                >
-                                    Active Jobs ({activeJobs.length})
-                                </button>
-                                <button
-                                    onClick={() => setJobSubTab('inactive')}
-                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                                        jobSubTab === 'inactive'
-                                            ? 'border-primary text-primary'
-                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                                    }`}
-                                >
-                                    Inactive Jobs ({inactiveJobs.length})
-                                </button>
-                            </div>
-
                             {/* Filters */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                                 <div>
@@ -1846,6 +1779,13 @@ const CrewTracker = () => {
                                         onClick={handleSendScheduleMessages}
                                     >
                                         Send SMS for this date
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        icon={<HiOutlineDownload />}
+                                        onClick={handleExportScheduleToExcel}
+                                    >
+                                        Export to Excel
                                     </Button>
                                 </div>
                             </div>
