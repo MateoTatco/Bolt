@@ -12,26 +12,9 @@ const othersRoute = [
             pageContainerType: 'contained',
         },
     },
-    {
-        key: 'privacyPolicy',
-        path: `/privacy-policy`,
-        component: lazy(() => import('@/views/others/PrivacyPolicy')),
-        authority: [ADMIN, USER],
-        meta: {
-            pageBackgroundType: 'plain',
-            pageContainerType: 'contained',
-        },
-    },
-    {
-        key: 'termsAndConditions',
-        path: `/terms-and-conditions`,
-        component: lazy(() => import('@/views/others/TermsAndConditions')),
-        authority: [ADMIN, USER],
-        meta: {
-            pageBackgroundType: 'plain',
-            pageContainerType: 'contained',
-        },
-    },
+    // Note: privacy-policy and terms-and-conditions are accessible via publicRoutes
+    // for unauthenticated users. Authenticated users can access them through publicRoutes
+    // (PublicRoute allows authenticated users to access these pages)
 ]
 
 export default othersRoute

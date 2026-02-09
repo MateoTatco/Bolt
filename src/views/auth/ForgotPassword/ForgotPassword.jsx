@@ -65,6 +65,23 @@ export const ForgotPasswordBase = ({ signInUrl = '/sign-in' }) => {
                     Sign in
                 </ActionLink>
             </div>
+            <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                    <a
+                        href="/terms-and-conditions"
+                        className="hover:text-primary transition-colors"
+                    >
+                        Term & Conditions
+                    </a>
+                    <span className="text-muted"> | </span>
+                    <a
+                        href="/privacy-policy"
+                        className="hover:text-primary transition-colors"
+                    >
+                        Privacy Policy
+                    </a>
+                </div>
+            </div>
         </div>
     )
 }

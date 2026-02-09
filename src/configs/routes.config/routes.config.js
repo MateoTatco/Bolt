@@ -2,7 +2,22 @@ import { lazy } from 'react'
 import authRoute from './authRoute'
 import othersRoute from './othersRoute'
 
-export const publicRoutes = [...authRoute]
+// Public routes accessible without authentication
+export const publicRoutes = [
+    ...authRoute,
+    {
+        key: 'privacyPolicy',
+        path: `/privacy-policy`,
+        component: lazy(() => import('@/views/others/PrivacyPolicy')),
+        authority: [],
+    },
+    {
+        key: 'termsAndConditions',
+        path: `/terms-and-conditions`,
+        component: lazy(() => import('@/views/others/TermsAndConditions')),
+        authority: [],
+    },
+]
 
 export const protectedRoutes = [
     {

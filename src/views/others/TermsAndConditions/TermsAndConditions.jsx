@@ -1,10 +1,31 @@
 import Container from '@/components/shared/Container'
+import Logo from '@/components/template/Logo'
 import { APP_NAME } from '@/constants/app.constant'
+import { useAuth } from '@/auth'
+import { useThemeStore } from '@/store/themeStore'
 
 const TermsAndConditions = () => {
+    const { authenticated } = useAuth()
+    const mode = useThemeStore((state) => state.mode)
+
     return (
         <Container className="py-8">
             <div className="max-w-4xl mx-auto">
+                {/* Show logo and taglines for unauthenticated users */}
+                {!authenticated && (
+                    <div className="mb-8 text-center">
+                        <Logo
+                            type="streamline"
+                            mode={mode}
+                            imgClass="mx-auto mb-6"
+                            logoWidth={240}
+                        />
+                        <h2 className="mb-2 text-2xl font-semibold">Welcome to {APP_NAME}!</h2>
+                        <p className="font-semibold heading-text text-gray-600 dark:text-gray-400">
+                            Please enter your credentials to sign in!
+                        </p>
+                    </div>
+                )}
                 <h1 className="text-3xl font-bold mb-6">Terms and Conditions</h1>
                 <div className="prose prose-lg max-w-none dark:prose-invert">
                     <p className="text-gray-600 dark:text-gray-400 mb-4">

@@ -23,7 +23,7 @@ const FooterContent = () => {
                     className="text-gray hover:text-primary transition-colors"
                     href="/privacy-policy"
                 >
-                    Privacy & Policy
+                    Privacy Policy
                 </a>
             </div>
         </div>
