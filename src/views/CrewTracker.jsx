@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip, DatePicker, Alert } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
@@ -48,6 +48,22 @@ const CrewTracker = () => {
     const [scheduleSaving, setScheduleSaving] = useState(false)
     const [scheduleError, setScheduleError] = useState('')
     const [scheduleSendSuccess, setScheduleSendSuccess] = useState('')
+    
+    // Column widths state (for resizable columns)
+    const [columnWidths, setColumnWidths] = useState({
+        employee: 200,
+        costCode: 120,
+        w2Hours: 100,
+        job: 220,
+        address: 300,
+        scheduledTasks: 350, // Wider to fit placeholder "What they should do on site"
+        addedTasks: 300, // Wider to fit placeholder "Tasks added during the day"
+        notes: 350, // Wider to fit placeholder "Notes / gate codes / extra instructions"
+        tasksNotCompleted: 380, // Wider to fit placeholder "What could not be completed"
+        materialsNeeded: 320, // Wider to fit placeholder "Materials to pick up from shop"
+        actions: 100,
+    })
+    const [resizingColumn, setResizingColumn] = useState(null)
 
     const {
         employees,
@@ -907,9 +923,170 @@ const CrewTracker = () => {
         setScheduleAssignments((prev) =>
             prev.map((row, i) => {
                 if (i !== index) return row
-                return { ...row, ...changes }
+                const updated = { ...row, ...changes }
+                // If job changed, clear merged fields to allow new values
+                if (changes.jobId !== undefined) {
+                    const job = jobs.find((j) => j.id === changes.jobId)
+                    if (job) {
+                        updated.jobName = job.name || ''
+                        updated.jobAddress = job.address || ''
+                    }
+                }
+                return updated
             }),
         )
+    }
+
+    // Auto-grow textarea helper component
+    const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rowspan, maxRows = 10 }) => {
+        const textareaRef = useRef(null)
+        
+        useEffect(() => {
+            const textarea = textareaRef.current
+            if (!textarea) return
+            
+            // Reset height to auto to get the correct scrollHeight
+            textarea.style.height = 'auto'
+            
+            // Calculate the number of lines
+            const lineHeight = 20 // Approximate line height in pixels for text-xs
+            const minHeight = 32 // Minimum height
+            const maxHeight = maxRows * lineHeight
+            
+            // Calculate new height based on content
+            let newHeight = Math.max(minHeight, textarea.scrollHeight)
+            
+            // If merged, ensure it fills the cell height
+            if (rowspan > 1) {
+                // Get the parent td element to calculate actual cell height
+                const td = textarea.closest('td')
+                if (td) {
+                    const cellHeight = td.offsetHeight - 8 // Subtract padding
+                    newHeight = Math.max(newHeight, cellHeight)
+                }
+            }
+            
+            // Cap at max height
+            newHeight = Math.min(newHeight, maxHeight)
+            
+            textarea.style.height = `${newHeight}px`
+            textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
+        }, [value, rowspan, maxRows])
+        
+        return (
+            <textarea
+                ref={textareaRef}
+                value={value || ''}
+                onChange={onChange}
+                placeholder={placeholder}
+                className={`input input-sm input-textarea ${className || ''}`}
+                style={{
+                    ...style,
+                    overflow: 'hidden',
+                    resize: 'none',
+                    width: '100%',
+                }}
+            />
+        )
+    }
+
+    // Helper: Group rows by jobId and calculate rowspans for merged cells
+    const getGroupedRows = useMemo(() => {
+        const groups = []
+        const processed = new Set()
+        
+        scheduleAssignments.forEach((row, index) => {
+            if (processed.has(index) || !row.jobId) {
+                return
+            }
+            
+            // Find all rows with the same jobId
+            const group = [index]
+            for (let i = index + 1; i < scheduleAssignments.length; i++) {
+                if (scheduleAssignments[i].jobId === row.jobId) {
+                    group.push(i)
+                    processed.add(i)
+                }
+            }
+            
+            if (group.length > 0) {
+                processed.add(index)
+                groups.push({
+                    indices: group,
+                    jobId: row.jobId,
+                    rowspan: group.length,
+                    // Use the first row's merged field values
+                    mergedData: {
+                        jobAddress: scheduleAssignments[group[0]].jobAddress || '',
+                        scheduledTasks: scheduleAssignments[group[0]].scheduledTasks || '',
+                        addedTasks: scheduleAssignments[group[0]].addedTasks || '',
+                        notes: scheduleAssignments[group[0]].notes || '',
+                        tasksNotCompleted: scheduleAssignments[group[0]].tasksNotCompleted || '',
+                        materialsNeeded: scheduleAssignments[group[0]].materialsNeeded || '',
+                    },
+                })
+            }
+        })
+        
+        // Add ungrouped rows (no jobId or unique jobId)
+        scheduleAssignments.forEach((row, index) => {
+            if (!processed.has(index)) {
+                groups.push({
+                    indices: [index],
+                    jobId: row.jobId || null,
+                    rowspan: 1,
+                    mergedData: {
+                        jobAddress: row.jobAddress || '',
+                        scheduledTasks: row.scheduledTasks || '',
+                        addedTasks: row.addedTasks || '',
+                        notes: row.notes || '',
+                        tasksNotCompleted: row.tasksNotCompleted || '',
+                        materialsNeeded: row.materialsNeeded || '',
+                    },
+                })
+            }
+        })
+        
+        return groups.sort((a, b) => {
+            // Sort by first index to maintain order
+            return a.indices[0] - b.indices[0]
+        })
+    }, [scheduleAssignments, jobs])
+
+    // Column resizing handlers (optimized with requestAnimationFrame to reduce lag)
+    const handleResizeStart = (columnKey, e) => {
+        e.preventDefault()
+        setResizingColumn(columnKey)
+        const startX = e.clientX
+        const startWidth = columnWidths[columnKey]
+
+        let rafId = null
+        const handleMouseMove = (moveEvent) => {
+            if (rafId) {
+                cancelAnimationFrame(rafId)
+            }
+            
+            rafId = requestAnimationFrame(() => {
+                const diff = moveEvent.clientX - startX
+                const newWidth = Math.max(80, startWidth + diff) // Minimum width 80px
+                setColumnWidths((prev) => ({
+                    ...prev,
+                    [columnKey]: newWidth,
+                }))
+            })
+        }
+
+        const handleMouseUp = () => {
+            if (rafId) {
+                cancelAnimationFrame(rafId)
+            }
+            setResizingColumn(null)
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
     }
 
     const handleSaveSchedule = async () => {
@@ -989,6 +1166,16 @@ const CrewTracker = () => {
 
             const results = []
 
+            // Group by jobId to get merged data
+            const jobGroups = new Map()
+            validAssignments.forEach((row) => {
+                if (!row.jobId) return
+                if (!jobGroups.has(row.jobId)) {
+                    jobGroups.set(row.jobId, [])
+                }
+                jobGroups.get(row.jobId).push(row)
+            })
+
             for (const row of validAssignments) {
                 const employee = employees.find((e) => e.id === row.employeeId)
                 const job = jobs.find((j) => j.id === row.jobId)
@@ -1014,22 +1201,26 @@ const CrewTracker = () => {
                     continue
                 }
 
+                // Get merged data from first row in group (if multiple employees share job)
+                const groupRows = jobGroups.get(row.jobId) || [row]
+                const mergedRow = groupRows[0] // Use first row's merged fields
+
                 const notesParts = []
-                if (row.notes) {
-                    notesParts.push(row.notes)
+                if (mergedRow.notes) {
+                    notesParts.push(mergedRow.notes)
                 }
-                if (row.materialsNeeded) {
-                    notesParts.push(`Materials: ${row.materialsNeeded}`)
+                if (mergedRow.materialsNeeded) {
+                    notesParts.push(`Materials: ${mergedRow.materialsNeeded}`)
                 }
-                if (row.tasksNotCompleted) {
-                    notesParts.push(`Pending: ${row.tasksNotCompleted}`)
+                if (mergedRow.tasksNotCompleted) {
+                    notesParts.push(`Pending: ${mergedRow.tasksNotCompleted}`)
                 }
 
                 const payload = {
                     employeeIds: [employee.id],
                     jobName: job.name || row.jobName || 'Job',
-                    jobAddress: job.address || row.jobAddress || '',
-                    tasks: row.scheduledTasks || '',
+                    jobAddress: job.address || mergedRow.jobAddress || '',
+                    tasks: mergedRow.scheduledTasks || '',
                     date: dateLabel,
                     notes: notesParts.join(' | ') || '',
                 }
@@ -1660,40 +1851,160 @@ const CrewTracker = () => {
                             </div>
 
                             <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                                <table className="min-w-full text-xs sm:text-sm">
+                                <table 
+                                    className="text-xs" 
+                                    style={{ 
+                                        tableLayout: 'fixed',
+                                        width: '100%',
+                                        minWidth: Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + 'px'
+                                    }}
+                                >
                                     <thead className="bg-gray-50 dark:bg-gray-800/60">
                                         <tr>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.employee }}
+                                            >
                                                 Employee
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'employee' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('employee', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.costCode }}
+                                            >
                                                 Cost Code
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'costCode' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('costCode', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.w2Hours }}
+                                            >
                                                 W2 Hours
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'w2Hours' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('w2Hours', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.job }}
+                                            >
                                                 Job
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'job' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('job', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.address }}
+                                            >
                                                 Address
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'address' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('address', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.scheduledTasks }}
+                                            >
                                                 Scheduled Tasks
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'scheduledTasks' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('scheduledTasks', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.addedTasks }}
+                                            >
                                                 Added Tasks
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'addedTasks' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('addedTasks', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.notes }}
+                                            >
                                                 Notes
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'notes' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('notes', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.tasksNotCompleted }}
+                                            >
                                                 Tasks Not Completed / Need More Time
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'tasksNotCompleted' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('tasksNotCompleted', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.materialsNeeded }}
+                                            >
                                                 Materials Needed
+                                                <div
+                                                    className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                                        resizingColumn === 'materialsNeeded' 
+                                                            ? 'bg-primary' 
+                                                            : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                                    }`}
+                                                    onMouseDown={(e) => handleResizeStart('materialsNeeded', e)}
+                                                />
                                             </th>
-                                            <th className="px-2 py-2 text-center font-semibold text-gray-700 dark:text-gray-200">
+                                            <th 
+                                                className="px-2 py-2 text-center font-semibold text-gray-700 dark:text-gray-200 relative text-xs sm:text-sm"
+                                                style={{ width: columnWidths.actions }}
+                                            >
                                                 Actions
                                             </th>
                                         </tr>
@@ -1703,186 +2014,256 @@ const CrewTracker = () => {
                                             <tr>
                                                 <td
                                                     colSpan={11}
-                                                    className="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400"
+                                                    className="px-2 py-3 text-center text-xs text-gray-500 dark:text-gray-400"
                                                 >
                                                     No rows yet for this date. Click &quot;Add row&quot; to start
                                                     planning the crew.
                                                 </td>
                                             </tr>
                                         )}
-                                        {scheduleAssignments.map((row, index) => {
-                                            const job = jobs.find((j) => j.id === row.jobId)
-                                            const jobAddress = job?.address || row.jobAddress || ''
-                                            const mapsUrl =
-                                                jobAddress &&
-                                                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                                                    jobAddress,
-                                                )}`
+                                        {getGroupedRows.map((group, groupIndex) => {
+                                            return group.indices.map((rowIndex, idxInGroup) => {
+                                                const row = scheduleAssignments[rowIndex]
+                                                const job = jobs.find((j) => j.id === row.jobId)
+                                                const jobAddress = job?.address || group.mergedData.jobAddress || ''
+                                                const mapsUrl =
+                                                    jobAddress &&
+                                                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                                        jobAddress,
+                                                    )}`
+                                                
+                                                const isFirstInGroup = idxInGroup === 0
+                                                const rowspan = isFirstInGroup ? group.rowspan : 0
 
-                                            return (
-                                                <tr key={row.id || index} className="align-top">
-                                                    <td className="px-2 py-2 min-w-[160px]">
-                                                        <Select
-                                                            placeholder="Employee"
-                                                            options={employeeOptionsForSchedule}
-                                                            value={
-                                                                employeeOptionsForSchedule.find(
-                                                                    (opt) => opt.value === row.employeeId,
-                                                                ) || null
-                                                            }
-                                                            onChange={(option) =>
-                                                                updateScheduleRow(index, {
-                                                                    employeeId: option ? option.value : '',
-                                                                })
-                                                            }
-                                                            menuPortalTarget={document.body}
-                                                            menuPosition="fixed"
-                                                            styles={{
-                                                                menuPortal: (provided) => ({
-                                                                    ...provided,
-                                                                    zIndex: 10000,
-                                                                }),
-                                                            }}
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[110px]">
-                                                        <Input
-                                                            value={row.costCode}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    costCode: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Cost code"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[90px]">
-                                                        <Input
-                                                            type="number"
-                                                            value={row.w2Hours}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    w2Hours: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Hours"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[180px]">
-                                                        <Select
-                                                            placeholder="Job"
-                                                            options={jobOptionsForSchedule}
-                                                            value={
-                                                                jobOptionsForSchedule.find(
-                                                                    (opt) => opt.value === row.jobId,
-                                                                ) || null
-                                                            }
-                                                            onChange={(option) =>
-                                                                updateScheduleRow(index, {
-                                                                    jobId: option ? option.value : '',
-                                                                })
-                                                            }
-                                                            menuPortalTarget={document.body}
-                                                            menuPosition="fixed"
-                                                            styles={{
-                                                                menuPortal: (provided) => ({
-                                                                    ...provided,
-                                                                    zIndex: 10000,
-                                                                }),
-                                                            }}
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[220px] text-xs">
-                                                        {jobAddress ? (
-                                                            <a
-                                                                href={mapsUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-primary hover:underline break-words"
+                                                return (
+                                                    <tr key={row.id || rowIndex} className="align-top">
+                                                        <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
+                                                            <Select
+                                                                placeholder="Employee"
+                                                                options={employeeOptionsForSchedule}
+                                                                value={
+                                                                    employeeOptionsForSchedule.find(
+                                                                        (opt) => opt.value === row.employeeId,
+                                                                    ) || null
+                                                                }
+                                                                onChange={(option) =>
+                                                                    updateScheduleRow(rowIndex, {
+                                                                        employeeId: option ? option.value : '',
+                                                                    })
+                                                                }
+                                                                menuPortalTarget={document.body}
+                                                                menuPosition="fixed"
+                                                                styles={{
+                                                                    menuPortal: (provided) => ({
+                                                                        ...provided,
+                                                                        zIndex: 10000,
+                                                                    }),
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
+                                                            <Input
+                                                                value={row.costCode}
+                                                                onChange={(e) =>
+                                                                    updateScheduleRow(rowIndex, {
+                                                                        costCode: e.target.value,
+                                                                    })
+                                                                }
+                                                                placeholder="Cost code"
+                                                                className="text-xs"
+                                                            />
+                                                        </td>
+                                                        <td className="px-1 py-1" style={{ width: columnWidths.w2Hours }}>
+                                                            <Input
+                                                                type="number"
+                                                                value={row.w2Hours}
+                                                                onChange={(e) =>
+                                                                    updateScheduleRow(rowIndex, {
+                                                                        w2Hours: e.target.value,
+                                                                    })
+                                                                }
+                                                                placeholder="Hours"
+                                                                className="text-xs"
+                                                            />
+                                                        </td>
+                                                        <td className="px-1 py-1" style={{ width: columnWidths.job }}>
+                                                            <Select
+                                                                placeholder="Job"
+                                                                options={jobOptionsForSchedule}
+                                                                value={
+                                                                    jobOptionsForSchedule.find(
+                                                                        (opt) => opt.value === row.jobId,
+                                                                    ) || null
+                                                                }
+                                                                onChange={(option) =>
+                                                                    updateScheduleRow(rowIndex, {
+                                                                        jobId: option ? option.value : '',
+                                                                    })
+                                                                }
+                                                                menuPortalTarget={document.body}
+                                                                menuPosition="fixed"
+                                                                styles={{
+                                                                    menuPortal: (provided) => ({
+                                                                        ...provided,
+                                                                        zIndex: 10000,
+                                                                    }),
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        {/* Merged cells for Address */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 text-xs align-middle text-center" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.address }}
                                                             >
-                                                                {jobAddress}
-                                                            </a>
-                                                        ) : (
-                                                            <span className="text-gray-400">-</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[220px]">
-                                                        <Input
-                                                            textArea
-                                                            rows={2}
-                                                            value={row.scheduledTasks}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    scheduledTasks: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="What they should do on site"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[200px]">
-                                                        <Input
-                                                            textArea
-                                                            rows={2}
-                                                            value={row.addedTasks}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    addedTasks: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Tasks added during the day"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[200px]">
-                                                        <Input
-                                                            textArea
-                                                            rows={2}
-                                                            value={row.notes}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    notes: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Notes / gate codes / extra instructions"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[220px]">
-                                                        <Input
-                                                            textArea
-                                                            rows={2}
-                                                            value={row.tasksNotCompleted}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    tasksNotCompleted: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="What could not be completed"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 min-w-[200px]">
-                                                        <Input
-                                                            textArea
-                                                            rows={2}
-                                                            value={row.materialsNeeded}
-                                                            onChange={(e) =>
-                                                                updateScheduleRow(index, {
-                                                                    materialsNeeded: e.target.value,
-                                                                })
-                                                            }
-                                                            placeholder="Materials to pick up from shop"
-                                                        />
-                                                    </td>
-                                                    <td className="px-2 py-2 text-center align-middle">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="plain"
-                                                            className="text-red-500 hover:text-red-600"
-                                                            onClick={() => handleRemoveScheduleRow(index)}
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    </td>
-                                                </tr>
-                                            )
+                                                                {jobAddress ? (
+                                                                    <a
+                                                                        href={mapsUrl}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-primary hover:underline break-words inline-block"
+                                                                    >
+                                                                        {jobAddress}
+                                                                    </a>
+                                                                ) : (
+                                                                    <span className="text-gray-400">-</span>
+                                                                )}
+                                                            </td>
+                                                        ) : null}
+                                                        {/* Merged cells for Scheduled Tasks */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 align-top" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.scheduledTasks }}
+                                                            >
+                                                                <AutoGrowTextarea
+                                                                    value={group.mergedData.scheduledTasks}
+                                                                    onChange={(e) => {
+                                                                        // Update all rows in group
+                                                                        group.indices.forEach((idx) => {
+                                                                            updateScheduleRow(idx, {
+                                                                                scheduledTasks: e.target.value,
+                                                                            })
+                                                                        })
+                                                                    }}
+                                                                    placeholder="What they should do on site"
+                                                                    className="text-xs w-full"
+                                                                    style={{ minHeight: '32px' }}
+                                                                    rowspan={rowspan}
+                                                                    maxRows={10}
+                                                                />
+                                                            </td>
+                                                        ) : null}
+                                                        {/* Merged cells for Added Tasks */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 align-top" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.addedTasks }}
+                                                            >
+                                                                <AutoGrowTextarea
+                                                                    value={group.mergedData.addedTasks}
+                                                                    onChange={(e) => {
+                                                                        group.indices.forEach((idx) => {
+                                                                            updateScheduleRow(idx, {
+                                                                                addedTasks: e.target.value,
+                                                                            })
+                                                                        })
+                                                                    }}
+                                                                    placeholder="Tasks added during the day"
+                                                                    className="text-xs w-full"
+                                                                    style={{ minHeight: '32px' }}
+                                                                    rowspan={rowspan}
+                                                                    maxRows={10}
+                                                                />
+                                                            </td>
+                                                        ) : null}
+                                                        {/* Merged cells for Notes */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 align-top" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.notes }}
+                                                            >
+                                                                <AutoGrowTextarea
+                                                                    value={group.mergedData.notes}
+                                                                    onChange={(e) => {
+                                                                        group.indices.forEach((idx) => {
+                                                                            updateScheduleRow(idx, {
+                                                                                notes: e.target.value,
+                                                                            })
+                                                                        })
+                                                                    }}
+                                                                    placeholder="Notes / gate codes / extra instructions"
+                                                                    className="text-xs w-full"
+                                                                    style={{ minHeight: '32px' }}
+                                                                    rowspan={rowspan}
+                                                                    maxRows={10}
+                                                                />
+                                                            </td>
+                                                        ) : null}
+                                                        {/* Merged cells for Tasks Not Completed */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 align-top" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.tasksNotCompleted }}
+                                                            >
+                                                                <AutoGrowTextarea
+                                                                    value={group.mergedData.tasksNotCompleted}
+                                                                    onChange={(e) => {
+                                                                        group.indices.forEach((idx) => {
+                                                                            updateScheduleRow(idx, {
+                                                                                tasksNotCompleted: e.target.value,
+                                                                            })
+                                                                        })
+                                                                    }}
+                                                                    placeholder="What could not be completed"
+                                                                    className="text-xs w-full"
+                                                                    style={{ minHeight: '32px' }}
+                                                                    rowspan={rowspan}
+                                                                    maxRows={10}
+                                                                />
+                                                            </td>
+                                                        ) : null}
+                                                        {/* Merged cells for Materials Needed */}
+                                                        {isFirstInGroup ? (
+                                                            <td 
+                                                                className="px-1 py-1 align-top" 
+                                                                rowSpan={rowspan}
+                                                                style={{ width: columnWidths.materialsNeeded }}
+                                                            >
+                                                                <AutoGrowTextarea
+                                                                    value={group.mergedData.materialsNeeded}
+                                                                    onChange={(e) => {
+                                                                        group.indices.forEach((idx) => {
+                                                                            updateScheduleRow(idx, {
+                                                                                materialsNeeded: e.target.value,
+                                                                            })
+                                                                        })
+                                                                    }}
+                                                                    placeholder="Materials to pick up from shop"
+                                                                    className="text-xs w-full"
+                                                                    style={{ minHeight: '32px' }}
+                                                                    rowspan={rowspan}
+                                                                    maxRows={10}
+                                                                />
+                                                            </td>
+                                                        ) : null}
+                                                        <td className="px-1 py-1 text-center align-middle" style={{ width: columnWidths.actions }}>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="plain"
+                                                                icon={<HiOutlineTrash />}
+                                                                className="text-red-500 hover:text-red-600"
+                                                                onClick={() => handleRemoveScheduleRow(rowIndex)}
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })
                                         })}
                                     </tbody>
                                 </table>
