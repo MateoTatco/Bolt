@@ -1566,4 +1566,647 @@ MT
 Mateo Roldan Taborda
 22 minutos 26 segundos22:26
 Mateo Roldan Taborda 22 minutos 26 segundos
-Bye, bye.
+Bye, bye.                                                                   
+
+Mateo Roldan Taborda
+0 minutos 3 segundos0:03
+Mateo Roldan Taborda 0 minutos 3 segundos
+Second. All right, recording is going on. Let me know when you see my screen.
+Mateo Roldan Taborda 0 minutos 8 segundos
+In.
+BT
+
+Brett Tatum
+0 minutos 10 segundos0:10
+Brett Tatum 0 minutos 10 segundos
+I see it. We're going to go.
+Brett Tatum 0 minutos 12 segundos
+We go.
+
+Mateo Roldan Taborda
+0 minutos 15 segundos0:15
+Mateo Roldan Taborda 0 minutos 15 segundos
+Do you see this? You do. What happened with my visual? Oh, there we go.
+BT
+
+Brett Tatum
+0 minutos 16 segundos0:16
+Brett Tatum 0 minutos 16 segundos
+Mhm, mhm.
+
+Mateo Roldan Taborda
+0 minutos 22 segundos0:22
+Mateo Roldan Taborda 0 minutos 22 segundos
+I don't know something weird happened over there. All right, so you you will still see this. This is not how the going to look like the final product. This is the minimum viable tool that I need to continue developing the the sending messages.
+Mateo Roldan Taborda 0 minutos 39 segundos
+But what I'm currently doing, let me show you over here through Twilo, is the A2P campaigns registration. What this actually means is that kind of like imagine that when you're going to a cell phone.
+BT
+
+Brett Tatum
+0 minutos 39 segundos0:39
+Brett Tatum 0 minutos 39 segundos
+K.
+Brett Tatum 0 minutos 48 segundos
+OK.
+
+Mateo Roldan Taborda
+0 minutos 55 segundos0:55
+Mateo Roldan Taborda 0 minutos 55 segundos
+Company whenever they're activating your phone number. This is pretty much the process that I have to do to do it remotely. Through Twilo I had to do to a few things, the A2P100 DLC, whatever registration which basically.
+BT
+
+Brett Tatum
+0 minutos 58 segundos0:58
+Brett Tatum 0 minutos 58 segundos
+Yep.
+Brett Tatum 1 minuto 3 segundos
+Yeah.
+
+Mateo Roldan Taborda
+1 minuto 13 segundos1:13
+Mateo Roldan Taborda 1 minuto 13 segundos
+Means that we are not going to be sending spam to users through our app. Then as soon as you do that, we have to register pretty much a type Co FD company with Twilo as well, which I already did.
+BT
+
+Brett Tatum
+1 minuto 18 segundos1:18
+Brett Tatum 1 minuto 18 segundos
+OK.
+
+Mateo Roldan Taborda
+1 minuto 30 segundos1:30
+Mateo Roldan Taborda 1 minuto 30 segundos
+And now the very last step on doing that is creating a campaign which will allow us to pretty much message everyone who's employed by by by FD companies, peer companies, pretty much the the peer companies umbrella, right?
+BT
+
+Brett Tatum
+1 minuto 44 segundos1:44
+Brett Tatum 1 minuto 44 segundos
+OK, great.
+
+Mateo Roldan Taborda
+1 minuto 47 segundos1:47
+Mateo Roldan Taborda 1 minuto 47 segundos
+I actually did that last night because I spent the last Friday trying to kind of like figuring out where the messages were going, so I've sent multiple of them.
+Mateo Roldan Taborda 2 minutos 3 segundos
+Most of these are actually being sent to to chase, just kind of like to to test and he's not getting them right. So after investigation, yeah, after some investigation on what's going on, it's I got to.
+BT
+
+Brett Tatum
+2 minutos 9 segundos2:09
+Brett Tatum 2 minutos 9 segundos
+OK.
+Brett Tatum 2 minutos 14 segundos
+OK.
+
+Mateo Roldan Taborda
+2 minutos 22 segundos2:22
+Mateo Roldan Taborda 2 minutos 22 segundos
+The errors, which you'll be able to see over here in a second verify.
+Mateo Roldan Taborda 2 minutos 32 segundos
+Messenger.
+Mateo Roldan Taborda 2 minutos 34 segundos
+Which everything's like all of the messages I've sent through the app are undelivered, undelivered, undelivered. They're not sending right? So after inspecting what I get is this error. There means that we're currently not registered with Twillo, which is currently what I'm doing.
+BT
+Brett Tatum
+2 minutos 44 segundos2:44
+Brett Tatum 2 minutos 44 segundos
+Yeah.
+Brett Tatum 2 minutos 53 segundos
+Um.
+
+Mateo Roldan Taborda
+2 minutos 54 segundos2:54
+Mateo Roldan Taborda 2 minutos 54 segundos
+It usually takes somewhere around a few hours to up to 48 hours. So I already did the process, everything submitted through here, so I'm just waiting for to get the number kind of like good to go.
+BT
+Brett Tatum
+2 minutos 54 segundos2:54
+Brett Tatum 2 minutos 54 segundos
+OK.
+
+Mateo Roldan Taborda
+3 minutos 10 segundos3:10
+Mateo Roldan Taborda 3 minutos 10 segundos
+Per messages, the usual cost is going to be about 3 cents, no 0.3 cents, which is good. It's fairly cheap to send messages. So because I'm still waiting on the approval by Twilo, what I'm going to be doing today.
+BT
+Brett Tatum
+3 minutos 17 segundos3:17
+Brett Tatum 3 minutos 17 segundos
+Yeah.
+Brett Tatum 3 minutos 18 segundos
+Yeah, yeah.
+
+Mateo Roldan Taborda
+3 minutos 28 segundos3:28
+Mateo Roldan Taborda 3 minutos 28 segundos
+Oh, this is something I need to show you also. What I'm going to be doing today is just focusing on the front end. I'm going to you can. I'm still going to ignore the jobs after I finish playing around with messages. What I'm going to do is create the whole chat box and a modal for people to for.
+Mateo Roldan Taborda 3 minutos 47 segundos
+Everybody at FD to be able to select what job they're going to be sending, the crew members, uh, the date, the language, either Spanish or English. I don't know if there's any other language that we need, but will be included here too as well on some notes pretty much.
+Mateo Roldan Taborda 4 minutos 2 segundos
+But in a more intuitive way.
+Brett Tatum
+4 minutos 3 segundos4:03
+Brett Tatum 4 minutos 3 segundos
+So now it it is this just like a little sidebar 'cause this this isn't really what they want. They don't really want, OK?
+
+Mateo Roldan Taborda
+4 minutos 9 segundos4:09
+Mateo Roldan Taborda 4 minutos 9 segundos
+No, no, no.
+Mateo Roldan Taborda 4 minutos 11 segundos
+No, this is.
+BT
+Brett Tatum
+4 minutos 13 segundos4:13
+Brett Tatum 4 minutos 13 segundos
+OK.
+
+Mateo Roldan Taborda
+4 minutos 14 segundos4:14
+Mateo Roldan Taborda 4 minutos 14 segundos
+This is not this is going to be kind of like a a button pretty much. Yeah, I placed it like this because I just need to be able to send the message and this actually gives me a lot of details about it, right? But I'm I'm literally going to be building kind of like a WhatsApp box pretty much so that they can tag.
+BT
+Brett Tatum
+4 minutos 17 segundos4:17
+Brett Tatum 4 minutos 17 segundos
+OK.
+Brett Tatum 4 minutos 26 segundos
+OK.
+Brett Tatum 4 minutos 33 segundos
+OK.
+
+Mateo Roldan Taborda
+4 minutos 33 segundos4:33
+Mateo Roldan Taborda 4 minutos 33 segundos
+They can go back and forward, but automate it, right? So for example, it's going to be a button over here, send job details. They're gonna be able to select these and then they'll click send and.
+Mateo Roldan Taborda 4 minutos 49 segundos
+Like they'll get the fully customized message on somebody's.
+Mateo Roldan Taborda 4 minutos 55 segundos
+Cell phone, right? And they they're going to be able to reply, then text back in case they actually need anything. Yeah, that's what I'm going to be building. Kind of like a WhatsApp, but automated.
+BT
+Brett Tatum
+5 minutos 7 segundos5:07
+Brett Tatum 5 minutos 7 segundos
+Yeah. OK. Now let me stop you, 'cause we really don't want that. So I don't want you spending time doing that unless it's just a necessary step because this phase two, phase three of this, if we get there, version two, version three may involve some back and forth.
+
+Mateo Roldan Taborda
+5 minutos 10 segundos5:10
+Mateo Roldan Taborda 5 minutos 10 segundos
+Yeah, OK.
+Mateo Roldan Taborda 5 minutos 12 segundos
+OK.
+Mateo Roldan Taborda 5 minutos 14 segundos
+OK.
+BT
+Brett Tatum
+5 minutos 22 segundos5:22
+Brett Tatum 5 minutos 22 segundos
+Minimum viable product is we have the ability to send out an audience message to a mass group at one time. The back and forth really isn't important to us right now and the the being able to send it from like a mass.
+
+Mateo Roldan Taborda
+5 minutos 29 segundos5:29
+Mateo Roldan Taborda 5 minutos 29 segundos
+Mhm.
+Mateo Roldan Taborda 5 minutos 34 segundos
+Mhm.
+BT
+Brett Tatum
+5 minutos 39 segundos5:39
+Brett Tatum 5 minutos 39 segundos
+Like almost table of information if we don't wanna be sending individual messages.
+
+Mateo Roldan Taborda
+5 minutos 43 segundos5:43
+Mateo Roldan Taborda 5 minutos 43 segundos
+Mhm.
+Mateo Roldan Taborda 5 minutos 46 segundos
+No, yeah, of course. It's like what you see over here. You have the capability to. I currently only have Chase and me, but for example you can select both of them and then just give them the details and he'll send the messages to everybody at the same time.
+BT
+Brett Tatum
+5 minutos 46 segundos5:46
+Brett Tatum 5 minutos 46 segundos
+OK.
+Brett Tatum 5 minutos 54 segundos
+Sure.
+Brett Tatum 5 minutos 58 segundos
+Yeah, this is.
+Brett Tatum 6 minutos 1 segundo
+OK, I I need this to to Mateo to know that we're going in the right direction. I need to see more of like the front end of what you think we need to be able to send out like more of a table that looks like what Harrison showed us in that.
+
+Mateo Roldan Taborda
+6 minutos 5 segundos6:05
+Mateo Roldan Taborda 6 minutos 5 segundos
+It.
+Mateo Roldan Taborda 6 minutos 6 segundos
+OK.
+BT
+Brett Tatum
+6 minutos 18 segundos6:18
+Brett Tatum 6 minutos 18 segundos
+Initial call, because what I'm worried about is that you're building stuff that right now doesn't, doesn't really meet the minimum viable product. And again, I don't know the steps, but it would be more beneficial for me to see.
+Mateo Roldan Taborda
+6 minutos 20 segundos6:20
+Mateo Roldan Taborda 6 minutos 20 segundos
+Hmm.
+Mateo Roldan Taborda 6 minutos 29 segundos
+OK.
+Mateo Roldan Taborda 6 minutos 35 segundos
+Hmm.
+BT
+Brett Tatum
+6 minutos 35 segundos6:35
+Brett Tatum 6 minutos 35 segundos
+The front end to know if we're moving in the right direction.
+
+Mateo Roldan Taborda
+6 minutos 38 segundos6:38
+Mateo Roldan Taborda 6 minutos 38 segundos
+OK, sounds good. Um.
+Mateo Roldan Taborda 6 minutos 43 segundos
+Let me think one second. Um.
+Mateo Roldan Taborda 6 minutos 49 segundos
+Then in that case, I believe that it will be more beneficial for us to kind of like get the job part done first, because that way we're going to be able to select.
+Mateo Roldan Taborda 7 minutos 3 segundos
+Multiple jobs. Um.
+BT
+Brett Tatum
+7 minutos 7 segundos7:07
+Brett Tatum 7 minutos 7 segundos
+Yeah, like, I don't know if I can find this very quickly.
+
+Mateo Roldan Taborda
+7 minutos 7 segundos7:07
+Mateo Roldan Taborda 7 minutos 7 segundos
+We could.
+Mateo Roldan Taborda 7 minutos 13 segundos
+More details about like what the actual people need to to find.
+BT
+Brett Tatum
+7 minutos 22 segundos7:22
+Brett Tatum 7 minutos 22 segundos
+Yeah, I can't. Did we send you that file? Was that file sent?
+
+Mateo Roldan Taborda
+7 minutos 28 segundos7:28
+Mateo Roldan Taborda 7 minutos 28 segundos
+The Excel now.
+BT
+Brett Tatum
+7 minutos 29 segundos7:29
+Brett Tatum 7 minutos 29 segundos
+Uh.
+Brett Tatum 7 minutos 32 segundos
+See, I can find it here real quick.
+Brett Tatum 7 minutos 49 segundos
+Give me a second here. I'm see I find their Excel file.
+
+Mateo Roldan Taborda
+7 minutos 52 segundos7:52
+Mateo Roldan Taborda 7 minutos 52 segundos
+Hmm.
+BT
+Brett Tatum
+8 minutos 34 segundos8:34
+Brett Tatum 8 minutos 34 segundos
+Let me share my let me share my screen. I've found the file here and let me go ahead and before I forget, let me send it to you as well.
+
+Mateo Roldan Taborda
+8 minutos 35 segundos8:35
+Mateo Roldan Taborda 8 minutos 35 segundos
+Yeah, of course.
+BT
+Brett Tatum
+8 minutos 44 segundos8:44
+Brett Tatum 8 minutos 44 segundos
+I'm just gonna send it via e-mail.
+Brett Tatum 9 minutos 7 segundos
+Give me a second here. I'm gonna be sharing.
+Brett Tatum 9 minutos 11 segundos
+OK.
+
+Mateo Roldan Taborda
+9 minutos 14 segundos9:14
+Mateo Roldan Taborda 9 minutos 14 segundos
+Got it. I see your screen.
+BT
+Brett Tatum
+9 minutos 16 segundos9:16
+Brett Tatum 9 minutos 16 segundos
+OK. Yeah. So let's just look at like, so this is their schedule for today and they've got obviously the day of the week is Monday. I don't know how critical that is to them, but the date?
+
+Mateo Roldan Taborda
+9 minutos 20 segundos9:20
+Mateo Roldan Taborda 9 minutos 20 segundos
+Mhm.
+BT
+Brett Tatum
+9 minutos 28 segundos9:28
+Brett Tatum 9 minutos 28 segundos
+Employee name.
+Brett Tatum 9 minutos 30 segundos
+The job that they're going to.
+Brett Tatum 9 minutos 34 segundos
+What tasks?
+Brett Tatum 9 minutos 36 segundos
+They need to have completed or the tests are going to be completing. Address would be nice. They don't have that added in there. Any notes?
+Brett Tatum 9 minutos 47 segundos
+So this like they want to be filling out something that looks visually similar to this and once they get it completed they want to be able to hit a button that says basically send and everyone who's on the list for the day receives a text that says hey on Monday 29.
+
+Mateo Roldan Taborda
+9 minutos 54 segundos9:54
+Mateo Roldan Taborda 9 minutos 54 segundos
+OK.
+Mateo Roldan Taborda 9 minutos 58 segundos
+To everybody.
+BT
+Brett Tatum
+10 minutos 6 segundos10:06
+Brett Tatum 10 minutos 6 segundos
+You are going to go to OCS Middle School renovation and you're going to be working on sheetrock door frames and headers. This job is located at such a dress.
+
+Mateo Roldan Taborda
+10 minutos 15 segundos10:15
+Mateo Roldan Taborda 10 minutos 15 segundos
+Got it.
+Mateo Roldan Taborda 10 minutos 20 segundos
+Got it. Yeah. Then instead of the path that I was going to be taking, yeah, let me focus on these three to actually get this on something that they can just fill out on the go without the need to click on a button to add all of the details. Pretty much kind of like an Excel.
+BT
+Brett Tatum
+10 minutos 38 segundos10:38
+Brett Tatum 10 minutos 38 segundos
+But now a couple, a couple things they will need. I mean, I think they'll need a form to be adding all their employees. So they'll have to, you know, just like you have in your what's already built in bolt currently like, yeah, so like they have employees, so they need a place they can add all their employees because they got to put all the information in. So that makes.
+Mateo Roldan Taborda
+10 minutos 40 segundos10:40
+Mateo Roldan Taborda 10 minutos 40 segundos
+With.
+Mateo Roldan Taborda 10 minutos 50 segundos
+Yeah, the employee's already over there.
+BT
+Brett Tatum
+10 minutos 58 segundos10:58
+Brett Tatum 10 minutos 58 segundos
+Makes sense. They need a place they can add jobs.
+
+Mateo Roldan Taborda
+11 minutos 3 segundos11:03
+Mateo Roldan Taborda 11 minutos 3 segundos
+Mhm.
+BT
+Brett Tatum
+11 minutos 3 segundos11:03
+Brett Tatum 11 minutos 3 segundos
+And so that job name then has an address with it. Scheduled task needs to be free form because they need to be able to type in whatever they want them doing for the next day. Notes needs to be free form.
+
+Mateo Roldan Taborda
+11 minutos 13 segundos11:13
+Mateo Roldan Taborda 11 minutos 13 segundos
+It.
+BT
+Brett Tatum
+11 minutos 22 segundos11:22
+Brett Tatum 11 minutos 22 segundos
+Materials needed needs to be free form. At that point I think we have minimum viable product, so like column L.
+Brett Tatum 11 minutos 32 segundos
+We can work on because they're that's gonna be that's gonna have like a two way component to it and I don't want to get into the two way messaging yet. Added tasks. We can leave that off for now and we can leave off those 3 for right now.
+Brett Tatum 11 minutos 48 segundos
+Well, I guess we can include it, just don't make them like kind of mandatory, just make them optional fields. But I think this is the direction we need to head on the front end.
+
+Mateo Roldan Taborda
+11 minutos 52 segundos11:52
+Mateo Roldan Taborda 11 minutos 52 segundos
+OK.
+Mateo Roldan Taborda 11 minutos 57 segundos
+OK, sounds good. Then can you go back to Bolt one second?
+Mateo Roldan Taborda 12 minutos 3 segundos
+Then I guess employee tab is already done, which is good. I'm going to leave it as it is. Jobs tab. I mean, I'll leave it as it is as well because right now we add the details of.
+BT
+Brett Tatum
+12 minutos 7 segundos12:07
+Brett Tatum 12 minutos 7 segundos
+Yep, Yep.
+Brett Tatum 12 minutos 16 segundos
+Yeah, but you wanna eliminate tasks because tasks needs to be unique to each daily request, not unique to the job.
+
+Mateo Roldan Taborda
+12 minutos 18 segundos12:18
+Mateo Roldan Taborda 12 minutos 18 segundos
+Yeah.
+Mateo Roldan Taborda 12 minutos 22 segundos
+Yeah.
+Mateo Roldan Taborda 12 minutos 24 segundos
+Yeah, so it's kind of like it's going to be like employees, job name, address.
+Mateo Roldan Taborda 12 minutos 30 segundos
+That's it.
+BT
+Brett Tatum
+12 minutos 31 segundos12:31
+Brett Tatum 12 minutos 31 segundos
+Yeah, that's really it. I'm trying to think what else.
+Brett Tatum 12 minutos 36 segundos
+Yeah.
+
+Mateo Roldan Taborda
+12 minutos 38 segundos12:38
+Mateo Roldan Taborda 12 minutos 38 segundos
+Yeah, there's not even need a need for a job detail page either, because we only need the job name and the address for job.
+BT
+Brett Tatum
+12 minutos 39 segundos12:39
+Brett Tatum 12 minutos 39 segundos
+Yeah, I think that's it.
+
+Mateo Roldan Taborda
+12 minutos 47 segundos12:47
+Mateo Roldan Taborda 12 minutos 47 segundos
+Maybe exected comletition?
+BT
+Brett Tatum
+12 minutos 49 segundos12:49
+Brett Tatum 12 minutos 49 segundos
+No, I mean, hey, it's not a bad field to have, but at the same time it's not gonna serve them in this capacity. I I did have a thought that.
+
+Mateo Roldan Taborda
+12 minutos 57 segundos12:57
+Mateo Roldan Taborda 12 minutos 57 segundos
+Yeah, true.
+BT
+Brett Tatum
+13 minutos 5 segundos13:05
+Brett Tatum 13 minutos 5 segundos
+Cost code. So in in the world of commercial construction, every activity that's completed has a six digit numerical cost code associated with it.
+
+Mateo Roldan Taborda
+13 minutos 15 segundos13:15
+Mateo Roldan Taborda 13 minutos 15 segundos
+Mhm.
+BT
+Brett Tatum
+13 minutos 18 segundos13:18
+Brett Tatum 13 minutos 18 segundos
+Um.
+Brett Tatum 13 minutos 20 segundos
+These cost codes are known at the beginning of a job, so I do think that maybe over here in our jobs field we should have like when you're adding a job, you should have an option to put in the cost codes.
+
+Mateo Roldan Taborda
+13 minutos 31 segundos13:31
+Mateo Roldan Taborda 13 minutos 31 segundos
+Mhm.
+BT
+Brett Tatum
+13 minutos 32 segundos13:32
+Brett Tatum 13 minutos 32 segundos
+So that way when, when or if they want to use them on this sheet, it's more of a drop down. So once you've selected Burger King, you can select a cost code, but it's only one of the cost codes that's already been established for Burger King.
+
+Mateo Roldan Taborda
+13 minutos 42 segundos13:42
+Mateo Roldan Taborda 13 minutos 42 segundos
+Mhm.
+Mateo Roldan Taborda 13 minutos 47 segundos
+Oh, OK, sounds good.
+BT
+Brett Tatum
+13 minutos 48 segundos13:48
+Brett Tatum 13 minutos 48 segundos
+So really what all you would do is give.
+Brett Tatum 13 minutos 52 segundos
+You know, well, not, yeah, it.
+
+Mateo Roldan Taborda
+13 minutos 53 segundos13:53
+Mateo Roldan Taborda 13 minutos 53 segundos
+Six different options for the Costco.
+BT
+Brett Tatum
+13 minutos 58 segundos13:58
+Brett Tatum 13 minutos 58 segundos
+It'd be add and then probably what we would need to do or work with Harrison's at this point. Give me a drop down here, give me a a a free text field for cost code, but we'll probably change that. I'll be able to get you a fully comprehensive list of cost codes and descriptions.
+
+Mateo Roldan Taborda
+14 minutos 10 segundos14:10
+Mateo Roldan Taborda 14 minutos 10 segundos
+Mhm.
+Mateo Roldan Taborda 14 minutos 15 segundos
+OK.
+BT
+Brett Tatum
+14 minutos 17 segundos14:17
+Brett Tatum 14 minutos 17 segundos
+That we can use as a dropdown selection.
+
+Mateo Roldan Taborda
+14 minutos 19 segundos14:19
+Mateo Roldan Taborda 14 minutos 19 segundos
+Yeah, I'll leave it as a free form for the time being, and then as soon as you get it to me, I'll include it over there. Good. Sounds good. I can definitely get that to you done. Yeah, let me take that change of route.
+BT
+Brett Tatum
+14 minutos 22 segundos14:22
+Brett Tatum 14 minutos 22 segundos
+Yeah, just just, yeah. OK, perfect.
+Brett Tatum 14 minutos 32 segundos
+OK.
+
+Mateo Roldan Taborda
+14 minutos 37 segundos14:37
+Mateo Roldan Taborda 14 minutos 37 segundos
+It's good that we had this call because it had something else in mind. Um.
+Mateo Roldan Taborda 14 minutos 44 segundos
+And then, Oh yeah, I do have a homework. I do. I need to give you some homework over there. Go back to to Bolt.
+BT
+Brett Tatum
+14 minutos 50 segundos14:50
+Brett Tatum 14 minutos 50 segundos
+OK, sure.
+
+Mateo Roldan Taborda
+14 minutos 53 segundos14:53
+Mateo Roldan Taborda 14 minutos 53 segundos
+And do you see at the very bottom right corner terms and conditions and private policy? I had to create those two pages, open them in a different tab, both of them.
+BT
+Brett Tatum
+14 minutos 59 segundos14:59
+Brett Tatum 14 minutos 59 segundos
+Yep.
+Brett Tatum 15 minutos 1 segundo
+OK.
+
+Mateo Roldan Taborda
+15 minutos 9 segundos15:09
+Mateo Roldan Taborda 15 minutos 9 segundos
+So I had to create terms and conditions and also the other one because Trilo was actually asking for the URL for those in order for us to be able to set up messaging campaigns so that in case anybody actually wants to see them, they they have the actual right.
+Mateo Roldan Taborda 15 minutos 29 segundos
+To to see what are the terms and condition. I created everything over here with AI, so I have no idea if this is right or wrong. So could you please give it a read? Make some changes in case I actually place over there something that has absolutely no place in bolt. Please let me know and I'll completely remove it or.
+BT
+Brett Tatum
+15 minutos 29 segundos15:29
+Brett Tatum 15 minutos 29 segundos
+OK.
+Brett Tatum 15 minutos 32 segundos
+Correct.
+Brett Tatum 15 minutos 37 segundos
+That's fine. I'll review it. Yep.
+Brett Tatum 15 minutos 48 segundos
+Yep.
+
+Mateo Roldan Taborda
+15 minutos 49 segundos15:49
+Mateo Roldan Taborda 15 minutos 49 segundos
+Change it to anything you need and want, but we like to comply with their terms and conditions. I had to create both those two pages, but again because I have actually have no idea on legal terms over here when it comes to these, I just use that.
+BT
+Brett Tatum
+15 minutos 57 segundos15:57
+Brett Tatum 15 minutos 57 segundos
+Yep.
+
+Mateo Roldan Taborda
+16 minutos 9 segundos16:09
+Mateo Roldan Taborda 16 minutos 9 segundos
+I to to create these.
+BT
+Brett Tatum
+16 minutos 10 segundos16:10
+Brett Tatum 16 minutos 10 segundos
+So.
+Brett Tatum 16 minutos 11 segundos
+I'm sure you're really, really close though using AI, so uh, I'm good with it. OK, I have a note here to to review it.
+
+Mateo Roldan Taborda
+16 minutos 17 segundos16:17
+Mateo Roldan Taborda 16 minutos 17 segundos
+OK, sounds good. But yeah, give it a give it a a read, make changes. If you need to let me know and then I'll include all of those changes in those two pages. You'll see it like that on when you're logged.
+Mateo Roldan Taborda 16 minutos 33 segundos
+In but when people are locked out and don't have access, they also have access to privacy policy and terms and conditions, but they won't be able to access anywhere else in into bolt.
+Brett Tatum
+16 minutos 46 segundos16:46
+Brett Tatum 16 minutos 46 segundos
+Cool. Okay, I like it. I'll take a look at it. Helpful.
+
+Mateo Roldan Taborda
+16 minutos 48 segundos16:48
+Mateo Roldan Taborda 16 minutos 48 segundos
+Awesome.
+Mateo Roldan Taborda 16 minutos 51 segundos
+Yeah, that's all of the updates I have at the moment. I'm waiting for the very first moment until Twilo gives me the green, the green light to be able to fully set up, and then I'll do further testing on the messaging system.
+BT
+Brett Tatum
+17 minutos 4 segundos17:04
+Brett Tatum 17 minutos 4 segundos
+OK, perfect. That works great.
+
+Mateo Roldan Taborda
+17 minutos 5 segundos17:05
+Mateo Roldan Taborda 17 minutos 5 segundos
+Awesome. If I do any do need anything from you, I'll let you know. I'll get to work on the on the job snap right away because that's the thing that I actually do want to get out as soon as possible and then.
+Mateo Roldan Taborda 17 minutos 21 segundos
+As soon as I have it ready, I'll set up a call with you because I just want to get this right.
+BT
+Brett Tatum
+17 minutos 25 segundos17:25
+Brett Tatum 17 minutos 25 segundos
+Yep, that's great. I'm around this week, so just send me a message when you're ready to talk and we'll find some time.
+
+Mateo Roldan Taborda
+17 minutos 31 segundos17:31
+Mateo Roldan Taborda 17 minutos 31 segundos
+Absolutely. Thank you so much for your time, Brett.
+

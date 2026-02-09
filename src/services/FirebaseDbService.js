@@ -12,6 +12,7 @@ import {
     orderBy, 
     onSnapshot, 
     serverTimestamp, 
+    Timestamp,
     limit, 
     startAfter, 
     endBefore, 
@@ -2582,6 +2583,135 @@ export const FirebaseDbService = {
             } catch (error) {
                 console.error('Firebase crew messages subscribe error:', error)
                 return () => {} // Return empty unsubscribe function
+            }
+        },
+    },
+
+    // CREW SCHEDULES COLLECTION
+    crewSchedules: {
+        /**
+         * Helper: format a Date or Timestamp-like value as YYYY-MM-DD string key
+         */
+        _getDateKey(date) {
+            let dateObj
+            if (!date) {
+                dateObj = new Date()
+            } else if (date.toDate) {
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                dateObj = new Date()
+            }
+
+            const year = dateObj.getFullYear()
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            return `${year}-${month}-${day}`
+        },
+
+        /**
+         * Get schedule and assignments for a given date
+         * Returns: { success, data: { scheduleId, date, assignments: [] }, error? }
+         */
+        getByDate: async (date) => {
+            try {
+                const dateKey = FirebaseDbService.crewSchedules._getDateKey(date)
+                const scheduleRef = doc(db, 'crewSchedules', dateKey)
+                const scheduleSnap = await getDoc(scheduleRef)
+
+                let scheduleData = null
+                if (scheduleSnap.exists()) {
+                    scheduleData = {
+                        id: scheduleSnap.id,
+                        ...scheduleSnap.data(),
+                    }
+                } else {
+                    // If schedule doesn't exist yet, create a lightweight placeholder in memory
+                    scheduleData = {
+                        id: dateKey,
+                        date: date instanceof Date ? Timestamp.fromDate(date) : serverTimestamp(),
+                    }
+                }
+
+                // Load assignments subcollection
+                const assignmentsRef = collection(db, 'crewSchedules', dateKey, 'assignments')
+                const assignmentsSnap = await getDocs(assignmentsRef)
+                const assignments = assignmentsSnap.docs.map((docSnap) => ({
+                    id: docSnap.id,
+                    ...docSnap.data(),
+                }))
+
+                return {
+                    success: true,
+                    data: {
+                        scheduleId: dateKey,
+                        schedule: scheduleData,
+                        assignments,
+                    },
+                }
+            } catch (error) {
+                console.error('Firebase get crew schedule by date error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+
+        /**
+         * Save assignments for a given date.
+         * This replaces all existing assignments for that date.
+         * assignments: array of row objects with employee/job info and fields.
+         */
+        saveAssignments: async (date, assignments = []) => {
+            try {
+                await ensureAuthUser()
+                const dateKey = FirebaseDbService.crewSchedules._getDateKey(date)
+                const scheduleRef = doc(db, 'crewSchedules', dateKey)
+
+                const now = serverTimestamp()
+                const scheduleSnap = await getDoc(scheduleRef)
+
+                // Create or update the schedule document
+                if (scheduleSnap.exists()) {
+                    await updateDoc(scheduleRef, {
+                        date: date instanceof Date ? Timestamp.fromDate(date) : now,
+                        updatedAt: now,
+                    })
+                } else {
+                    await setDoc(scheduleRef, {
+                        date: date instanceof Date ? Timestamp.fromDate(date) : now,
+                        createdAt: now,
+                        updatedAt: now,
+                    })
+                }
+
+                const assignmentsRef = collection(db, 'crewSchedules', dateKey, 'assignments')
+
+                // Remove existing assignments for this date to avoid duplicates
+                const existingSnap = await getDocs(assignmentsRef)
+                const deletePromises = existingSnap.docs.map((docSnap) =>
+                    deleteDoc(doc(db, 'crewSchedules', dateKey, 'assignments', docSnap.id)),
+                )
+                if (deletePromises.length) {
+                    await Promise.all(deletePromises)
+                }
+
+                // Add new assignments
+                const createPromises = assignments.map((assignment) =>
+                    addDoc(assignmentsRef, {
+                        ...assignment,
+                        createdAt: now,
+                        updatedAt: now,
+                    }),
+                )
+
+                await Promise.all(createPromises)
+
+                return { success: true, data: { scheduleId: dateKey } }
+            } catch (error) {
+                console.error('Firebase save crew schedule assignments error:', error)
+                return { success: false, error: error.message }
             }
         },
     },

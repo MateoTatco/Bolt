@@ -4,16 +4,16 @@ import { Button, Card, Input, Select, Tag, Tooltip, DatePicker, Alert } from '@/
 import DataTable from '@/components/shared/DataTable'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
 import { useCrewJobStore } from '@/store/crewJobStore'
-import { 
-    HiOutlinePlus, 
-    HiOutlineEye, 
-    HiOutlinePencil, 
+import {
+    HiOutlinePlus,
+    HiOutlineEye,
+    HiOutlinePencil,
     HiOutlineTrash,
     HiOutlineRefresh,
     HiOutlineChatAlt2,
     HiOutlineStatusOnline,
     HiOutlineExclamationCircle,
-    HiOutlineClock
+    HiOutlineClock,
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import EmployeeFormModal from './CrewTracker/components/EmployeeFormModal'
@@ -40,6 +40,14 @@ const CrewTracker = () => {
     const [messageHistory, setMessageHistory] = useState([])
     const [messageHistoryLoading, setMessageHistoryLoading] = useState(false)
     const [messageHistoryError, setMessageHistoryError] = useState('')
+
+    // Schedule state (daily Excel-like grid)
+    const [scheduleDate, setScheduleDate] = useState(new Date())
+    const [scheduleAssignments, setScheduleAssignments] = useState([])
+    const [scheduleLoading, setScheduleLoading] = useState(false)
+    const [scheduleSaving, setScheduleSaving] = useState(false)
+    const [scheduleError, setScheduleError] = useState('')
+    const [scheduleSendSuccess, setScheduleSendSuccess] = useState('')
 
     const {
         employees,
@@ -141,13 +149,109 @@ const CrewTracker = () => {
         }
     }, [jobFilters.search])
 
-    // Load employees & jobs when on Messages tab (for composer)
+    // Load employees & jobs when on Messages or Schedule tab (for composer / schedule grid)
     useEffect(() => {
-        if (activeTab === 'messages') {
+        if (activeTab === 'messages' || activeTab === 'schedule') {
             loadEmployees()
             loadJobs()
         }
     }, [activeTab, loadEmployees, loadJobs])
+
+    // Load schedule assignments when Schedule tab or date changes
+    useEffect(() => {
+        const loadSchedule = async () => {
+            if (activeTab !== 'schedule') return
+
+            setScheduleLoading(true)
+            setScheduleError('')
+            try {
+                const response = await FirebaseDbService.crewSchedules.getByDate(scheduleDate)
+                if (response.success) {
+                    const assignments = response.data?.assignments || []
+                    const mappedAssignments = assignments.map((a) => ({
+                        id: a.id,
+                        employeeId: a.employeeId || '',
+                        employeeName: a.employeeName || '',
+                        jobId: a.jobId || '',
+                        jobName: a.jobName || '',
+                        jobAddress: a.jobAddress || '',
+                        costCode: a.costCode || '',
+                        w2Hours: a.w2Hours || '',
+                        scheduledTasks: a.scheduledTasks || '',
+                        addedTasks: a.addedTasks || '',
+                        notes: a.notes || '',
+                        tasksNotCompleted: a.tasksNotCompleted || '',
+                        materialsNeeded: a.materialsNeeded || '',
+                    }))
+                    
+                    // Ensure at least 30 rows
+                    const minRows = 30
+                    while (mappedAssignments.length < minRows) {
+                        mappedAssignments.push({
+                            id: `local-${Date.now()}-${mappedAssignments.length}`,
+                            employeeId: '',
+                            employeeName: '',
+                            jobId: '',
+                            jobName: '',
+                            jobAddress: '',
+                            costCode: '',
+                            w2Hours: '',
+                            scheduledTasks: '',
+                            addedTasks: '',
+                            notes: '',
+                            tasksNotCompleted: '',
+                            materialsNeeded: '',
+                        })
+                    }
+                    
+                    setScheduleAssignments(mappedAssignments)
+                } else {
+                    // Even on error, ensure 30 rows
+                    const emptyRows = Array.from({ length: 30 }, (_, i) => ({
+                        id: `local-${Date.now()}-${i}`,
+                        employeeId: '',
+                        employeeName: '',
+                        jobId: '',
+                        jobName: '',
+                        jobAddress: '',
+                        costCode: '',
+                        w2Hours: '',
+                        scheduledTasks: '',
+                        addedTasks: '',
+                        notes: '',
+                        tasksNotCompleted: '',
+                        materialsNeeded: '',
+                    }))
+                    setScheduleAssignments(emptyRows)
+                    setScheduleError(response.error || 'Failed to load schedule for this date.')
+                }
+            } catch (error) {
+                console.error('Failed to load crew schedule:', error)
+                // Even on error, ensure 30 rows
+                const emptyRows = Array.from({ length: 30 }, (_, i) => ({
+                    id: `local-${Date.now()}-${i}`,
+                    employeeId: '',
+                    employeeName: '',
+                    jobId: '',
+                    jobName: '',
+                    jobAddress: '',
+                    costCode: '',
+                    w2Hours: '',
+                    scheduledTasks: '',
+                    addedTasks: '',
+                    notes: '',
+                    tasksNotCompleted: '',
+                    materialsNeeded: '',
+                }))
+                setScheduleAssignments(emptyRows)
+                setScheduleError(error.message || 'Failed to load schedule for this date.')
+            } finally {
+                setScheduleLoading(false)
+            }
+        }
+
+        loadSchedule()
+    }, [activeTab, scheduleDate])
 
     // Load message history (with realtime updates) when Messages tab is active
     useEffect(() => {
@@ -195,6 +299,25 @@ const CrewTracker = () => {
             return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`
         }
         return phone
+    }
+
+    // Helper: get day of week label
+    const getDayOfWeek = (date) => {
+        try {
+            let dateObj
+            if (date?.toDate) {
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return ''
+            }
+            return dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+        } catch {
+            return ''
+        }
     }
 
     // Handle create/edit employee
@@ -710,6 +833,267 @@ const CrewTracker = () => {
         }
     }
 
+    // ---------- Schedule helpers ----------
+
+    const employeeOptionsForSchedule = useMemo(
+        () =>
+            employees.map((emp) => ({
+                value: emp.id,
+                label: emp.name || 'Unnamed',
+            })),
+        [employees],
+    )
+
+    const jobOptionsForSchedule = useMemo(
+        () =>
+            jobs.map((job) => ({
+                value: job.id,
+                label: job.name || 'Untitled Job',
+            })),
+        [jobs],
+    )
+
+    const handleAddScheduleRow = () => {
+        setScheduleAssignments((prev) => [
+            ...prev,
+            {
+                id: `local-${Date.now()}-${prev.length}`,
+                employeeId: '',
+                employeeName: '',
+                jobId: '',
+                jobName: '',
+                jobAddress: '',
+                costCode: '',
+                w2Hours: '',
+                scheduledTasks: '',
+                addedTasks: '',
+                notes: '',
+                tasksNotCompleted: '',
+                materialsNeeded: '',
+            },
+        ])
+    }
+
+    const handleRemoveScheduleRow = (index) => {
+        setScheduleAssignments((prev) => {
+            const filtered = prev.filter((_, i) => i !== index)
+            // Ensure at least 30 rows
+            const minRows = 30
+            if (filtered.length < minRows) {
+                // Add empty rows to reach minimum
+                const needed = minRows - filtered.length
+                const newRows = Array.from({ length: needed }, (_, i) => ({
+                    id: `local-${Date.now()}-${filtered.length + i}`,
+                    employeeId: '',
+                    employeeName: '',
+                    jobId: '',
+                    jobName: '',
+                    jobAddress: '',
+                    costCode: '',
+                    w2Hours: '',
+                    scheduledTasks: '',
+                    addedTasks: '',
+                    notes: '',
+                    tasksNotCompleted: '',
+                    materialsNeeded: '',
+                }))
+                return [...filtered, ...newRows]
+            }
+            return filtered
+        })
+    }
+
+    const updateScheduleRow = (index, changes) => {
+        setScheduleAssignments((prev) =>
+            prev.map((row, i) => {
+                if (i !== index) return row
+                return { ...row, ...changes }
+            }),
+        )
+    }
+
+    const handleSaveSchedule = async () => {
+        setScheduleError('')
+        setScheduleSendSuccess('')
+
+        const validAssignments = scheduleAssignments.filter(
+            (row) => row.employeeId && row.jobId,
+        )
+
+        if (validAssignments.length === 0) {
+            setScheduleError('Please add at least one row with an employee and a job before saving.')
+            return
+        }
+
+        setScheduleSaving(true)
+        try {
+            // Enrich with denormalized employee/job data
+            const assignmentsToSave = validAssignments.map((row) => {
+                const employee = employees.find((e) => e.id === row.employeeId)
+                const job = jobs.find((j) => j.id === row.jobId)
+
+                return {
+                    employeeId: row.employeeId,
+                    employeeName: employee?.name || row.employeeName || '',
+                    jobId: row.jobId,
+                    jobName: job?.name || row.jobName || '',
+                    jobAddress: job?.address || row.jobAddress || '',
+                    costCode: row.costCode || '',
+                    w2Hours: row.w2Hours || '',
+                    scheduledTasks: row.scheduledTasks || '',
+                    addedTasks: row.addedTasks || '',
+                    notes: row.notes || '',
+                    tasksNotCompleted: row.tasksNotCompleted || '',
+                    materialsNeeded: row.materialsNeeded || '',
+                }
+            })
+
+            const response = await FirebaseDbService.crewSchedules.saveAssignments(
+                scheduleDate,
+                assignmentsToSave,
+            )
+
+            if (!response.success) {
+                setScheduleError(response.error || 'Failed to save schedule.')
+            } else {
+                setScheduleSendSuccess('Schedule saved successfully.')
+            }
+        } catch (error) {
+            console.error('Failed to save crew schedule:', error)
+            setScheduleError(error.message || 'Failed to save schedule.')
+        } finally {
+            setScheduleSaving(false)
+        }
+    }
+
+    const handleSendScheduleMessages = async () => {
+        setScheduleError('')
+        setScheduleSendSuccess('')
+
+        const validAssignments = scheduleAssignments.filter(
+            (row) => row.employeeId && row.jobId,
+        )
+
+        if (validAssignments.length === 0) {
+            setScheduleError('Please add at least one row with an employee and a job before sending messages.')
+            return
+        }
+
+        setSendingMessages(true)
+        try {
+            const { getFunctions, httpsCallable } = await import('firebase/functions')
+            const functions = getFunctions()
+            const sendCrewMessageFn = httpsCallable(functions, 'sendCrewMessage')
+
+            const dateLabel = formatDateOnly(scheduleDate)
+
+            const results = []
+
+            for (const row of validAssignments) {
+                const employee = employees.find((e) => e.id === row.employeeId)
+                const job = jobs.find((j) => j.id === row.jobId)
+
+                if (!employee || !employee.phone) {
+                    results.push({
+                        row,
+                        success: false,
+                        error: 'Missing employee phone number',
+                    })
+                    // Skip sending for this row
+                    // eslint-disable-next-line no-continue
+                    continue
+                }
+
+                if (!job || !job.address) {
+                    results.push({
+                        row,
+                        success: false,
+                        error: 'Missing job address',
+                    })
+                    // eslint-disable-next-line no-continue
+                    continue
+                }
+
+                const notesParts = []
+                if (row.notes) {
+                    notesParts.push(row.notes)
+                }
+                if (row.materialsNeeded) {
+                    notesParts.push(`Materials: ${row.materialsNeeded}`)
+                }
+                if (row.tasksNotCompleted) {
+                    notesParts.push(`Pending: ${row.tasksNotCompleted}`)
+                }
+
+                const payload = {
+                    employeeIds: [employee.id],
+                    jobName: job.name || row.jobName || 'Job',
+                    jobAddress: job.address || row.jobAddress || '',
+                    tasks: row.scheduledTasks || '',
+                    date: dateLabel,
+                    notes: notesParts.join(' | ') || '',
+                }
+
+                try {
+                    // eslint-disable-next-line no-await-in-loop
+                    const result = await sendCrewMessageFn(payload)
+                    const data = result?.data || {}
+
+                    if (data.failed && data.failed > 0) {
+                        results.push({
+                            row,
+                            success: false,
+                            error:
+                                (data.results &&
+                                    data.results.find((r) => !r.success)?.error) ||
+                                'Failed to send',
+                        })
+                    } else {
+                        results.push({ row, success: true })
+                    }
+                } catch (error) {
+                    console.error('Failed to send schedule message for row:', row, error)
+                    results.push({
+                        row,
+                        success: false,
+                        error: error.message || 'Failed to send',
+                    })
+                }
+            }
+
+            const successCount = results.filter((r) => r.success).length
+            const failureDetails = results.filter((r) => !r.success)
+
+            if (failureDetails.length > 0) {
+                const detailText = failureDetails
+                    .map((fd) => {
+                        const employee = employees.find((e) => e.id === fd.row.employeeId)
+                        return `${employee?.name || 'Unknown'}: ${fd.error}`
+                    })
+                    .join('; ')
+                setScheduleError(
+                    `${failureDetails.length} message(s) failed. ${detailText}`,
+                )
+            } else {
+                setScheduleError('')
+            }
+
+            setScheduleSendSuccess(
+                successCount > 0
+                    ? `${successCount} message(s) sent successfully from the schedule.`
+                    : 'No messages were sent.',
+            )
+        } catch (error) {
+            console.error('Failed to send crew schedule messages:', error)
+            const errorMessage =
+                error?.message || error?.code || 'Failed to send messages from schedule.'
+            setScheduleError(errorMessage)
+            setScheduleSendSuccess('')
+        } finally {
+            setSendingMessages(false)
+        }
+    }
+
     return (
         <div className="flex flex-col gap-4">
             {/* Header */}
@@ -804,6 +1188,16 @@ const CrewTracker = () => {
                             }`}
                         >
                             Messages
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('schedule')}
+                            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                                activeTab === 'schedule'
+                                    ? 'border-primary text-primary'
+                                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                            }`}
+                        >
+                            Schedule
                         </button>
                     </div>
 
@@ -1178,6 +1572,320 @@ const CrewTracker = () => {
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'schedule' && (
+                        <div className="pt-4 space-y-4">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                    <HiOutlineClock className="text-xl" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                        Daily crew schedule
+                                    </h2>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        Plan where each crew member goes tomorrow, then send a single
+                                        SMS with job, address, tasks, and notes.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {scheduleError && (
+                                <Alert type="danger" showIcon>
+                                    {scheduleError}
+                                </Alert>
+                            )}
+                            {scheduleSendSuccess && (
+                                <Alert type="success" showIcon>
+                                    {scheduleSendSuccess}
+                                </Alert>
+                            )}
+
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            Date
+                                        </label>
+                                        <DatePicker
+                                            inputtable
+                                            inputtableBlurClose={false}
+                                            inputFormat="MM/DD/YYYY"
+                                            value={scheduleDate}
+                                            onChange={(date) => setScheduleDate(date)}
+                                        />
+                                    </div>
+                                    <div className="mt-6 text-sm text-gray-600 dark:text-gray-400">
+                                        {getDayOfWeek(scheduleDate)}
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button
+                                        variant="twoTone"
+                                        icon={<HiOutlineRefresh />}
+                                        loading={scheduleLoading}
+                                        onClick={() => {
+                                            // force reload by toggling date reference
+                                            setScheduleDate(new Date(scheduleDate))
+                                        }}
+                                    >
+                                        Reload
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleAddScheduleRow}
+                                    >
+                                        Add row
+                                    </Button>
+                                    <Button
+                                        variant="twoTone"
+                                        loading={scheduleSaving}
+                                        onClick={handleSaveSchedule}
+                                    >
+                                        Save schedule
+                                    </Button>
+                                    <Button
+                                        variant="solid"
+                                        icon={<HiOutlineChatAlt2 />}
+                                        loading={sendingMessages}
+                                        disabled={sendingMessages}
+                                        onClick={handleSendScheduleMessages}
+                                    >
+                                        Send SMS for this date
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                                <table className="min-w-full text-xs sm:text-sm">
+                                    <thead className="bg-gray-50 dark:bg-gray-800/60">
+                                        <tr>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Employee
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Cost Code
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                W2 Hours
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Job
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Address
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Scheduled Tasks
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Added Tasks
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Notes
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Tasks Not Completed / Need More Time
+                                            </th>
+                                            <th className="px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-200">
+                                                Materials Needed
+                                            </th>
+                                            <th className="px-2 py-2 text-center font-semibold text-gray-700 dark:text-gray-200">
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                        {scheduleAssignments.length === 0 && !scheduleLoading && (
+                                            <tr>
+                                                <td
+                                                    colSpan={11}
+                                                    className="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400"
+                                                >
+                                                    No rows yet for this date. Click &quot;Add row&quot; to start
+                                                    planning the crew.
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {scheduleAssignments.map((row, index) => {
+                                            const job = jobs.find((j) => j.id === row.jobId)
+                                            const jobAddress = job?.address || row.jobAddress || ''
+                                            const mapsUrl =
+                                                jobAddress &&
+                                                `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                                    jobAddress,
+                                                )}`
+
+                                            return (
+                                                <tr key={row.id || index} className="align-top">
+                                                    <td className="px-2 py-2 min-w-[160px]">
+                                                        <Select
+                                                            placeholder="Employee"
+                                                            options={employeeOptionsForSchedule}
+                                                            value={
+                                                                employeeOptionsForSchedule.find(
+                                                                    (opt) => opt.value === row.employeeId,
+                                                                ) || null
+                                                            }
+                                                            onChange={(option) =>
+                                                                updateScheduleRow(index, {
+                                                                    employeeId: option ? option.value : '',
+                                                                })
+                                                            }
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
+                                                            styles={{
+                                                                menuPortal: (provided) => ({
+                                                                    ...provided,
+                                                                    zIndex: 10000,
+                                                                }),
+                                                            }}
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[110px]">
+                                                        <Input
+                                                            value={row.costCode}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    costCode: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="Cost code"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[90px]">
+                                                        <Input
+                                                            type="number"
+                                                            value={row.w2Hours}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    w2Hours: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="Hours"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[180px]">
+                                                        <Select
+                                                            placeholder="Job"
+                                                            options={jobOptionsForSchedule}
+                                                            value={
+                                                                jobOptionsForSchedule.find(
+                                                                    (opt) => opt.value === row.jobId,
+                                                                ) || null
+                                                            }
+                                                            onChange={(option) =>
+                                                                updateScheduleRow(index, {
+                                                                    jobId: option ? option.value : '',
+                                                                })
+                                                            }
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
+                                                            styles={{
+                                                                menuPortal: (provided) => ({
+                                                                    ...provided,
+                                                                    zIndex: 10000,
+                                                                }),
+                                                            }}
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[220px] text-xs">
+                                                        {jobAddress ? (
+                                                            <a
+                                                                href={mapsUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-primary hover:underline break-words"
+                                                            >
+                                                                {jobAddress}
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-gray-400">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[220px]">
+                                                        <Input
+                                                            textArea
+                                                            rows={2}
+                                                            value={row.scheduledTasks}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    scheduledTasks: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="What they should do on site"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[200px]">
+                                                        <Input
+                                                            textArea
+                                                            rows={2}
+                                                            value={row.addedTasks}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    addedTasks: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="Tasks added during the day"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[200px]">
+                                                        <Input
+                                                            textArea
+                                                            rows={2}
+                                                            value={row.notes}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    notes: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="Notes / gate codes / extra instructions"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[220px]">
+                                                        <Input
+                                                            textArea
+                                                            rows={2}
+                                                            value={row.tasksNotCompleted}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    tasksNotCompleted: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="What could not be completed"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 min-w-[200px]">
+                                                        <Input
+                                                            textArea
+                                                            rows={2}
+                                                            value={row.materialsNeeded}
+                                                            onChange={(e) =>
+                                                                updateScheduleRow(index, {
+                                                                    materialsNeeded: e.target.value,
+                                                                })
+                                                            }
+                                                            placeholder="Materials to pick up from shop"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2 text-center align-middle">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="plain"
+                                                            className="text-red-500 hover:text-red-600"
+                                                            onClick={() => handleRemoveScheduleRow(index)}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     )}

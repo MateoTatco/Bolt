@@ -244,6 +244,22 @@ service cloud.firestore {
       allow delete: if isAuthed();
     }
     
+    // Crew Schedules collection (daily Excel-like assignments)
+    match /crewSchedules/{scheduleId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed();
+      
+      // Assignments subcollection (one row per employee per day)
+      match /assignments/{assignmentId} {
+        allow read: if isAuthed();
+        allow create: if isAuthed();
+        allow update: if isAuthed();
+        allow delete: if isAuthed();
+      }
+    }
+    
     // Crew Assignments collection (for future use)
     match /crewAssignments/{assignmentId} {
       allow read: if isAuthed();
