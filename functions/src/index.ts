@@ -7037,6 +7037,24 @@ export const deleteUser = functions.runWith({ secrets: [] }).https.onCall(async 
 });
 
 // Crew Tracker SMS Function
+// Helper: normalize phone numbers to E.164 (assume US if missing country code)
+const normalizeCrewPhoneNumber = (phone: string | undefined): string | undefined => {
+    if (!phone) return phone;
+
+    const trimmed = phone.trim();
+    if (trimmed.startsWith('+')) {
+        return trimmed;
+    }
+
+    const digitsOnly = trimmed.replace(/\D/g, '');
+
+    if (digitsOnly.length === 10) {
+        return `+1${digitsOnly}`;
+    }
+
+    return trimmed;
+};
+
 // Sends SMS messages to crew members with job assignment information
 // TODO: Configure SMS provider (Twilio recommended)
 // TODO: Set up secrets: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
@@ -7145,27 +7163,6 @@ export const sendCrewMessage = functions.runWith({
             }
         };
 
-        // Helper: normalize phone numbers to E.164 (assume US if missing country code)
-        const normalizePhoneNumber = (phone: string | undefined): string | undefined => {
-            if (!phone) return phone;
-
-            const trimmed = phone.trim();
-            if (trimmed.startsWith('+')) {
-                return trimmed;
-            }
-
-            // Strip all non-digits
-            const digitsOnly = trimmed.replace(/\D/g, '');
-
-            // If it's a 10-digit US number, prepend +1
-            if (digitsOnly.length === 10) {
-                return `+1${digitsOnly}`;
-            }
-
-            // Fallback: return original (Twilio will validate)
-            return trimmed;
-        };
-
         // Send messages to each employee
         const messageResults = [];
         const messageId = admin.firestore().collection('crewMessages').doc().id;
@@ -7175,7 +7172,7 @@ export const sendCrewMessage = functions.runWith({
                 const employeeLanguage = employee.language || language || 'en';
                 const messageText = formatMessage(employeeLanguage);
 
-                const normalizedPhone = normalizePhoneNumber(employee.phone);
+                const normalizedPhone = normalizeCrewPhoneNumber(employee.phone);
                 if (!normalizedPhone) {
                     throw new Error('Missing or invalid phone number');
                 }
@@ -7233,7 +7230,7 @@ export const sendCrewMessage = functions.runWith({
                     status: message.status,
                 });
             } catch (error: any) {
-                const normalizedPhone = normalizePhoneNumber(employee.phone);
+                const normalizedPhone = normalizeCrewPhoneNumber(employee.phone);
                 console.error(`[SMS] ❌ Failed to send SMS to ${normalizedPhone || employee.phone} (${employee.name || employee.id}):`, {
                     error: error.message,
                     code: error.code,
@@ -7370,6 +7367,7 @@ export const receiveCrewMessage = functions.runWith({
             receivedAt: admin.firestore.FieldValue.serverTimestamp(),
             processed: false, // Can be used to track if message was processed/responded to
             numMedia: NumMedia || '0',
+            direction: 'inbound',
         };
 
         await admin.firestore()
@@ -7454,6 +7452,106 @@ export const crewMessageStatusCallback = functions.https.onRequest(async (req, r
     } catch (error: any) {
         console.error('Error processing status callback:', error);
         res.status(200).send('OK'); // Always respond OK to Twilio
+    }
+});
+
+// Send a direct SMS reply to a single crew member from the chat UI
+export const sendCrewDirectMessage = functions.runWith({
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET', 'TWILIO_MESSAGING_SERVICE_SID']
+}).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to send crew messages');
+    }
+
+    const { employeeId, body } = data as { employeeId?: string; body?: string };
+
+    if (!employeeId) {
+        throw new functions.https.HttpsError('invalid-argument', 'employeeId is required');
+    }
+    if (!body || typeof body !== 'string' || !body.trim()) {
+        throw new functions.https.HttpsError('invalid-argument', 'Message body is required');
+    }
+
+    try {
+        const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+        const twilioApiKeySid = process.env.TWILIO_API_KEY_SID;
+        const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+        const twilioMessagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+
+        if (!twilioAccountSid || !twilioApiKeySid || !twilioApiKeySecret || !twilioMessagingServiceSid) {
+            console.error('SMS provider not configured for sendCrewDirectMessage.');
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'SMS service not configured. Please configure Twilio credentials.'
+            );
+        }
+
+        // Initialize Twilio client
+        const twilio = require('twilio')(twilioApiKeySid, twilioApiKeySecret, {
+            accountSid: twilioAccountSid,
+        });
+
+        // Load employee
+        const employeeRef = admin.firestore().collection('crewEmployees').doc(employeeId);
+        const employeeSnap = await employeeRef.get();
+        if (!employeeSnap.exists) {
+            throw new functions.https.HttpsError('not-found', 'Employee not found');
+        }
+        const employeeData = employeeSnap.data() || {};
+        const normalizedPhone = normalizeCrewPhoneNumber(employeeData.phone);
+        if (!normalizedPhone) {
+            throw new functions.https.HttpsError('failed-precondition', 'Employee has no valid phone number');
+        }
+
+        console.log(`[SMS Direct] Sending to ${normalizedPhone} (${employeeData.name || employeeId})`);
+
+        const statusCallbackUrl = `https://us-central1-tatco-crm.cloudfunctions.net/crewMessageStatusCallback`;
+
+        const message = await twilio.messages.create({
+            body: body.trim(),
+            messagingServiceSid: twilioMessagingServiceSid,
+            to: normalizedPhone,
+            statusCallback: statusCallbackUrl,
+        });
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        const directMessageData = {
+            messageSid: message.sid,
+            employeeId,
+            employeeName: employeeData.name || 'Unknown',
+            phone: normalizedPhone,
+            body: body.trim(),
+            direction: 'outbound',
+            sentAt: now,
+            status: message.status,
+            type: 'direct',
+            sentBy: context.auth.uid,
+        };
+
+        await admin.firestore()
+            .collection('crewMessages')
+            .doc(message.sid)
+            .set(directMessageData, { merge: true });
+
+        console.log('[SMS Direct] Message accepted by Twilio:', {
+            messageSid: message.sid,
+            to: normalizedPhone,
+            status: message.status,
+        });
+
+        return {
+            success: true,
+            messageSid: message.sid,
+            status: message.status,
+        };
+    } catch (error: any) {
+        console.error('Error sending direct crew message:', error);
+        throw new functions.https.HttpsError(
+            'internal',
+            'Failed to send direct crew message',
+            error?.message || String(error),
+        );
     }
 });
 
