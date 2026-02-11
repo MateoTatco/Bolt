@@ -108,18 +108,21 @@ export const useCrewJobStore = create((set, get) => ({
     },
 
     // Create job
-    createJob: async (jobData) => {
+    createJob: async (jobData, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         try {
             const response = await FirebaseDbService.crewJobs.create(jobData)
             if (response.success) {
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2500, title: 'Success' },
-                        'Job created successfully',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2500, title: 'Success' },
+                            'Job created successfully',
+                        ),
+                    )
+                }
                 // Reload jobs
                 await get().loadJobs()
                 return { success: true, data: response.data }
@@ -128,30 +131,35 @@ export const useCrewJobStore = create((set, get) => ({
             }
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to create job: ${error.message}`,
-                ),
-            )
+            if (!silent) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'danger', duration: 2500, title: 'Error' },
+                        `Failed to create job: ${error.message}`,
+                    ),
+                )
+            }
             return { success: false, error: error.message }
         }
     },
 
     // Update job
-    updateJob: async (id, jobData) => {
+    updateJob: async (id, jobData, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         try {
             const response = await FirebaseDbService.crewJobs.update(id, jobData)
             if (response.success) {
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2500, title: 'Success' },
-                        'Job updated successfully',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2500, title: 'Success' },
+                            'Job updated successfully',
+                        ),
+                    )
+                }
                 // Reload jobs
                 await get().loadJobs()
                 return { success: true, data: response.data }
@@ -160,30 +168,35 @@ export const useCrewJobStore = create((set, get) => ({
             }
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to update job: ${error.message}`,
-                ),
-            )
+            if (!silent) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'danger', duration: 2500, title: 'Error' },
+                        `Failed to update job: ${error.message}`,
+                    ),
+                )
+            }
             return { success: false, error: error.message }
         }
     },
 
     // Delete job
-    deleteJob: async (id) => {
+    deleteJob: async (id, options = {}) => {
+        const { silent = false } = options
         set({ loading: true, error: null })
         try {
             const response = await FirebaseDbService.crewJobs.delete(id)
             if (response.success) {
-                toast.push(
-                    React.createElement(
-                        Notification,
-                        { type: 'success', duration: 2500, title: 'Success' },
-                        'Job deleted successfully',
-                    ),
-                )
+                if (!silent) {
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 2500, title: 'Success' },
+                            'Job deleted successfully',
+                        ),
+                    )
+                }
                 // Reload jobs
                 await get().loadJobs()
                 return { success: true }
@@ -192,13 +205,15 @@ export const useCrewJobStore = create((set, get) => ({
             }
         } catch (error) {
             set({ error: error.message, loading: false })
-            toast.push(
-                React.createElement(
-                    Notification,
-                    { type: 'danger', duration: 2500, title: 'Error' },
-                    `Failed to delete job: ${error.message}`,
-                ),
-            )
+            if (!silent) {
+                toast.push(
+                    React.createElement(
+                        Notification,
+                        { type: 'danger', duration: 2500, title: 'Error' },
+                        `Failed to delete job: ${error.message}`,
+                    ),
+                )
+            }
             return { success: false, error: error.message }
         }
     },

@@ -2,7 +2,18 @@ import React from 'react'
 import { Input } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 
-const JobsTab = ({ filters, setFilters, columns, data, loading }) => {
+const JobsTab = ({
+    filters,
+    setFilters,
+    columns,
+    data,
+    loading,
+    selectable = false,
+    defaultPageSize = 10,
+    onCheckBoxChange,
+    onIndeterminateCheckBoxChange,
+    checkboxChecked,
+}) => {
     return (
         <>
             {/* Filters */}
@@ -22,6 +33,11 @@ const JobsTab = ({ filters, setFilters, columns, data, loading }) => {
                     columns={columns}
                     data={data}
                     loading={loading}
+                    selectable={selectable}
+                    defaultPageSize={defaultPageSize}
+                    onCheckBoxChange={onCheckBoxChange}
+                    onIndeterminateCheckBoxChange={onIndeterminateCheckBoxChange}
+                    checkboxChecked={checkboxChecked}
                 />
             </div>
         </>

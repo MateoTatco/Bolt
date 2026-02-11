@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Button, Card, Input, Select, Tag, Tooltip, DatePicker, Alert } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
@@ -13,6 +13,8 @@ import {
 } from 'react-icons/hi'
 import * as XLSX from 'xlsx'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { toast } from '@/components/ui/toast'
+import Notification from '@/components/ui/Notification'
 import EmployeeFormModal from './CrewTracker/components/EmployeeFormModal'
 import JobFormModal from './CrewTracker/components/JobFormModal'
 import EmployeesTab from './CrewTracker/EmployeesTab'
@@ -28,6 +30,10 @@ const CrewTracker = () => {
     const [editingEmployee, setEditingEmployee] = useState(null)
     const [showJobModal, setShowJobModal] = useState(false)
     const [editingJob, setEditingJob] = useState(null)
+    const [jobsImporting, setJobsImporting] = useState(false)
+    const jobsFileInputRef = useRef(null)
+    const [selectedJobIds, setSelectedJobIds] = useState([])
+    const [bulkStatus, setBulkStatus] = useState('In Progress')
 
     // Messaging state
     const [selectedJobIdForMessage, setSelectedJobIdForMessage] = useState(null)
@@ -489,25 +495,77 @@ const CrewTracker = () => {
         return employees.filter(emp => emp.active === false)
     }, [employees])
 
+    const jobStatusOptions = [
+        { value: 'Proposal', label: 'Proposal' },
+        { value: 'In Progress', label: 'In Progress' },
+        { value: 'Request', label: 'Request' },
+        { value: 'Draft', label: 'Draft' },
+        { value: 'Inactive', label: 'Inactive' },
+    ]
+
     // Table columns for jobs
     const jobColumns = useMemo(() => [
         {
-            header: 'Job Name',
+            header: 'Project',
+            accessorKey: 'project',
+            size: 160,
+            cell: ({ row }) => {
+                const job = row.original
+                return (
+                    <span className="text-sm font-medium">
+                        {job.project || '-'}
+                    </span>
+                )
+            },
+        },
+        {
+            header: 'Name',
             accessorKey: 'name',
-            size: 300,
+            size: 260,
             cell: ({ row }) => {
                 const job = row.original
                 return (
                     <Tooltip title={job.name || '-'}>
-                        <span className="font-medium block max-w-[280px] truncate">{job.name || '-'}</span>
+                        <span className="font-medium block max-w-[240px] truncate">
+                            {job.name || '-'}
+                        </span>
                     </Tooltip>
                 )
             },
         },
         {
-            header: 'Address',
+            header: 'Status',
+            accessorKey: 'status',
+            size: 160,
+            cell: ({ row }) => {
+                const job = row.original
+                const status = job.status || (job.active === false ? 'Inactive' : 'In Progress')
+                return (
+                    <Select
+                        className="min-w-[150px]"
+                        options={jobStatusOptions}
+                        value={jobStatusOptions.find(opt => opt.value === status) || jobStatusOptions[1]}
+                        onChange={async (option) => {
+                            if (!option) return
+                            await updateJob(job.id, { status: option.value })
+                        }}
+                        menuPortalTarget={document.body}
+                        menuPosition="fixed"
+                        styles={{
+                            menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                            menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                        }}
+                        components={{
+                            IndicatorSeparator: () => null,
+                        }}
+                    />
+                )
+            },
+        },
+        {
+            header: 'Work Location',
             accessorKey: 'address',
-            size: 350,
+            size: 320,
             cell: ({ row }) => {
                 const address = row.original.address
                 if (!address) return <span className="text-sm text-gray-400">-</span>
@@ -518,7 +576,7 @@ const CrewTracker = () => {
                             href={googleMapsUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline block max-w-[330px] truncate"
+                            className="text-sm text-primary hover:underline block max-w-[300px] truncate"
                         >
                             {address}
                         </a>
@@ -527,33 +585,13 @@ const CrewTracker = () => {
             },
         },
         {
-            header: 'Status',
-            accessorKey: 'active',
-            size: 100,
-            cell: ({ row }) => {
-                const job = row.original
-                const isActive = job.active !== false
-                return (
-                    <Tag 
-                        className={`cursor-pointer ${isActive 
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-                        }`}
-                        onClick={async () => {
-                            await updateJob(job.id, { active: !isActive })
-                        }}
-                    >
-                        {isActive ? 'Active' : 'Inactive'}
-                    </Tag>
-                )
-            },
-        },
-        {
             header: 'Actions',
             accessorKey: 'actions',
-            size: 150,
+            size: 180,
             cell: ({ row }) => {
                 const job = row.original
+                const status = job.status || (job.active === false ? 'Inactive' : 'In Progress')
+                const isActive = status !== 'Inactive'
                 return (
                     <div className="flex items-center gap-2">
                         <Tooltip title="View Details">
@@ -581,6 +619,14 @@ const CrewTracker = () => {
                                 className="text-red-600 hover:text-red-700"
                             />
                         </Tooltip>
+                        <Tag 
+                            className={`ml-1 px-2 py-0.5 text-xs ${isActive 
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                            }`}
+                        >
+                            {status}
+                        </Tag>
                     </div>
                 )
             },
@@ -589,21 +635,45 @@ const CrewTracker = () => {
 
     // Filtered jobs - separate active and inactive
     const activeJobs = useMemo(() => {
-        return jobs.filter(job => job.active !== false)
+        return jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
     }, [jobs])
 
     const inactiveJobs = useMemo(() => {
-        return jobs.filter(job => job.active === false)
+        return jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) === 'Inactive')
     }, [jobs])
 
     const filteredJobs = useMemo(() => {
         return jobSubTab === 'active' ? activeJobs : inactiveJobs
     }, [jobSubTab, activeJobs, inactiveJobs])
 
+    const isJobSelected = (job) => selectedJobIds.includes(job.id)
+
+    const handleJobCheckboxChange = (checked, job) => {
+        setSelectedJobIds((prev) => {
+            if (checked) {
+                if (prev.includes(job.id)) return prev
+                return [...prev, job.id]
+            }
+            return prev.filter((id) => id !== job.id)
+        })
+    }
+
+    const handleJobSelectAllChange = (checked, rows) => {
+        const ids = rows.map((r) => r.original.id)
+        setSelectedJobIds((prev) => {
+            if (checked) {
+                const set = new Set([...prev, ...ids])
+                return Array.from(set)
+            }
+            const pageSet = new Set(ids)
+            return prev.filter((id) => !pageSet.has(id))
+        })
+    }
+
     // Job & employee options for messaging composer
     const jobOptionsForMessages = useMemo(() => {
         return jobs
-            .filter(job => job.active !== false)
+            .filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
             .map(job => ({
                 value: job.id,
                 label: job.address ? `${job.name || 'Untitled Job'} — ${job.address}` : (job.name || 'Untitled Job'),
@@ -705,6 +775,199 @@ const CrewTracker = () => {
             setSendSuccess('')
         } finally {
             setSendingMessages(false)
+        }
+    }
+
+    // ---------- Jobs import / export ----------
+
+    const handleExportJobsToExcel = () => {
+        try {
+            if (!jobs || jobs.length === 0) {
+                alert('No jobs to export.')
+                return
+            }
+
+            const exportData = jobs.map((job) => ({
+                'Project': job.project || '',
+                'Name': job.name || '',
+                'Status': job.status || (job.active === false ? 'Inactive' : 'In Progress'),
+                'Work Location': job.address || '',
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Jobs')
+
+            XLSX.writeFile(wb, 'Crew_Jobs.xlsx')
+        } catch (error) {
+            console.error('Failed to export jobs to Excel:', error)
+            alert('Failed to export jobs to Excel. Please try again.')
+        }
+    }
+
+    const handleImportJobsFromExcelClick = () => {
+        if (jobsFileInputRef.current) {
+            jobsFileInputRef.current.value = ''
+            jobsFileInputRef.current.click()
+        }
+    }
+
+    const handleJobsFileChange = async (event) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+
+        setJobsImporting(true)
+        try {
+            const reader = new FileReader()
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result)
+                    const workbook = XLSX.read(data, { type: 'array' })
+                    const sheetName = workbook.SheetNames[0]
+                    const worksheet = workbook.Sheets[sheetName]
+                    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+
+                    if (!rows || rows.length === 0) {
+                        toast.push(
+                            React.createElement(
+                                Notification,
+                                { type: 'warning', duration: 2500, title: 'Jobs import' },
+                                'The selected file does not contain any rows.',
+                            ),
+                        )
+                        setJobsImporting(false)
+                        return
+                    }
+
+                    // Build lookup maps for existing jobs
+                    const byProject = new Map()
+                    const byNameAddress = new Map()
+                    jobs.forEach((job) => {
+                        if (job.project) {
+                            byProject.set(String(job.project).trim().toLowerCase(), job)
+                        }
+                        const key = `${(job.name || '').trim().toLowerCase()}|${(job.address || '').trim().toLowerCase()}`
+                        if (key.trim() !== '|') {
+                            byNameAddress.set(key, job)
+                        }
+                    })
+
+                    let created = 0
+                    let updated = 0
+
+                    for (const row of rows) {
+                        const projectRaw = row['Project']
+                        const nameRaw = row['Name']
+                        const statusRaw = row['Status']
+                        const workLocationRaw = row['Work Location']
+
+                        const name = (nameRaw || '').toString().trim()
+                        const project = (projectRaw || '').toString().trim()
+                        const address = (workLocationRaw || '').toString().trim()
+
+                        if (!name && !project && !address) {
+                            // Skip completely empty rows
+                            // eslint-disable-next-line no-continue
+                            continue
+                        }
+
+                        const statusText = (statusRaw || '').toString().trim()
+                        const normalizedStatus = statusText || 'In Progress'
+                        const active = normalizedStatus !== 'Inactive'
+
+                        const jobData = {
+                            project,
+                            name,
+                            address,
+                            status: normalizedStatus,
+                            active,
+                        }
+
+                        let existingJob = null
+                        if (project) {
+                            existingJob = byProject.get(project.toLowerCase()) || null
+                        }
+                        if (!existingJob && name) {
+                            const key = `${name.toLowerCase()}|${address.toLowerCase()}`
+                            existingJob = byNameAddress.get(key) || null
+                        }
+
+                        if (existingJob) {
+                            await updateJob(existingJob.id, jobData, { silent: true })
+                            updated += 1
+                        } else {
+                            await createJob(jobData, { silent: true })
+                            created += 1
+                        }
+                    }
+
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'success', duration: 4000, title: 'Jobs import completed' },
+                            `${created} job(s) created, ${updated} job(s) updated.`,
+                        ),
+                    )
+                } catch (error) {
+                    console.error('Failed to import jobs from Excel:', error)
+                    toast.push(
+                        React.createElement(
+                            Notification,
+                            { type: 'danger', duration: 4000, title: 'Jobs import failed' },
+                            'Failed to import jobs. Please make sure the columns are: Project, Name, Status, Work Location.',
+                        ),
+                    )
+                } finally {
+                    setJobsImporting(false)
+                }
+            }
+
+            reader.readAsArrayBuffer(file)
+        } catch (error) {
+            console.error('Failed to read jobs import file:', error)
+            setJobsImporting(false)
+        }
+    }
+
+    const handleBulkDeleteJobs = async () => {
+        if (selectedJobIds.length === 0) return
+        if (!window.confirm(`Are you sure you want to delete ${selectedJobIds.length} job(s)? This action cannot be undone.`)) {
+            return
+        }
+        let deleted = 0
+        for (const id of selectedJobIds) {
+            // eslint-disable-next-line no-await-in-loop
+            const result = await deleteJob(id, { silent: true })
+            if (result?.success) deleted += 1
+        }
+        setSelectedJobIds([])
+        if (deleted > 0) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 3000, title: 'Jobs deleted' },
+                    `${deleted} job(s) deleted successfully.`,
+                ),
+            )
+        }
+    }
+
+    const handleBulkChangeStatus = async () => {
+        if (selectedJobIds.length === 0) return
+        let changed = 0
+        for (const id of selectedJobIds) {
+            // eslint-disable-next-line no-await-in-loop
+            const result = await updateJob(id, { status: bulkStatus }, { silent: true })
+            if (result?.success) changed += 1
+        }
+        if (changed > 0) {
+            toast.push(
+                React.createElement(
+                    Notification,
+                    { type: 'success', duration: 3000, title: 'Status updated' },
+                    `Status updated to "${bulkStatus}" for ${changed} job(s).`,
+                ),
+            )
         }
     }
 
@@ -1088,6 +1351,53 @@ const CrewTracker = () => {
                         >
                             Add Job
                         </Button>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <Select
+                                className="min-w-[160px]"
+                                options={jobStatusOptions}
+                                value={jobStatusOptions.find(opt => opt.value === bulkStatus) || jobStatusOptions[1]}
+                                onChange={(option) => {
+                                    if (option) setBulkStatus(option.value)
+                                }}
+                                menuPortalTarget={document.body}
+                                menuPosition="fixed"
+                                styles={{
+                                    menuPortal: (provided) => ({ ...provided, zIndex: 10000 }),
+                                    menu: (provided) => ({ ...provided, zIndex: 10000 }),
+                                }}
+                            />
+                            <Button
+                                variant="twoTone"
+                                disabled={selectedJobIds.length === 0}
+                                onClick={handleBulkChangeStatus}
+                                className="w-full sm:w-auto"
+                            >
+                                Apply Status ({selectedJobIds.length})
+                            </Button>
+                            <Button
+                                variant="twoTone"
+                                disabled={selectedJobIds.length === 0}
+                                onClick={handleBulkDeleteJobs}
+                                className="w-full sm:w-auto text-red-600"
+                            >
+                                Delete Selected
+                            </Button>
+                        </div>
+                        <Button
+                            variant="twoTone"
+                            onClick={handleExportJobsToExcel}
+                            className="w-full sm:w-auto"
+                        >
+                            Export Jobs
+                        </Button>
+                        <Button
+                            variant="twoTone"
+                            onClick={handleImportJobsFromExcelClick}
+                            loading={jobsImporting}
+                            className="w-full sm:w-auto"
+                        >
+                            Import Jobs
+                        </Button>
                         <Button
                             variant="twoTone"
                             icon={<HiOutlineRefresh />}
@@ -1097,6 +1407,13 @@ const CrewTracker = () => {
                         >
                             Refresh
                         </Button>
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            ref={jobsFileInputRef}
+                            onChange={handleJobsFileChange}
+                            className="hidden"
+                        />
                     </div>
                 )}
             </div>
@@ -1205,6 +1522,11 @@ const CrewTracker = () => {
                             columns={jobColumns}
                             data={filteredJobs}
                             loading={jobsLoading}
+                            selectable
+                            defaultPageSize={100}
+                            onCheckBoxChange={handleJobCheckboxChange}
+                            onIndeterminateCheckBoxChange={handleJobSelectAllChange}
+                            checkboxChecked={isJobSelected}
                         />
                     )}
 

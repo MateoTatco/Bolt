@@ -23,6 +23,7 @@ import {
     endAt 
 } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
+import { getCurrentUserId } from '@/utils/notificationHelper'
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 import logActivity from '@/utils/activityLogger'
 
@@ -2347,10 +2348,16 @@ export const FirebaseDbService = {
                     snapshot = await getDocs(q)
                 }
                 
-                let jobs = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }))
+                let jobs = snapshot.docs.map(doc => {
+                    const data = doc.data()
+                    const status = data.status || (data.active === false ? 'Inactive' : 'In Progress')
+                    return {
+                        id: doc.id,
+                        ...data,
+                        status,
+                        active: data.active !== undefined ? data.active : status !== 'Inactive',
+                    }
+                })
                 
                 // Client-side sort if orderBy wasn't applied
                 jobs.sort((a, b) => {
@@ -2372,7 +2379,17 @@ export const FirebaseDbService = {
                 const jobRef = doc(db, 'crewJobs', id)
                 const jobSnap = await getDoc(jobRef)
                 if (jobSnap.exists()) {
-                    return { success: true, data: { id: jobSnap.id, ...jobSnap.data() } }
+                    const data = jobSnap.data()
+                    const status = data.status || (data.active === false ? 'Inactive' : 'In Progress')
+                    return { 
+                        success: true, 
+                        data: { 
+                            id: jobSnap.id, 
+                            ...data, 
+                            status,
+                            active: data.active !== undefined ? data.active : status !== 'Inactive',
+                        } 
+                    }
                 } else {
                     return { success: false, error: 'Job not found' }
                 }
@@ -2388,9 +2405,11 @@ export const FirebaseDbService = {
                 await ensureAuthUser()
                 const currentUserId = getCurrentUserId()
                 const jobsRef = collection(db, 'crewJobs')
+                const status = jobData.status || (jobData.active === false ? 'Inactive' : 'In Progress')
                 const docRef = await addDoc(jobsRef, {
                     ...jobData,
-                    active: jobData.active !== undefined ? jobData.active : true,
+                    status,
+                    active: jobData.active !== undefined ? jobData.active : status !== 'Inactive',
                     createdBy: currentUserId || null,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
@@ -2406,8 +2425,16 @@ export const FirebaseDbService = {
         update: async (id, jobData) => {
             try {
                 const jobRef = doc(db, 'crewJobs', id)
+                const currentSnap = await getDoc(jobRef)
+                const currentData = currentSnap.exists() ? currentSnap.data() : {}
+
+                const nextStatus = jobData.status || currentData.status || (currentData.active === false ? 'Inactive' : 'In Progress')
+                const nextActive = jobData.active !== undefined ? jobData.active : nextStatus !== 'Inactive'
+
                 await updateDoc(jobRef, {
                     ...jobData,
+                    status: nextStatus,
+                    active: nextActive,
                     updatedAt: serverTimestamp()
                 })
                 return { success: true, data: { id, ...jobData } }
@@ -2449,10 +2476,16 @@ export const FirebaseDbService = {
                 }
                 
                 return onSnapshot(finalQuery, (snapshot) => {
-                    let jobs = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }))
+                    let jobs = snapshot.docs.map(doc => {
+                        const data = doc.data()
+                        const status = data.status || (data.active === false ? 'Inactive' : 'In Progress')
+                        return {
+                            id: doc.id,
+                            ...data,
+                            status,
+                            active: data.active !== undefined ? data.active : status !== 'Inactive',
+                        }
+                    })
                     
                     // Client-side sort if orderBy wasn't applied
                     jobs.sort((a, b) => {

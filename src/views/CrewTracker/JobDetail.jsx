@@ -137,7 +137,7 @@ const JobDetail = () => {
                 name: job.name || '',
                 address: job.address || '',
                 tasks: job.tasks || '',
-                active: job.active !== undefined ? job.active : true,
+                status: job.status || (job.active === false ? 'Inactive' : 'In Progress'),
                 assignedEmployees: job.assignedEmployees || [],
                 expectedCompletionDate: job.expectedCompletionDate?.toDate ? job.expectedCompletionDate.toDate() : (job.expectedCompletionDate || null),
             })
@@ -288,8 +288,8 @@ const JobDetail = () => {
             const jobData = {
                 name: editFormData.name.trim(),
                 address: editFormData.address.trim(),
-                tasks: editFormData.tasks.trim() || null,
-                active: editFormData.active,
+                tasks: (editFormData.tasks || '').trim() || null,
+                status: editFormData.status || (job.status || (job.active === false ? 'Inactive' : 'In Progress')),
                 assignedEmployees: editFormData.assignedEmployees || [],
                 expectedCompletionDate: editFormData.expectedCompletionDate 
                     ? (editFormData.expectedCompletionDate instanceof Date 
@@ -339,9 +339,10 @@ const JobDetail = () => {
         )
     }
 
-    const statusClass = job.active !== false
-        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-        : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+    const currentStatus = job.status || (job.active === false ? 'Inactive' : 'In Progress')
+    const statusClass = currentStatus === 'Inactive'
+        ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+        : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
 
     const googleMapsUrl = job.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address)}` : null
 
@@ -625,20 +626,26 @@ const JobDetail = () => {
                                 {isEditing ? (
                                     <Select
                                         options={[
-                                            { value: true, label: 'Active' },
-                                            { value: false, label: 'Inactive' },
+                                            { value: 'Proposal', label: 'Proposal' },
+                                            { value: 'In Progress', label: 'In Progress' },
+                                            { value: 'Request', label: 'Request' },
+                                            { value: 'Draft', label: 'Draft' },
+                                            { value: 'Inactive', label: 'Inactive' },
                                         ]}
                                         value={(() => {
-                                            const statusOptions = [
-                                                { value: true, label: 'Active' },
-                                                { value: false, label: 'Inactive' },
+                                            const options = [
+                                                { value: 'Proposal', label: 'Proposal' },
+                                                { value: 'In Progress', label: 'In Progress' },
+                                                { value: 'Request', label: 'Request' },
+                                                { value: 'Draft', label: 'Draft' },
+                                                { value: 'Inactive', label: 'Inactive' },
                                             ]
-                                            const currentValue = editFormData.active !== undefined ? editFormData.active : (job?.active !== false)
-                                            return statusOptions.find(opt => opt.value === currentValue) || statusOptions[0]
+                                            const currentValue = editFormData.status || currentStatus
+                                            return options.find(opt => opt.value === currentValue) || options[1]
                                         })()}
                                         onChange={(selected) => {
                                             if (selected) {
-                                                setEditFormData({ ...editFormData, active: selected.value })
+                                                setEditFormData({ ...editFormData, status: selected.value })
                                             }
                                         }}
                                         menuPortalTarget={document.body}
@@ -650,7 +657,7 @@ const JobDetail = () => {
                                     />
                                 ) : (
                                     <Tag className={statusClass}>
-                                        {job.active !== false ? 'Active' : 'Inactive'}
+                                        {currentStatus}
                                     </Tag>
                                 )}
                             </div>

@@ -72,13 +72,10 @@ function DataTable(props) {
         onSelectChange,
         onSort,
         pageSizes = [10, 25, 50, 100],
+        defaultPageSize = 10,
         selectable = false,
         skeletonAvatarProps,
-        pagingData = {
-            total: 0,
-            pageIndex: 1,
-            pageSize: 10,
-        },
+        pagingData, // kept for backward compatibility but pagination is driven by table state
         checkboxChecked,
         indeterminateCheckboxChecked,
         instanceId = 'data-table',
@@ -86,8 +83,6 @@ function DataTable(props) {
         ref,
         ...rest
     } = props
-
-    const { pageSize, pageIndex, total } = pagingData
 
     const [sorting, setSorting] = useState(null)
 
@@ -182,15 +177,25 @@ function DataTable(props) {
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         getSortedRowModel: getSortedRowModel(),
-        manualPagination: true,
-        manualSorting: true,
-        onSortingChange: (sorter) => {
-            setSorting(sorter)
-        },
         state: {
             sorting: sorting,
         },
+        onSortingChange: (sorter) => {
+            setSorting(sorter)
+        },
     })
+
+    // Ensure initial page size respects defaultPageSize
+    useEffect(() => {
+        const current = table.getState().pagination.pageSize
+        if (current !== defaultPageSize) {
+            table.setPageSize(defaultPageSize)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [defaultPageSize])
+
+    const { pageIndex, pageSize } = table.getState().pagination
+    const total = data.length
 
     const resetSorting = () => {
         table.resetSorting()
@@ -208,13 +213,16 @@ function DataTable(props) {
     const handlePaginationChange = (page) => {
         if (!loading) {
             resetSelected()
+            table.setPageIndex(page - 1)
             onPaginationChange?.(page)
         }
     }
 
     const handleSelectChange = (value) => {
         if (!loading) {
-            onSelectChange?.(Number(value))
+            const size = Number(value)
+            table.setPageSize(size)
+            onSelectChange?.(size)
         }
     }
 
@@ -268,7 +276,7 @@ function DataTable(props) {
                 {loading && data.length === 0 ? (
                     <TableRowSkeleton
                         columns={finalColumns.length}
-                        rows={pagingData.pageSize}
+                        rows={pageSize}
                         avatarInColumns={skeletonAvatarColumns}
                         avatarProps={skeletonAvatarProps}
                     />
@@ -297,7 +305,7 @@ function DataTable(props) {
                         ) : (
                             table
                                 .getRowModel()
-                                .rows.slice(0, pageSize)
+                                .rows
                                 .map((row) => {
                                     const rowClass = rowClassName ? rowClassName(row.original) : ''
                                     return (
@@ -343,16 +351,12 @@ function DataTable(props) {
             {/* Show pagination controls when there are items - always show page size selector */}
             {total > 0 && (
                 <div className="flex items-center justify-between mt-4">
-                    {pageSize < total ? (
-                        <Pagination
-                            pageSize={pageSize}
-                            currentPage={pageIndex}
-                            total={total}
-                            onChange={handlePaginationChange}
-                        />
-                    ) : (
-                        <div></div>
-                    )}
+                    <Pagination
+                        pageSize={pageSize}
+                        currentPage={pageIndex + 1}
+                        total={total}
+                        onChange={handlePaginationChange}
+                    />
                     <div style={{ minWidth: 130 }}>
                         <Select
                             instanceId={instanceId}

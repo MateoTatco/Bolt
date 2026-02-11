@@ -4,6 +4,7 @@ import { HiOutlineX } from 'react-icons/hi'
 
 const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
     const [formData, setFormData] = useState({
+        project: '',
         name: '',
         address: '',
         active: true,
@@ -14,12 +15,14 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
     useEffect(() => {
         if (job) {
             setFormData({
+                project: job.project || '',
                 name: job.name || '',
                 address: job.address || '',
                 active: job.active !== undefined ? job.active : true,
             })
         } else {
             setFormData({
+                project: '',
                 name: '',
                 address: '',
                 active: true,
@@ -63,6 +66,7 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
         try {
             const jobData = {
                 ...formData,
+                project: formData.project.trim(),
                 name: formData.name.trim(),
                 address: formData.address.trim(),
             }
@@ -92,6 +96,18 @@ const JobFormModal = ({ isOpen, onClose, job, onSave }) => {
 
             <form onSubmit={handleSubmit}>
                 <FormContainer>
+                    <FormItem
+                        label="Project"
+                        invalid={!!errors.project}
+                        errorMessage={errors.project}
+                    >
+                        <Input
+                            value={formData.project}
+                            onChange={(e) => handleChange('project', e.target.value)}
+                            placeholder="Enter project number or code (optional)"
+                        />
+                    </FormItem>
+
                     <FormItem
                         label="Job Name *"
                         invalid={!!errors.name}
