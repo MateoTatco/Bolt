@@ -189,8 +189,11 @@ const CrewTracker = () => {
                         notes: a.notes || '',
                         tasksNotCompleted: a.tasksNotCompleted || '',
                         materialsNeeded: a.materialsNeeded || '',
+                        // Exceptions & merge flags (defaults for older data)
+                        exceptionAcknowledged: Boolean(a.exceptionAcknowledged),
+                        unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
-                    
+
                     // Ensure at least 30 rows
                     const minRows = 30
                     while (mappedAssignments.length < minRows) {
@@ -208,9 +211,11 @@ const CrewTracker = () => {
                             notes: '',
                             tasksNotCompleted: '',
                             materialsNeeded: '',
+                            exceptionAcknowledged: false,
+                            unmergedFromJob: false,
                         })
                     }
-                    
+
                     setScheduleAssignments(mappedAssignments)
                 } else {
                     // Even on error, ensure 30 rows
@@ -228,6 +233,8 @@ const CrewTracker = () => {
                         notes: '',
                         tasksNotCompleted: '',
                         materialsNeeded: '',
+                        exceptionAcknowledged: false,
+                        unmergedFromJob: false,
                     }))
                     setScheduleAssignments(emptyRows)
                     setScheduleError(response.error || 'Failed to load schedule for this date.')
@@ -249,6 +256,8 @@ const CrewTracker = () => {
                     notes: '',
                     tasksNotCompleted: '',
                     materialsNeeded: '',
+                    exceptionAcknowledged: false,
+                    unmergedFromJob: false,
                 }))
                 setScheduleAssignments(emptyRows)
                 setScheduleError(error.message || 'Failed to load schedule for this date.')
@@ -1008,6 +1017,8 @@ const CrewTracker = () => {
                 notes: '',
                 tasksNotCompleted: '',
                 materialsNeeded: '',
+                exceptionAcknowledged: false,
+                unmergedFromJob: false,
             },
         ])
     }
@@ -1034,6 +1045,8 @@ const CrewTracker = () => {
                     notes: '',
                     tasksNotCompleted: '',
                     materialsNeeded: '',
+                    exceptionAcknowledged: false,
+                    unmergedFromJob: false,
                 }))
                 return [...filtered, ...newRows]
             }
@@ -1141,6 +1154,8 @@ const CrewTracker = () => {
                     notes: row.notes || '',
                     tasksNotCompleted: row.tasksNotCompleted || '',
                     materialsNeeded: row.materialsNeeded || '',
+                    exceptionAcknowledged: Boolean(row.exceptionAcknowledged),
+                    unmergedFromJob: Boolean(row.unmergedFromJob),
                 }
             })
 

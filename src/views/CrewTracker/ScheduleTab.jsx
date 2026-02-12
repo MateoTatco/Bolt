@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
-import { Button, DatePicker, Alert, Input, Select } from '@/components/ui'
+import { Button, DatePicker, Alert, Input, Select, Tag } from '@/components/ui'
 import {
     HiOutlineClock,
     HiOutlineChatAlt2,
@@ -9,7 +9,7 @@ import {
 } from 'react-icons/hi'
 
 // Auto-grow textarea helper component
-const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rowspan, maxRows = 10 }) => {
+const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rowspan = 1, maxRows = 10 }) => {
     const textareaRef = useRef(null)
 
     useEffect(() => {
@@ -19,18 +19,12 @@ const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rows
         textarea.style.height = 'auto'
 
         const lineHeight = 20
-        const minHeight = 32
-        const maxHeight = maxRows * lineHeight
+        const baseMinHeight = 32
+        const effectiveRowspan = rowspan || 1
+        const minHeight = baseMinHeight * effectiveRowspan
+        const maxHeight = maxRows * lineHeight * effectiveRowspan
 
         let newHeight = Math.max(minHeight, textarea.scrollHeight)
-
-        if (rowspan > 1) {
-            const td = textarea.closest('td')
-            if (td) {
-                const cellHeight = td.offsetHeight - 8
-                newHeight = Math.max(newHeight, cellHeight)
-            }
-        }
 
         newHeight = Math.min(newHeight, maxHeight)
 
@@ -89,6 +83,20 @@ const ScheduleTab = ({
         actions: 100,
     })
     const [resizingColumn, setResizingColumn] = useState(null)
+    const [activeView, setActiveView] = useState('schedule') // 'schedule' | 'exceptions'
+    const [visibleColumns, setVisibleColumns] = useState({
+        employee: true,
+        costCode: true,
+        w2Hours: true,
+        job: true,
+        address: true,
+        scheduledTasks: true,
+        addedTasks: true,
+        notes: true,
+        tasksNotCompleted: true,
+        materialsNeeded: true,
+        actions: true,
+    })
 
     // Helper: Group rows by jobId and calculate rowspans for merged cells
     const groupedRows = useMemo(() => {
@@ -96,13 +104,17 @@ const ScheduleTab = ({
         const processed = new Set()
 
         scheduleAssignments.forEach((row, index) => {
-            if (processed.has(index) || !row.jobId) {
+            // Skip rows with no job or explicitly unmerged
+            if (processed.has(index) || !row.jobId || row.unmergedFromJob) {
                 return
             }
 
             const group = [index]
             for (let i = index + 1; i < scheduleAssignments.length; i++) {
-                if (scheduleAssignments[i].jobId === row.jobId) {
+                if (
+                    scheduleAssignments[i].jobId === row.jobId &&
+                    !scheduleAssignments[i].unmergedFromJob
+                ) {
                     group.push(i)
                     processed.add(i)
                 }
@@ -147,6 +159,32 @@ const ScheduleTab = ({
         return groups.sort((a, b) => a.indices[0] - b.indices[0])
     }, [scheduleAssignments])
 
+    // Exceptions list: any group with deviations that haven't been acknowledged
+    const exceptions = useMemo(() => {
+        return groupedRows
+            .map((group) => {
+                const firstIndex = group.indices[0]
+                const row = scheduleAssignments[firstIndex]
+                const hasDeviation =
+                    (group.mergedData.addedTasks && group.mergedData.addedTasks.trim() !== '') ||
+                    (group.mergedData.notes && group.mergedData.notes.trim() !== '') ||
+                    (group.mergedData.tasksNotCompleted &&
+                        group.mergedData.tasksNotCompleted.trim() !== '')
+
+                const allAcknowledged = group.indices.every(
+                    (idx) => scheduleAssignments[idx]?.exceptionAcknowledged,
+                )
+
+                return {
+                    group,
+                    row,
+                    hasDeviation,
+                    allAcknowledged,
+                }
+            })
+            .filter((item) => item.hasDeviation && !item.allAcknowledged)
+    }, [groupedRows, scheduleAssignments])
+
     // Column resizing handlers
     const handleResizeStart = (columnKey, e) => {
         e.preventDefault()
@@ -182,6 +220,84 @@ const ScheduleTab = ({
         document.addEventListener('mousemove', handleMouseMove)
         document.addEventListener('mouseup', handleMouseUp)
     }
+
+    const toggleColumn = (key) => {
+        setVisibleColumns((prev) => ({
+            ...prev,
+            [key]: !prev[key],
+        }))
+    }
+
+    const visibleMinWidth = useMemo(() => {
+        return Object.entries(columnWidths).reduce((sum, [key, width]) => {
+            if (visibleColumns[key] === false) return sum
+            return sum + width
+        }, 0)
+    }, [columnWidths, visibleColumns])
+
+    const handleAcknowledgeException = (group) => {
+        group.indices.forEach((idx) => {
+            updateScheduleRow(idx, { exceptionAcknowledged: true })
+        })
+    }
+
+    const handleClearException = (group) => {
+        group.indices.forEach((idx) => {
+            updateScheduleRow(idx, {
+                addedTasks: '',
+                notes: '',
+                tasksNotCompleted: '',
+            })
+        })
+    }
+
+    const scrollToGroup = (group) => {
+        const firstIndex = group.indices[0]
+        const row = scheduleAssignments[firstIndex]
+        const rowKey = row.id || String(firstIndex)
+
+        setActiveView('schedule')
+
+        // Give React a tick to render the schedule table
+        setTimeout(() => {
+            const el = document.querySelector(`[data-row-id="${rowKey}"]`)
+            if (el && el.scrollIntoView) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+        }, 50)
+    }
+
+    const handleUnmergeRow = (rowIndex) => {
+        updateScheduleRow(rowIndex, { unmergedFromJob: true })
+    }
+
+    // When date changes, default back to Schedule view so exceptions never look "stuck"
+    useEffect(() => {
+        setActiveView('schedule')
+    }, [scheduleDate])
+
+    // Persist column visibility per browser/user
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('crewScheduleVisibleColumns')
+            if (stored) {
+                const parsed = JSON.parse(stored)
+                setVisibleColumns((prev) => ({ ...prev, ...parsed }))
+            }
+        } catch {
+            // ignore
+        }
+        // run once on mount
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('crewScheduleVisibleColumns', JSON.stringify(visibleColumns))
+        } catch {
+            // ignore
+        }
+    }, [visibleColumns])
 
     return (
         <div className="pt-4 space-y-4">
@@ -272,7 +388,161 @@ const ScheduleTab = ({
                 </div>
             </div>
 
-            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+            {/* View & column controls */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-50 dark:bg-gray-800/60">
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('schedule')}
+                        className={`px-3 py-1 text-xs sm:text-sm rounded-md ${
+                            activeView === 'schedule'
+                                ? 'bg-white dark:bg-gray-900 text-primary shadow-sm'
+                                : 'text-gray-600 dark:text-gray-300'
+                        }`}
+                    >
+                        Schedule
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('exceptions')}
+                        className={`px-3 py-1 text-xs sm:text-sm rounded-md inline-flex items-center gap-1 ${
+                            activeView === 'exceptions'
+                                ? 'bg-white dark:bg-gray-900 text-primary shadow-sm'
+                                : 'text-gray-600 dark:text-gray-300'
+                        }`}
+                    >
+                        Exceptions
+                        <Tag className="text-[10px] sm:text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border-amber-200 dark:border-amber-700">
+                            {exceptions.length}
+                        </Tag>
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Columns:</span>
+                    {['costCode', 'w2Hours', 'address', 'scheduledTasks', 'addedTasks', 'notes', 'tasksNotCompleted', 'materialsNeeded'].map(
+                        (key) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleColumn(key)}
+                                className={`px-2 py-1 rounded-full border text-xs ${
+                                    visibleColumns[key]
+                                        ? 'bg-primary/10 text-primary border-primary/30'
+                                        : 'bg-transparent text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600'
+                                }`}
+                            >
+                                {key === 'costCode' && 'Cost Code'}
+                                {key === 'w2Hours' && 'W2 Hours'}
+                                {key === 'address' && 'Address'}
+                                {key === 'scheduledTasks' && 'Scheduled Tasks'}
+                                {key === 'addedTasks' && 'Added Tasks'}
+                                {key === 'notes' && 'Notes'}
+                                {key === 'tasksNotCompleted' && 'Tasks Not Completed'}
+                                {key === 'materialsNeeded' && 'Materials Needed'}
+                            </button>
+                        ),
+                    )}
+                </div>
+            </div>
+
+            {activeView === 'exceptions' && (
+                <div className="border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50/70 dark:bg-amber-900/20 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                                Exceptions needing review
+                            </h3>
+                            <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+                                Any Added Tasks, Notes, or Tasks Not Completed that were entered in the
+                                schedule but haven&apos;t been acknowledged yet.
+                            </p>
+                        </div>
+                    </div>
+
+                    {exceptions.length === 0 ? (
+                        <p className="text-xs text-amber-800/70 dark:text-amber-200/80">
+                            No pending exceptions for this date.
+                        </p>
+                    ) : (
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {exceptions.map(({ group, row }, idx) => {
+                                const job = jobs.find((j) => j.id === row.jobId)
+                                const jobLabel = job?.name || row.jobName || 'Job'
+                                const address = job?.address || group.mergedData.jobAddress || ''
+                                return (
+                                    <div
+                                        key={`${row.id || row.jobId || 'group'}-${idx}`}
+                                        className="flex items-start justify-between gap-3 rounded-md bg-white dark:bg-gray-900/70 border border-amber-100 dark:border-amber-800 px-3 py-2 cursor-pointer hover:bg-amber-50/80 dark:hover:bg-amber-900/40"
+                                        onClick={() => scrollToGroup(group)}
+                                    >
+                                        <div className="space-y-1 text-xs">
+                                            <div className="font-semibold text-gray-900 dark:text-gray-50">
+                                                {jobLabel}
+                                            </div>
+                                            {address && (
+                                                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                                    {address}
+                                                </div>
+                                            )}
+                                            {group.mergedData.addedTasks && (
+                                                <div>
+                                                    <span className="font-semibold">Added Tasks: </span>
+                                                    <span>{group.mergedData.addedTasks}</span>
+                                                </div>
+                                            )}
+                                            {group.mergedData.notes && (
+                                                <div>
+                                                    <span className="font-semibold">Notes: </span>
+                                                    <span>{group.mergedData.notes}</span>
+                                                </div>
+                                            )}
+                                            {group.mergedData.tasksNotCompleted && (
+                                                <div>
+                                                    <span className="font-semibold">Tasks Not Completed: </span>
+                                                    <span>{group.mergedData.tasksNotCompleted}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <Tag className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border-amber-200 dark:border-amber-700">
+                                                {group.indices.length} row
+                                                {group.indices.length > 1 ? 's' : ''}
+                                            </Tag>
+                                            <div className="flex flex-col gap-1 mt-1">
+                                                <Button
+                                                    size="sm"
+                                                    variant="twoTone"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleAcknowledgeException(group)
+                                                    }}
+                                                >
+                                                    Mark reviewed
+                                                </Button>
+                                                <Button
+                                                    size="xs"
+                                                    variant="plain"
+                                                    className="text-red-500 hover:text-red-600"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleClearException(group)
+                                                    }}
+                                                >
+                                                    Clear note
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeView === 'schedule' && (
+                <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                 {scheduleLoading ? (
                     <div className="p-4 space-y-2 animate-pulse min-w-[960px]">
                         {[...Array(6)].map((_, idx) => (
@@ -292,12 +562,13 @@ const ScheduleTab = ({
                         style={{
                             tableLayout: 'fixed',
                             width: '100%',
-                            minWidth: Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + 'px',
+                            minWidth: `${visibleMinWidth}px`,
                         }}
                     >
                         <thead className="bg-gray-50 dark:bg-gray-800/60">
                             <tr>
-                                <th
+                                {visibleColumns.employee && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.employee }}
                                 >
@@ -311,7 +582,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('employee', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.costCode && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.costCode }}
                                 >
@@ -325,7 +598,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('costCode', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.w2Hours && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.w2Hours }}
                                 >
@@ -339,7 +614,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('w2Hours', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.job && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.job }}
                                 >
@@ -353,7 +630,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('job', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.address && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.address }}
                                 >
@@ -367,7 +646,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('address', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.scheduledTasks && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.scheduledTasks }}
                                 >
@@ -381,7 +662,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('scheduledTasks', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.addedTasks && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.addedTasks }}
                                 >
@@ -395,7 +678,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('addedTasks', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.notes && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.notes }}
                                 >
@@ -409,7 +694,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('notes', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.tasksNotCompleted && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.tasksNotCompleted }}
                                 >
@@ -423,7 +710,9 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('tasksNotCompleted', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.materialsNeeded && (
+                                    <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.materialsNeeded }}
                                 >
@@ -437,12 +726,15 @@ const ScheduleTab = ({
                                         onMouseDown={(e) => handleResizeStart('materialsNeeded', e)}
                                     />
                                 </th>
-                                <th
+                                )}
+                                {visibleColumns.actions && (
+                                    <th
                                     className="px-2 py-2 text-center font-semibold text-gray-700 dark:text-gray-200 relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.actions }}
                                 >
                                     Actions
                                 </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -472,8 +764,13 @@ const ScheduleTab = ({
                                     const rowspan = isFirstInGroup ? group.rowspan : 0
 
                                     return (
-                                        <tr key={row.id || rowIndex} className="align-top">
-                                            <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
+                                        <tr
+                                            key={row.id || rowIndex}
+                                            data-row-id={row.id || String(rowIndex)}
+                                            className="align-top"
+                                        >
+                                            {visibleColumns.employee && (
+                                                <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
                                                 <Select
                                                     placeholder="Employee"
                                                     options={employeeOptionsForSchedule}
@@ -497,7 +794,9 @@ const ScheduleTab = ({
                                                     }}
                                                 />
                                             </td>
-                                            <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
+                                            )}
+                                            {visibleColumns.costCode && (
+                                                <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
                                                 <Input
                                                     value={row.costCode}
                                                     onChange={(e) =>
@@ -509,7 +808,9 @@ const ScheduleTab = ({
                                                     className="text-xs"
                                                 />
                                             </td>
-                                            <td className="px-1 py-1" style={{ width: columnWidths.w2Hours }}>
+                                            )}
+                                            {visibleColumns.w2Hours && (
+                                                <td className="px-1 py-1" style={{ width: columnWidths.w2Hours }}>
                                                 <Input
                                                     type="number"
                                                     value={row.w2Hours}
@@ -522,6 +823,8 @@ const ScheduleTab = ({
                                                     className="text-xs"
                                                 />
                                             </td>
+                                            )}
+                                            {visibleColumns.job && (
                                             <td className="px-1 py-1" style={{ width: columnWidths.job }}>
                                                 <Select
                                                     placeholder="Job"
@@ -546,8 +849,9 @@ const ScheduleTab = ({
                                                     }}
                                                 />
                                             </td>
+                                            )}
                                             {/* Merged cells for Address */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.address ? (
                                                 <td
                                                     className="px-1 py-1 text-xs align-middle text-center"
                                                     rowSpan={rowspan}
@@ -568,7 +872,7 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Scheduled Tasks */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.scheduledTasks ? (
                                                 <td
                                                     className="px-1 py-1 align-top"
                                                     rowSpan={rowspan}
@@ -592,7 +896,7 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Added Tasks */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.addedTasks ? (
                                                 <td
                                                     className="px-1 py-1 align-top"
                                                     rowSpan={rowspan}
@@ -616,7 +920,7 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Notes */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.notes ? (
                                                 <td
                                                     className="px-1 py-1 align-top"
                                                     rowSpan={rowspan}
@@ -640,7 +944,7 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Tasks Not Completed */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.tasksNotCompleted ? (
                                                 <td
                                                     className="px-1 py-1 align-top"
                                                     rowSpan={rowspan}
@@ -664,7 +968,7 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Materials Needed */}
-                                            {isFirstInGroup ? (
+                                            {isFirstInGroup && visibleColumns.materialsNeeded ? (
                                                 <td
                                                     className="px-1 py-1 align-top"
                                                     rowSpan={rowspan}
@@ -687,15 +991,29 @@ const ScheduleTab = ({
                                                     />
                                                 </td>
                                             ) : null}
+                                            {visibleColumns.actions && (
                                             <td className="px-1 py-1 text-center align-middle" style={{ width: columnWidths.actions }}>
-                                                <Button
-                                                    size="sm"
-                                                    variant="plain"
-                                                    icon={<HiOutlineTrash />}
-                                                    className="text-red-500 hover:text-red-600"
-                                                    onClick={() => handleRemoveScheduleRow(rowIndex)}
-                                                />
+                                                <div className="flex flex-col items-center gap-1">
+                                                    {group.rowspan > 1 && !row.unmergedFromJob && (
+                                                        <Button
+                                                            size="xs"
+                                                            variant="twoTone"
+                                                            className="w-full"
+                                                            onClick={() => handleUnmergeRow(rowIndex)}
+                                                        >
+                                                            Unmerge
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="plain"
+                                                        icon={<HiOutlineTrash />}
+                                                        className="text-red-500 hover:text-red-600"
+                                                        onClick={() => handleRemoveScheduleRow(rowIndex)}
+                                                    />
+                                                </div>
                                             </td>
+                                            )}
                                         </tr>
                                     )
                                 })
@@ -704,6 +1022,7 @@ const ScheduleTab = ({
                     </table>
                 )}
             </div>
+            )}
         </div>
     )
 }
