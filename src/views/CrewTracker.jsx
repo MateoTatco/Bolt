@@ -1055,6 +1055,11 @@ const CrewTracker = () => {
     }
 
     const updateScheduleRow = (index, changes) => {
+        const isExceptionField =
+            changes.addedTasks !== undefined ||
+            changes.notes !== undefined ||
+            changes.tasksNotCompleted !== undefined
+
         setScheduleAssignments((prev) =>
             prev.map((row, i) => {
                 if (i !== index) return row
@@ -1066,6 +1071,10 @@ const CrewTracker = () => {
                         updated.jobName = job.name || ''
                         updated.jobAddress = job.address || ''
                     }
+                }
+                // Re-trigger exception when user edits Added Tasks, Notes, or Tasks Not Completed
+                if (isExceptionField) {
+                    updated.exceptionAcknowledged = false
                 }
                 return updated
             }),

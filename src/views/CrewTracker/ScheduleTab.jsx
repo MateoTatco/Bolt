@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
-import { Button, DatePicker, Alert, Input, Select, Tag } from '@/components/ui'
+import { Button, DatePicker, Alert, Input, Select, Tag, Tooltip } from '@/components/ui'
 import {
     HiOutlineClock,
     HiOutlineChatAlt2,
@@ -9,7 +9,17 @@ import {
 } from 'react-icons/hi'
 
 // Auto-grow textarea helper component
-const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rowspan = 1, maxRows = 10 }) => {
+const AutoGrowTextarea = ({
+    value,
+    onChange,
+    placeholder,
+    className,
+    style,
+    rowspan = 1,
+    maxRows = 10,
+    onFocus,
+    ...rest
+}) => {
     const textareaRef = useRef(null)
 
     useEffect(() => {
@@ -18,8 +28,11 @@ const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rows
 
         textarea.style.height = 'auto'
 
+        // Approximate base height of a single schedule row so merged cells
+        // visually fill the total height of all merged rows.
+        const baseRowHeight = 40
         const lineHeight = 20
-        const baseMinHeight = 32
+        const baseMinHeight = baseRowHeight
         const effectiveRowspan = rowspan || 1
         const minHeight = baseMinHeight * effectiveRowspan
         const maxHeight = maxRows * lineHeight * effectiveRowspan
@@ -37,6 +50,7 @@ const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rows
             ref={textareaRef}
             value={value || ''}
             onChange={onChange}
+            onFocus={onFocus}
             placeholder={placeholder}
             className={`input input-sm input-textarea ${className || ''}`}
             style={{
@@ -45,6 +59,7 @@ const AutoGrowTextarea = ({ value, onChange, placeholder, className, style, rows
                 resize: 'none',
                 width: '100%',
             }}
+            {...rest}
         />
     )
 }
@@ -84,6 +99,8 @@ const ScheduleTab = ({
     })
     const [resizingColumn, setResizingColumn] = useState(null)
     const [activeView, setActiveView] = useState('schedule') // 'schedule' | 'exceptions'
+    const [highlightedRowIds, setHighlightedRowIds] = useState([])
+    const [exceptionAttentionSet, setExceptionAttentionSet] = useState(new Set()) // 'rowKey-fieldName' until user focuses
     const [visibleColumns, setVisibleColumns] = useState({
         employee: true,
         costCode: true,
@@ -252,10 +269,18 @@ const ScheduleTab = ({
     }
 
     const scrollToGroup = (group) => {
-        const firstIndex = group.indices[0]
-        const row = scheduleAssignments[firstIndex]
-        const rowKey = row.id || String(firstIndex)
+        const rowIds = group.indices
+            .map((idx) => {
+                const r = scheduleAssignments[idx]
+                return r ? r.id || String(idx) : null
+            })
+            .filter(Boolean)
 
+        const firstIndex = group.indices[0]
+        const firstRow = scheduleAssignments[firstIndex]
+        const rowKey = firstRow?.id || String(firstIndex)
+
+        // Switch back to schedule view and scroll the first row into view
         setActiveView('schedule')
 
         // Give React a tick to render the schedule table
@@ -265,6 +290,33 @@ const ScheduleTab = ({
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' })
             }
         }, 50)
+
+        // Highlight row backgrounds (longer duration); exception fields get persistent border+dot until focus
+        if (rowIds.length > 0) {
+            setHighlightedRowIds(rowIds)
+            setTimeout(() => {
+                setHighlightedRowIds([])
+            }, 7000)
+        }
+        const firstRowKey = firstRow?.id || String(firstIndex)
+        const fieldsWithContent = ['addedTasks', 'notes', 'tasksNotCompleted'].filter(
+            (f) => group.mergedData[f] && String(group.mergedData[f]).trim() !== '',
+        )
+        if (fieldsWithContent.length > 0) {
+            setExceptionAttentionSet((prev) => {
+                const next = new Set(prev)
+                fieldsWithContent.forEach((f) => next.add(`${firstRowKey}-${f}`))
+                return next
+            })
+        }
+    }
+
+    const clearExceptionAttention = (firstRowKey, field) => {
+        setExceptionAttentionSet((prev) => {
+            const next = new Set(prev)
+            next.delete(`${firstRowKey}-${field}`)
+            return next
+        })
     }
 
     const handleUnmergeRow = (rowIndex) => {
@@ -363,6 +415,13 @@ const ScheduleTab = ({
                         Add row
                     </Button>
                     <Button
+                        variant="outline"
+                        icon={<HiOutlineDownload />}
+                        onClick={handleExportScheduleToExcel}
+                    >
+                        Export to Excel
+                    </Button>
+                    <Button
                         variant="twoTone"
                         loading={scheduleSaving}
                         onClick={handleSaveSchedule}
@@ -377,13 +436,6 @@ const ScheduleTab = ({
                         onClick={handleSendScheduleMessages}
                     >
                         Send SMS for this date
-                    </Button>
-                    <Button
-                        variant="outline"
-                        icon={<HiOutlineDownload />}
-                        onClick={handleExportScheduleToExcel}
-                    >
-                        Export to Excel
                     </Button>
                 </div>
             </div>
@@ -412,7 +464,7 @@ const ScheduleTab = ({
                         }`}
                     >
                         Exceptions
-                        <Tag className="text-[10px] sm:text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border-amber-200 dark:border-amber-700">
+                        <Tag className="text-[10px] sm:text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 border-indigo-200 dark:border-indigo-700">
                             {exceptions.length}
                         </Tag>
                     </button>
@@ -447,21 +499,21 @@ const ScheduleTab = ({
             </div>
 
             {activeView === 'exceptions' && (
-                <div className="border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50/70 dark:bg-amber-900/20 p-3 space-y-3">
-                    <div className="flex items-center justify-between">
+                <div className="border border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/70 dark:bg-indigo-900/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
                         <div>
-                            <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                            <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
                                 Exceptions needing review
                             </h3>
-                            <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
-                                Any Added Tasks, Notes, or Tasks Not Completed that were entered in the
+                            <p className="text-xs text-indigo-800/80 dark:text-indigo-200/80">
+                                Added Tasks, Notes, or Tasks Not Completed that were entered in the
                                 schedule but haven&apos;t been acknowledged yet.
                             </p>
                         </div>
                     </div>
 
                     {exceptions.length === 0 ? (
-                        <p className="text-xs text-amber-800/70 dark:text-amber-200/80">
+                        <p className="text-xs text-indigo-800/70 dark:text-indigo-200/80">
                             No pending exceptions for this date.
                         </p>
                     ) : (
@@ -473,12 +525,18 @@ const ScheduleTab = ({
                                 return (
                                     <div
                                         key={`${row.id || row.jobId || 'group'}-${idx}`}
-                                        className="flex items-start justify-between gap-3 rounded-md bg-white dark:bg-gray-900/70 border border-amber-100 dark:border-amber-800 px-3 py-2 cursor-pointer hover:bg-amber-50/80 dark:hover:bg-amber-900/40"
+                                        className="flex items-start justify-between gap-4 rounded-md bg-white dark:bg-gray-900/70 border border-indigo-100 dark:border-indigo-800 px-3 py-2 cursor-pointer hover:bg-indigo-50/80 dark:hover:bg-indigo-900/40"
                                         onClick={() => scrollToGroup(group)}
                                     >
                                         <div className="space-y-1 text-xs">
-                                            <div className="font-semibold text-gray-900 dark:text-gray-50">
-                                                {jobLabel}
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-gray-900 dark:text-gray-50">
+                                                    {jobLabel}
+                                                </span>
+                                                <Tag className="text-[10px] bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 border-indigo-200 dark:border-indigo-700">
+                                                    {group.indices.length} row
+                                                    {group.indices.length > 1 ? 's' : ''}
+                                                </Tag>
                                             </div>
                                             {address && (
                                                 <div className="text-[11px] text-gray-600 dark:text-gray-300">
@@ -486,32 +544,40 @@ const ScheduleTab = ({
                                                 </div>
                                             )}
                                             {group.mergedData.addedTasks && (
-                                                <div>
-                                                    <span className="font-semibold">Added Tasks: </span>
-                                                    <span>{group.mergedData.addedTasks}</span>
+                                                <div className="mt-1">
+                                                    <span className="font-semibold text-indigo-900 dark:text-indigo-100">
+                                                        Added Tasks:{' '}
+                                                    </span>
+                                                    <span className="text-gray-800 dark:text-gray-100">
+                                                        {group.mergedData.addedTasks}
+                                                    </span>
                                                 </div>
                                             )}
                                             {group.mergedData.notes && (
                                                 <div>
-                                                    <span className="font-semibold">Notes: </span>
-                                                    <span>{group.mergedData.notes}</span>
+                                                    <span className="font-semibold text-indigo-900 dark:text-indigo-100">
+                                                        Notes:{' '}
+                                                    </span>
+                                                    <span className="text-gray-800 dark:text-gray-100">
+                                                        {group.mergedData.notes}
+                                                    </span>
                                                 </div>
                                             )}
                                             {group.mergedData.tasksNotCompleted && (
                                                 <div>
-                                                    <span className="font-semibold">Tasks Not Completed: </span>
-                                                    <span>{group.mergedData.tasksNotCompleted}</span>
+                                                    <span className="font-semibold text-indigo-900 dark:text-indigo-100">
+                                                        Tasks Not Completed:{' '}
+                                                    </span>
+                                                    <span className="text-gray-800 dark:text-gray-100">
+                                                        {group.mergedData.tasksNotCompleted}
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <Tag className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border-amber-200 dark:border-amber-700">
-                                                {group.indices.length} row
-                                                {group.indices.length > 1 ? 's' : ''}
-                                            </Tag>
-                                            <div className="flex flex-col gap-1 mt-1">
+                                        <div className="flex flex-col items-end justify-between gap-2">
+                                            <div className="flex gap-2 mt-1">
                                                 <Button
-                                                    size="sm"
+                                                    size="xs"
                                                     variant="twoTone"
                                                     onClick={(e) => {
                                                         e.stopPropagation()
@@ -762,12 +828,15 @@ const ScheduleTab = ({
 
                                     const isFirstInGroup = idxInGroup === 0
                                     const rowspan = isFirstInGroup ? group.rowspan : 0
+                                    const rowKey = row.id || String(rowIndex)
+                                    const isHighlighted = highlightedRowIds.includes(rowKey)
+                                    const firstRowKey = scheduleAssignments[group.indices[0]]?.id || String(group.indices[0])
 
                                     return (
                                         <tr
-                                            key={row.id || rowIndex}
-                                            data-row-id={row.id || String(rowIndex)}
-                                            className="align-top"
+                                            key={rowKey}
+                                            data-row-id={rowKey}
+                                            className={`align-top ${isHighlighted ? 'schedule-row-highlight' : ''}`}
                                         >
                                             {visibleColumns.employee && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
@@ -902,21 +971,30 @@ const ScheduleTab = ({
                                                     rowSpan={rowspan}
                                                     style={{ width: columnWidths.addedTasks }}
                                                 >
-                                                    <AutoGrowTextarea
-                                                        value={group.mergedData.addedTasks}
-                                                        onChange={(e) => {
-                                                            group.indices.forEach((idx) => {
-                                                                updateScheduleRow(idx, {
-                                                                    addedTasks: e.target.value,
+                                                    <div className="relative">
+                                                        {exceptionAttentionSet.has(`${firstRowKey}-addedTasks`) && (
+                                                            <span
+                                                                className="absolute top-1.5 right-1.5 z-10 w-2 h-2 rounded-full schedule-exception-field-dot"
+                                                                aria-hidden
+                                                            />
+                                                        )}
+                                                        <AutoGrowTextarea
+                                                            value={group.mergedData.addedTasks}
+                                                            onChange={(e) => {
+                                                                group.indices.forEach((idx) => {
+                                                                    updateScheduleRow(idx, {
+                                                                        addedTasks: e.target.value,
+                                                                    })
                                                                 })
-                                                            })
-                                                        }}
-                                                        placeholder="Tasks added during the day"
-                                                        className="text-xs w-full"
-                                                        style={{ minHeight: '32px' }}
-                                                        rowspan={rowspan}
-                                                        maxRows={10}
-                                                    />
+                                                            }}
+                                                            onFocus={() => clearExceptionAttention(firstRowKey, 'addedTasks')}
+                                                            placeholder="Tasks added during the day"
+                                                            className={`text-xs w-full ${exceptionAttentionSet.has(`${firstRowKey}-addedTasks`) ? 'schedule-exception-field' : ''}`}
+                                                            style={{ minHeight: '32px' }}
+                                                            rowspan={rowspan}
+                                                            maxRows={10}
+                                                        />
+                                                    </div>
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Notes */}
@@ -926,21 +1004,30 @@ const ScheduleTab = ({
                                                     rowSpan={rowspan}
                                                     style={{ width: columnWidths.notes }}
                                                 >
-                                                    <AutoGrowTextarea
-                                                        value={group.mergedData.notes}
-                                                        onChange={(e) => {
-                                                            group.indices.forEach((idx) => {
-                                                                updateScheduleRow(idx, {
-                                                                    notes: e.target.value,
+                                                    <div className="relative">
+                                                        {exceptionAttentionSet.has(`${firstRowKey}-notes`) && (
+                                                            <span
+                                                                className="absolute top-1.5 right-1.5 z-10 w-2 h-2 rounded-full schedule-exception-field-dot"
+                                                                aria-hidden
+                                                            />
+                                                        )}
+                                                        <AutoGrowTextarea
+                                                            value={group.mergedData.notes}
+                                                            onChange={(e) => {
+                                                                group.indices.forEach((idx) => {
+                                                                    updateScheduleRow(idx, {
+                                                                        notes: e.target.value,
+                                                                    })
                                                                 })
-                                                            })
-                                                        }}
-                                                        placeholder="Notes / gate codes / extra instructions"
-                                                        className="text-xs w-full"
-                                                        style={{ minHeight: '32px' }}
-                                                        rowspan={rowspan}
-                                                        maxRows={10}
-                                                    />
+                                                            }}
+                                                            onFocus={() => clearExceptionAttention(firstRowKey, 'notes')}
+                                                            placeholder="Notes / gate codes / extra instructions"
+                                                            className={`text-xs w-full ${exceptionAttentionSet.has(`${firstRowKey}-notes`) ? 'schedule-exception-field' : ''}`}
+                                                            style={{ minHeight: '32px' }}
+                                                            rowspan={rowspan}
+                                                            maxRows={10}
+                                                        />
+                                                    </div>
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Tasks Not Completed */}
@@ -950,21 +1037,30 @@ const ScheduleTab = ({
                                                     rowSpan={rowspan}
                                                     style={{ width: columnWidths.tasksNotCompleted }}
                                                 >
-                                                    <AutoGrowTextarea
-                                                        value={group.mergedData.tasksNotCompleted}
-                                                        onChange={(e) => {
-                                                            group.indices.forEach((idx) => {
-                                                                updateScheduleRow(idx, {
-                                                                    tasksNotCompleted: e.target.value,
+                                                    <div className="relative">
+                                                        {exceptionAttentionSet.has(`${firstRowKey}-tasksNotCompleted`) && (
+                                                            <span
+                                                                className="absolute top-1.5 right-1.5 z-10 w-2 h-2 rounded-full schedule-exception-field-dot"
+                                                                aria-hidden
+                                                            />
+                                                        )}
+                                                        <AutoGrowTextarea
+                                                            value={group.mergedData.tasksNotCompleted}
+                                                            onChange={(e) => {
+                                                                group.indices.forEach((idx) => {
+                                                                    updateScheduleRow(idx, {
+                                                                        tasksNotCompleted: e.target.value,
+                                                                    })
                                                                 })
-                                                            })
-                                                        }}
-                                                        placeholder="What could not be completed"
-                                                        className="text-xs w-full"
-                                                        style={{ minHeight: '32px' }}
-                                                        rowspan={rowspan}
-                                                        maxRows={10}
-                                                    />
+                                                            }}
+                                                            onFocus={() => clearExceptionAttention(firstRowKey, 'tasksNotCompleted')}
+                                                            placeholder="What could not be completed"
+                                                            className={`text-xs w-full ${exceptionAttentionSet.has(`${firstRowKey}-tasksNotCompleted`) ? 'schedule-exception-field' : ''}`}
+                                                            style={{ minHeight: '32px' }}
+                                                            rowspan={rowspan}
+                                                            maxRows={10}
+                                                        />
+                                                    </div>
                                                 </td>
                                             ) : null}
                                             {/* Merged cells for Materials Needed */}
@@ -992,27 +1088,32 @@ const ScheduleTab = ({
                                                 </td>
                                             ) : null}
                                             {visibleColumns.actions && (
-                                            <td className="px-1 py-1 text-center align-middle" style={{ width: columnWidths.actions }}>
-                                                <div className="flex flex-col items-center gap-1">
-                                                    {group.rowspan > 1 && !row.unmergedFromJob && (
+                                                <td
+                                                    className="px-1 py-1 text-center align-middle"
+                                                    style={{ width: columnWidths.actions }}
+                                                >
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        {group.rowspan > 1 && !row.unmergedFromJob && (
+                                                            <Tooltip title="Unmerge this job group for this row">
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="plain"
+                                                                    className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                                                                    onClick={() => handleUnmergeRow(rowIndex)}
+                                                                >
+                                                                    ⇢
+                                                                </Button>
+                                                            </Tooltip>
+                                                        )}
                                                         <Button
                                                             size="xs"
-                                                            variant="twoTone"
-                                                            className="w-full"
-                                                            onClick={() => handleUnmergeRow(rowIndex)}
-                                                        >
-                                                            Unmerge
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        size="sm"
-                                                        variant="plain"
-                                                        icon={<HiOutlineTrash />}
-                                                        className="text-red-500 hover:text-red-600"
-                                                        onClick={() => handleRemoveScheduleRow(rowIndex)}
-                                                    />
-                                                </div>
-                                            </td>
+                                                            variant="plain"
+                                                            icon={<HiOutlineTrash />}
+                                                            className="text-red-500 hover:text-red-600"
+                                                            onClick={() => handleRemoveScheduleRow(rowIndex)}
+                                                        />
+                                                    </div>
+                                                </td>
                                             )}
                                         </tr>
                                     )

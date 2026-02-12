@@ -12,7 +12,8 @@ import {
     HiOutlineOfficeBuilding,
     HiOutlineUserGroup,
     HiOutlineCheckCircle,
-    HiOutlineCalendar
+    HiOutlineCalendar,
+    HiOutlineDownload,
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewJobStore } from '@/store/crewJobStore'
@@ -27,6 +28,7 @@ import { Timestamp } from 'firebase/firestore'
 import { getCurrentUserId } from '@/utils/notificationHelper'
 import acronym from '@/utils/acronym'
 import useRandomBgColor from '@/utils/hooks/useRandomBgColor'
+import * as XLSX from 'xlsx'
 
 const JobDetail = () => {
     const { jobId } = useParams()
@@ -237,6 +239,11 @@ const JobDetail = () => {
         return acronym(name)
     }
 
+    const safeFileNamePart = (str) => {
+        if (!str) return 'job'
+        return String(str).replace(/[^a-z0-9_\-]+/gi, '_').substring(0, 50)
+    }
+
     // Employee options for selects
     const employeeOptions = useMemo(() => {
         return employees
@@ -314,6 +321,66 @@ const JobDetail = () => {
     const handleCancelEdit = () => {
         setIsEditing(false)
         setEditFormData({})
+    }
+
+    const handleExportUpdatesToExcel = () => {
+        try {
+            if (!job && updates.length === 0) {
+                alert('Nothing to export for this job.')
+                return
+            }
+
+            const exportRows = []
+
+            // Include job creation as a baseline row
+            if (job) {
+                const creatorUser = getUserById(job.createdBy)
+                const creatorName = getUserDisplayName(creatorUser)
+                exportRows.push({
+                    'Job Name': job.name || 'Job',
+                    'Update Type': 'Job Created',
+                    'Note': `Job created: ${job.name || ''}`.trim(),
+                    'Created By': creatorName,
+                    'Created At': formatDate(job.createdAt),
+                })
+            }
+
+            // Add each update entry
+            updates.forEach((update) => {
+                const updateUser = getUserById(update.createdBy)
+                const storedName = update.createdByName
+                const displayName =
+                    storedName && storedName !== 'User'
+                        ? storedName
+                        : getUserDisplayName(updateUser)
+
+                exportRows.push({
+                    'Job Name': job?.name || 'Job',
+                    'Update Type': 'Update',
+                    'Note': update.note || '',
+                    'Created By': displayName,
+                    'Created At': formatDate(update.createdAt),
+                })
+            })
+
+            if (exportRows.length === 0) {
+                alert('No updates to export for this job.')
+                return
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportRows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Updates')
+
+            const jobPart = safeFileNamePart(job?.name || jobId)
+            const today = new Date().toISOString().split('T')[0]
+            const filename = `Job_Updates_${jobPart}_${today}.xlsx`
+
+            XLSX.writeFile(wb, filename)
+        } catch (error) {
+            console.error('Failed to export job updates to Excel:', error)
+            alert('Failed to export job updates. Please try again.')
+        }
     }
 
     if (loading) {
@@ -667,6 +734,20 @@ const JobDetail = () => {
                     {/* Updates Tab */}
                     {activeTab === 'updates' && (
                         <div className="space-y-8 overflow-x-hidden">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                                    Job updates
+                                </h2>
+                                <Button
+                                    variant="twoTone"
+                                    size="sm"
+                                    icon={<HiOutlineDownload />}
+                                    onClick={handleExportUpdatesToExcel}
+                                >
+                                    Export to Excel
+                                </Button>
+                            </div>
+
                             {/* Add Update Form */}
                             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-5">
                                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">

@@ -24,3 +24,49 @@
 .animate-aurora:after {
     animation: aurora 60s linear infinite;
 }
+
+/* Crew Schedule: row background highlight (no full-row pulse) */
+@keyframes schedule-row-highlight {
+    0%, 100% {
+        background-color: rgb(238 242 255 / 0.9); /* indigo-50 */
+    }
+    50% {
+        background-color: rgb(224 231 255 / 0.95); /* indigo-100 */
+    }
+}
+
+@keyframes schedule-row-highlight-dark {
+    0%, 100% {
+        background-color: rgb(49 46 129 / 0.2);
+    }
+    50% {
+        background-color: rgb(49 46 129 / 0.35);
+    }
+}
+
+html.dark .schedule-row-highlight,
+.dark .schedule-row-highlight {
+    animation: schedule-row-highlight-dark 1.5s ease-in-out 4;
+}
+
+.schedule-row-highlight {
+    animation: schedule-row-highlight 1.5s ease-in-out 4;
+}
+
+/* Crew Schedule: exception textarea border blink + persistent until focus */
+@keyframes schedule-exception-border {
+    0%, 100% {
+        box-shadow: 0 0 0 1px rgb(99 102 241 / 0.5);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgb(99 102 241);
+    }
+}
+
+.schedule-exception-field {
+    animation: schedule-exception-border 1.2s ease-in-out infinite;
+}
+
+.schedule-exception-field-dot {
+    background-color: rgb(99 102 241);
+}

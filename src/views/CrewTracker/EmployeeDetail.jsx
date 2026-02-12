@@ -6,6 +6,9 @@ import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
 import { HiOutlineArrowLeft, HiOutlinePencil, HiOutlineCheck, HiOutlineX } from 'react-icons/hi'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
+import * as XLSX from 'xlsx'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '@/configs/firebase.config'
 
 const EmployeeDetail = () => {
     const { employeeId } = useParams()
@@ -23,6 +26,7 @@ const EmployeeDetail = () => {
     const [errors, setErrors] = useState({})
     const [saving, setSaving] = useState(false)
     const { updateEmployee } = useCrewEmployeeStore()
+    const [exportingSchedule, setExportingSchedule] = useState(false)
 
     // Load employee data
     useEffect(() => {
@@ -185,6 +189,102 @@ const EmployeeDetail = () => {
         setIsEditing(false)
     }
 
+    const formatDateOnly = (date) => {
+        if (!date) return '-'
+        try {
+            let dateObj
+            if (date?.toDate) {
+                dateObj = date.toDate()
+            } else if (date instanceof Date) {
+                dateObj = date
+            } else if (typeof date === 'string') {
+                dateObj = new Date(date)
+            } else {
+                return '-'
+            }
+
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const year = dateObj.getFullYear()
+            return `${month}/${day}/${year}`
+        } catch {
+            return '-'
+        }
+    }
+
+    const safeFileNamePart = (str) => {
+        if (!str) return 'employee'
+        return String(str).replace(/[^a-z0-9_\-]+/gi, '_').substring(0, 50)
+    }
+
+    const handleExportScheduleToExcel = async () => {
+        if (!employee) return
+        setExportingSchedule(true)
+        try {
+            const schedulesRef = collection(db, 'crewSchedules')
+            const schedulesSnap = await getDocs(schedulesRef)
+
+            const exportRows = []
+
+            // For each schedule (date), load assignments and filter by this employee
+            // Note: this iterates through all days with schedules; acceptable for expected scale.
+            // If data grows large, we can optimize with indexes or range filters.
+            for (const scheduleDoc of schedulesSnap.docs) {
+                const scheduleData = scheduleDoc.data()
+                let jsDate
+                if (scheduleData.date?.toDate) {
+                    jsDate = scheduleData.date.toDate()
+                } else {
+                    // Fallback: parse from document ID (YYYY-MM-DD)
+                    jsDate = new Date(scheduleDoc.id)
+                }
+
+                const assignmentsRef = collection(db, 'crewSchedules', scheduleDoc.id, 'assignments')
+                const assignmentsSnap = await getDocs(assignmentsRef)
+
+                assignmentsSnap.forEach((assignmentDoc) => {
+                    const a = assignmentDoc.data()
+                    if (a.employeeId !== employeeId) return
+
+                    exportRows.push({
+                        'Date': formatDateOnly(jsDate),
+                        'Day': jsDate.toLocaleDateString('en-US', { weekday: 'long' }),
+                        'Employee Name': a.employeeName || employee.name || '',
+                        'Cost Code': a.costCode || '',
+                        'W2 Hours Worked': a.w2Hours || '',
+                        'Job Name': a.jobName || '',
+                        'Address': a.jobAddress || '',
+                        'Scheduled Tasks': a.scheduledTasks || '',
+                        'Added Tasks': a.addedTasks || '',
+                        'Notes': a.notes || '',
+                        'Tasks Not Completed / Need More Time': a.tasksNotCompleted || '',
+                        'Materials Needed': a.materialsNeeded || '',
+                    })
+                })
+            }
+
+            if (exportRows.length === 0) {
+                alert('No schedule assignments found for this employee.')
+                return
+            }
+
+            const ws = XLSX.utils.json_to_sheet(exportRows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+
+            const employeePart = safeFileNamePart(employee.name || employeeId)
+            const today = new Date().toISOString().split('T')[0]
+            const filename = `Employee_Schedule_${employeePart}_${today}.xlsx`
+
+            XLSX.writeFile(wb, filename)
+        } catch (error) {
+            console.error('Failed to export employee schedule to Excel:', error)
+            alert('Failed to export employee schedule. Please try again.')
+        } finally {
+            setExportingSchedule(false)
+        }
+    }
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -217,15 +317,24 @@ const EmployeeDetail = () => {
                         </p>
                     </div>
                 </div>
-                {!isEditing && (
+                <div className="flex items-center gap-2">
+                    {!isEditing && (
+                        <Button
+                            variant="solid"
+                            icon={<HiOutlinePencil />}
+                            onClick={() => setIsEditing(true)}
+                        >
+                            Edit
+                        </Button>
+                    )}
                     <Button
-                        variant="solid"
-                        icon={<HiOutlinePencil />}
-                        onClick={() => setIsEditing(true)}
+                        variant="twoTone"
+                        loading={exportingSchedule}
+                        onClick={handleExportScheduleToExcel}
                     >
-                        Edit
+                        Export schedule to Excel
                     </Button>
-                )}
+                </div>
             </div>
 
             {/* Main Content */}
