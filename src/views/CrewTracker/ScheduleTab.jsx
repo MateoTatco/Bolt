@@ -6,6 +6,8 @@ import {
     HiOutlineDownload,
     HiOutlineRefresh,
     HiOutlineTrash,
+    HiOutlineSearch,
+    HiOutlineX,
 } from 'react-icons/hi'
 
 // Auto-grow textarea helper component
@@ -114,23 +116,54 @@ const ScheduleTab = ({
         materialsNeeded: true,
         actions: true,
     })
+    const [scheduleSearchText, setScheduleSearchText] = useState('')
+
+    // Filter schedule assignments based on search text
+    const filteredScheduleAssignments = useMemo(() => {
+        if (!scheduleSearchText.trim()) {
+            return scheduleAssignments
+        }
+        
+        const searchLower = scheduleSearchText.toLowerCase().trim()
+        return scheduleAssignments.filter(row => {
+            const employeeName = (row.employeeName || '').toLowerCase()
+            const jobName = (row.jobName || '').toLowerCase()
+            const jobAddress = (row.jobAddress || '').toLowerCase()
+            const scheduledTasks = (row.scheduledTasks || '').toLowerCase()
+            const addedTasks = (row.addedTasks || '').toLowerCase()
+            const notes = (row.notes || '').toLowerCase()
+            const tasksNotCompleted = (row.tasksNotCompleted || '').toLowerCase()
+            const materialsNeeded = (row.materialsNeeded || '').toLowerCase()
+            const costCode = (row.costCode || '').toLowerCase()
+            
+            return employeeName.includes(searchLower) ||
+                   jobName.includes(searchLower) ||
+                   jobAddress.includes(searchLower) ||
+                   scheduledTasks.includes(searchLower) ||
+                   addedTasks.includes(searchLower) ||
+                   notes.includes(searchLower) ||
+                   tasksNotCompleted.includes(searchLower) ||
+                   materialsNeeded.includes(searchLower) ||
+                   costCode.includes(searchLower)
+        })
+    }, [scheduleAssignments, scheduleSearchText])
 
     // Helper: Group rows by jobId and calculate rowspans for merged cells
     const groupedRows = useMemo(() => {
         const groups = []
         const processed = new Set()
 
-        scheduleAssignments.forEach((row, index) => {
+        filteredScheduleAssignments.forEach((row, index) => {
             // Skip rows with no job or explicitly unmerged
             if (processed.has(index) || !row.jobId || row.unmergedFromJob) {
                 return
             }
 
             const group = [index]
-            for (let i = index + 1; i < scheduleAssignments.length; i++) {
+            for (let i = index + 1; i < filteredScheduleAssignments.length; i++) {
                 if (
-                    scheduleAssignments[i].jobId === row.jobId &&
-                    !scheduleAssignments[i].unmergedFromJob
+                    filteredScheduleAssignments[i].jobId === row.jobId &&
+                    !filteredScheduleAssignments[i].unmergedFromJob
                 ) {
                     group.push(i)
                     processed.add(i)
@@ -144,18 +177,18 @@ const ScheduleTab = ({
                     jobId: row.jobId,
                     rowspan: group.length,
                     mergedData: {
-                        jobAddress: scheduleAssignments[group[0]].jobAddress || '',
-                        scheduledTasks: scheduleAssignments[group[0]].scheduledTasks || '',
-                        addedTasks: scheduleAssignments[group[0]].addedTasks || '',
-                        notes: scheduleAssignments[group[0]].notes || '',
-                        tasksNotCompleted: scheduleAssignments[group[0]].tasksNotCompleted || '',
-                        materialsNeeded: scheduleAssignments[group[0]].materialsNeeded || '',
+                        jobAddress: filteredScheduleAssignments[group[0]].jobAddress || '',
+                        scheduledTasks: filteredScheduleAssignments[group[0]].scheduledTasks || '',
+                        addedTasks: filteredScheduleAssignments[group[0]].addedTasks || '',
+                        notes: filteredScheduleAssignments[group[0]].notes || '',
+                        tasksNotCompleted: filteredScheduleAssignments[group[0]].tasksNotCompleted || '',
+                        materialsNeeded: filteredScheduleAssignments[group[0]].materialsNeeded || '',
                     },
                 })
             }
         })
 
-        scheduleAssignments.forEach((row, index) => {
+        filteredScheduleAssignments.forEach((row, index) => {
             if (!processed.has(index)) {
                 groups.push({
                     indices: [index],
@@ -174,14 +207,14 @@ const ScheduleTab = ({
         })
 
         return groups.sort((a, b) => a.indices[0] - b.indices[0])
-    }, [scheduleAssignments])
+    }, [filteredScheduleAssignments])
 
     // Exceptions list: any group with deviations that haven't been acknowledged
     const exceptions = useMemo(() => {
         return groupedRows
             .map((group) => {
                 const firstIndex = group.indices[0]
-                const row = scheduleAssignments[firstIndex]
+                const row = filteredScheduleAssignments[firstIndex]
                 const hasDeviation =
                     (group.mergedData.addedTasks && group.mergedData.addedTasks.trim() !== '') ||
                     (group.mergedData.notes && group.mergedData.notes.trim() !== '') ||
@@ -189,7 +222,7 @@ const ScheduleTab = ({
                         group.mergedData.tasksNotCompleted.trim() !== '')
 
                 const allAcknowledged = group.indices.every(
-                    (idx) => scheduleAssignments[idx]?.exceptionAcknowledged,
+                    (idx) => filteredScheduleAssignments[idx]?.exceptionAcknowledged,
                 )
 
                 return {
@@ -200,7 +233,7 @@ const ScheduleTab = ({
                 }
             })
             .filter((item) => item.hasDeviation && !item.allAcknowledged)
-    }, [groupedRows, scheduleAssignments])
+    }, [groupedRows, filteredScheduleAssignments])
 
     // Column resizing handlers
     const handleResizeStart = (columnKey, e) => {
@@ -271,13 +304,13 @@ const ScheduleTab = ({
     const scrollToGroup = (group) => {
         const rowIds = group.indices
             .map((idx) => {
-                const r = scheduleAssignments[idx]
+                const r = filteredScheduleAssignments[idx]
                 return r ? r.id || String(idx) : null
             })
             .filter(Boolean)
 
         const firstIndex = group.indices[0]
-        const firstRow = scheduleAssignments[firstIndex]
+        const firstRow = filteredScheduleAssignments[firstIndex]
         const rowKey = firstRow?.id || String(firstIndex)
 
         // Switch back to schedule view and scroll the first row into view
@@ -353,20 +386,41 @@ const ScheduleTab = ({
 
     return (
         <div className="pt-4 space-y-4">
-            <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <HiOutlineClock className="text-xl" />
-                </div>
-                <div>
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <HiOutlineClock className="text-xl" />
+                    </div>
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                         Daily crew schedule
                     </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        Plan where each crew member goes tomorrow, then send a single
-                        SMS with job, address, tasks, and notes.
-                    </p>
+                </div>
+                <div className="flex-1 max-w-md flex justify-end">
+                    <Input
+                        placeholder="Search schedule by employee, job, address, tasks, notes..."
+                        value={scheduleSearchText}
+                        onChange={(e) => setScheduleSearchText(e.target.value)}
+                        prefix={<HiOutlineSearch className="text-gray-400" />}
+                        className="max-w-md"
+                    />
+                    {scheduleSearchText && (
+                        <Button
+                            variant="plain"
+                            size="sm"
+                            icon={<HiOutlineX />}
+                            onClick={() => setScheduleSearchText('')}
+                            className="ml-2"
+                        >
+                            Clear
+                        </Button>
+                    )}
                 </div>
             </div>
+            {scheduleSearchText && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+                    Showing {filteredScheduleAssignments.length} of {scheduleAssignments.length} rows
+                </p>
+            )}
 
             {scheduleError && (
                 <Alert type="danger" showIcon>
@@ -817,7 +871,7 @@ const ScheduleTab = ({
                             )}
                             {groupedRows.map((group) => {
                                 return group.indices.map((rowIndex, idxInGroup) => {
-                                    const row = scheduleAssignments[rowIndex]
+                                    const row = filteredScheduleAssignments[rowIndex]
                                     const job = jobs.find((j) => j.id === row.jobId)
                                     const jobAddress = job?.address || group.mergedData.jobAddress || ''
                                     const mapsUrl =
@@ -830,7 +884,7 @@ const ScheduleTab = ({
                                     const rowspan = isFirstInGroup ? group.rowspan : 0
                                     const rowKey = row.id || String(rowIndex)
                                     const isHighlighted = highlightedRowIds.includes(rowKey)
-                                    const firstRowKey = scheduleAssignments[group.indices[0]]?.id || String(group.indices[0])
+                                    const firstRowKey = filteredScheduleAssignments[group.indices[0]]?.id || String(group.indices[0])
 
                                     return (
                                         <tr

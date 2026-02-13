@@ -14,6 +14,8 @@ import {
     HiOutlineCheckCircle,
     HiOutlineCalendar,
     HiOutlineDownload,
+    HiOutlineSearch,
+    HiOutlineFilter,
 } from 'react-icons/hi'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewJobStore } from '@/store/crewJobStore'
@@ -46,6 +48,12 @@ const JobDetail = () => {
     const [saving, setSaving] = useState(false)
     const [employees, setEmployees] = useState([])
     const [users, setUsers] = useState([])
+    
+    // Filter state for Updates tab
+    const [updateSearchText, setUpdateSearchText] = useState('')
+    const [updateDateFrom, setUpdateDateFrom] = useState(null)
+    const [updateDateTo, setUpdateDateTo] = useState(null)
+    const [updateCreatorFilter, setUpdateCreatorFilter] = useState(null)
     
     const { updateJob } = useCrewJobStore()
     const { employees: allEmployees, loadEmployees } = useCrewEmployeeStore()
@@ -323,30 +331,119 @@ const JobDetail = () => {
         setEditFormData({})
     }
 
+    // Filter updates based on search criteria
+    const filteredUpdates = useMemo(() => {
+        let filtered = [...updates]
+
+        // Text search filter
+        if (updateSearchText.trim()) {
+            const searchLower = updateSearchText.toLowerCase()
+            filtered = filtered.filter(update => {
+                const note = (update.note || '').toLowerCase()
+                const creatorName = (update.createdByName || '').toLowerCase()
+                const updateUser = getUserById(update.createdBy)
+                const displayName = getUserDisplayName(updateUser).toLowerCase()
+                return note.includes(searchLower) || creatorName.includes(searchLower) || displayName.includes(searchLower)
+            })
+        }
+
+        // Date range filter
+        if (updateDateFrom || updateDateTo) {
+            filtered = filtered.filter(update => {
+                if (!update.createdAt) return false
+                const updateDate = update.createdAt.toDate ? update.createdAt.toDate() : new Date(update.createdAt)
+                
+                if (updateDateFrom) {
+                    const fromDate = new Date(updateDateFrom)
+                    fromDate.setHours(0, 0, 0, 0)
+                    if (updateDate < fromDate) return false
+                }
+                
+                if (updateDateTo) {
+                    const toDate = new Date(updateDateTo)
+                    toDate.setHours(23, 59, 59, 999)
+                    if (updateDate > toDate) return false
+                }
+                
+                return true
+            })
+        }
+
+        // Creator filter
+        if (updateCreatorFilter) {
+            filtered = filtered.filter(update => {
+                return update.createdBy === updateCreatorFilter
+            })
+        }
+
+        return filtered
+    }, [updates, updateSearchText, updateDateFrom, updateDateTo, updateCreatorFilter, getUserById, getUserDisplayName])
+
+    // Get unique creators for filter dropdown
+    const updateCreators = useMemo(() => {
+        const creatorMap = new Map()
+        updates.forEach(update => {
+            const updateUser = getUserById(update.createdBy)
+            const storedName = update.createdByName
+            const displayName = (storedName && storedName !== 'User')
+                ? storedName
+                : getUserDisplayName(updateUser)
+            const userId = update.createdBy
+            
+            if (userId && !creatorMap.has(userId)) {
+                creatorMap.set(userId, {
+                    value: userId,
+                    label: displayName,
+                })
+            }
+        })
+        return Array.from(creatorMap.values()).sort((a, b) => a.label.localeCompare(b.label))
+    }, [updates, getUserById, getUserDisplayName])
+
     const handleExportUpdatesToExcel = () => {
         try {
-            if (!job && updates.length === 0) {
+            // Export filtered updates if filters are active, otherwise all updates
+            const updatesToExport = filteredUpdates.length < updates.length ? filteredUpdates : updates
+
+            if (!job && updatesToExport.length === 0) {
                 alert('Nothing to export for this job.')
                 return
             }
 
             const exportRows = []
 
-            // Include job creation as a baseline row
+            // Include job creation as a baseline row (only if no date filter or job creation is in range)
             if (job) {
-                const creatorUser = getUserById(job.createdBy)
-                const creatorName = getUserDisplayName(creatorUser)
-                exportRows.push({
-                    'Job Name': job.name || 'Job',
-                    'Update Type': 'Job Created',
-                    'Note': `Job created: ${job.name || ''}`.trim(),
-                    'Created By': creatorName,
-                    'Created At': formatDate(job.createdAt),
-                })
+                let includeJobCreation = true
+                if (updateDateFrom || updateDateTo) {
+                    const jobDate = job.createdAt?.toDate ? job.createdAt.toDate() : new Date(job.createdAt)
+                    if (updateDateFrom) {
+                        const fromDate = new Date(updateDateFrom)
+                        fromDate.setHours(0, 0, 0, 0)
+                        if (jobDate < fromDate) includeJobCreation = false
+                    }
+                    if (updateDateTo) {
+                        const toDate = new Date(updateDateTo)
+                        toDate.setHours(23, 59, 59, 999)
+                        if (jobDate > toDate) includeJobCreation = false
+                    }
+                }
+                
+                if (includeJobCreation && (!updateCreatorFilter || job.createdBy === updateCreatorFilter)) {
+                    const creatorUser = getUserById(job.createdBy)
+                    const creatorName = getUserDisplayName(creatorUser)
+                    exportRows.push({
+                        'Job Name': job.name || 'Job',
+                        'Update Type': 'Job Created',
+                        'Note': `Job created: ${job.name || ''}`.trim(),
+                        'Created By': creatorName,
+                        'Created At': formatDate(job.createdAt),
+                    })
+                }
             }
 
             // Add each update entry
-            updates.forEach((update) => {
+            updatesToExport.forEach((update) => {
                 const updateUser = getUserById(update.createdBy)
                 const storedName = update.createdByName
                 const displayName =
@@ -364,7 +461,7 @@ const JobDetail = () => {
             })
 
             if (exportRows.length === 0) {
-                alert('No updates to export for this job.')
+                alert('No updates match the current filters.')
                 return
             }
 
@@ -374,7 +471,8 @@ const JobDetail = () => {
 
             const jobPart = safeFileNamePart(job?.name || jobId)
             const today = new Date().toISOString().split('T')[0]
-            const filename = `Job_Updates_${jobPart}_${today}.xlsx`
+            const filterSuffix = (updateSearchText || updateDateFrom || updateDateTo || updateCreatorFilter) ? '_filtered' : ''
+            const filename = `Job_Updates_${jobPart}_${today}${filterSuffix}.xlsx`
 
             XLSX.writeFile(wb, filename)
         } catch (error) {
@@ -382,6 +480,15 @@ const JobDetail = () => {
             alert('Failed to export job updates. Please try again.')
         }
     }
+
+    const clearUpdateFilters = () => {
+        setUpdateSearchText('')
+        setUpdateDateFrom(null)
+        setUpdateDateTo(null)
+        setUpdateCreatorFilter(null)
+    }
+
+    const hasActiveFilters = updateSearchText.trim() || updateDateFrom || updateDateTo || updateCreatorFilter
 
     if (loading) {
         return (
@@ -734,9 +841,13 @@ const JobDetail = () => {
                     {/* Updates Tab */}
                     {activeTab === 'updates' && (
                         <div className="space-y-8 overflow-x-hidden">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-3">
                                 <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                                    Job updates
+                                    Job updates {filteredUpdates.length !== updates.length && (
+                                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                                            ({filteredUpdates.length} of {updates.length})
+                                        </span>
+                                    )}
                                 </h2>
                                 <Button
                                     variant="twoTone"
@@ -746,6 +857,81 @@ const JobDetail = () => {
                                 >
                                     Export to Excel
                                 </Button>
+                            </div>
+
+                            {/* Search and Filter Controls */}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border-2 border-blue-200 dark:border-blue-700/50 p-4 space-y-4 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <HiOutlineFilter className="text-lg text-blue-600 dark:text-blue-400" />
+                                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Filter Updates</h3>
+                                    {hasActiveFilters && (
+                                        <Button
+                                            variant="plain"
+                                            size="sm"
+                                            onClick={clearUpdateFilters}
+                                            className="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+                                        >
+                                            Clear Filters
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                            Search Text
+                                        </label>
+                                        <Input
+                                            placeholder="Search in notes..."
+                                            value={updateSearchText}
+                                            onChange={(e) => setUpdateSearchText(e.target.value)}
+                                            prefix={<HiOutlineSearch className="text-blue-500" />}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                            From Date
+                                        </label>
+                                        <DatePicker
+                                            inputtable
+                                            inputtableBlurClose={false}
+                                            inputFormat="MM/DD/YYYY"
+                                            value={updateDateFrom}
+                                            onChange={(date) => setUpdateDateFrom(date)}
+                                            placeholder="Start date"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                            To Date
+                                        </label>
+                                        <DatePicker
+                                            inputtable
+                                            inputtableBlurClose={false}
+                                            inputFormat="MM/DD/YYYY"
+                                            value={updateDateTo}
+                                            onChange={(date) => setUpdateDateTo(date)}
+                                            placeholder="End date"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                            Created By
+                                        </label>
+                                        <Select
+                                            isClearable
+                                            placeholder="All creators"
+                                            options={updateCreators}
+                                            value={updateCreators.find(opt => opt.value === updateCreatorFilter) || null}
+                                            onChange={(option) => setUpdateCreatorFilter(option?.value || null)}
+                                            menuPortalTarget={document.body}
+                                            menuPosition="fixed"
+                                            styles={{
+                                                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+                                                menu: (provided) => ({ ...provided, zIndex: 9999 }),
+                                            }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Add Update Form */}
@@ -788,7 +974,21 @@ const JobDetail = () => {
 
                             {/* Updates List */}
                             <div className="space-y-6 min-w-0">
-                                {updates.length === 0 ? (
+                                {filteredUpdates.length === 0 && updates.length > 0 ? (
+                                    <div className="text-center py-8">
+                                        <p className="text-gray-500 dark:text-gray-400">
+                                            No updates match the current filters.
+                                        </p>
+                                        <Button
+                                            variant="plain"
+                                            size="sm"
+                                            onClick={clearUpdateFilters}
+                                            className="mt-2"
+                                        >
+                                            Clear Filters
+                                        </Button>
+                                    </div>
+                                ) : filteredUpdates.length === 0 ? (
                                     <>
                                         {job && (() => {
                                             const creatorUser = getUserById(job.createdBy)
@@ -832,62 +1032,59 @@ const JobDetail = () => {
                                     </>
                                 ) : (
                                     <>
-                                        {/* Latest Update */}
-                                        <div className="relative">
-                                            <div className="relative flex gap-2 md:gap-4">
-                                                <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
-                                                    {(() => {
-                                                        const updateUser = getUserById(updates[0].createdBy)
-                                                        const storedName = updates[0].createdByName
-                                                        // If stored name is "User" or empty, use actual user lookup
-                                                        const displayName = (storedName && storedName !== 'User') 
-                                                            ? storedName 
-                                                            : getUserDisplayName(updateUser)
-                                                        return (
+                                        {/* Latest Update (if filtered list has items) */}
+                                        {filteredUpdates.length > 0 && (() => {
+                                            const latestUpdate = filteredUpdates[0]
+                                            const updateUser = getUserById(latestUpdate.createdBy)
+                                            const storedName = latestUpdate.createdByName
+                                            const displayName = (storedName && storedName !== 'User') 
+                                                ? storedName 
+                                                : getUserDisplayName(updateUser)
+                                            const isLatestInAll = updates.length > 0 && latestUpdate.id === updates[0].id
+                                            
+                                            return (
+                                                <div className="relative">
+                                                    <div className="relative flex gap-2 md:gap-4">
+                                                        <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                             <Avatar
                                                                 size={40}
-                                                                className={`${bgColor(displayName)} border-4 border-white dark:border-gray-900 shadow-md ring-2 ring-primary`}
+                                                                className={`${bgColor(displayName)} border-4 border-white dark:border-gray-900 shadow-md ${isLatestInAll ? 'ring-2 ring-primary' : ''}`}
                                                             >
                                                                 {acronym(displayName)}
                                                             </Avatar>
-                                                        )
-                                                    })()}
-                                                </div>
-                                                <Card className="flex-1 shadow-lg border-2 border-primary min-w-0">
-                                                    <div className="p-3 md:p-5">
-                                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
-                                                            <div className="flex flex-col md:flex-row md:items-center gap-2">
-                                                                <span className="font-semibold text-gray-900 dark:text-white">
-                                                                    {(() => {
-                                                                        const updateUser = getUserById(updates[0].createdBy)
-                                                                        const storedName = updates[0].createdByName
-                                                                        // If stored name is "User" or empty, use actual user lookup
-                                                                        return (storedName && storedName !== 'User') 
-                                                                            ? storedName 
-                                                                            : getUserDisplayName(updateUser)
-                                                                    })()}
-                                                                </span>
-                                                                <Tag className="bg-primary text-white w-fit">
-                                                                    Latest Update
-                                                                </Tag>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                                                <HiOutlineClock className="text-base" />
-                                                                <span>{formatDate(updates[0].createdAt)}</span>
-                                                            </div>
                                                         </div>
-                                                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
-                                                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
-                                                                {updates[0].note}
-                                                            </p>
-                                                        </div>
+                                                        <Card className={`flex-1 min-w-0 ${isLatestInAll ? 'shadow-lg border-2 border-primary' : 'shadow-md'}`}>
+                                                            <div className="p-3 md:p-5">
+                                                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0 mb-3">
+                                                                    <div className="flex flex-col md:flex-row md:items-center gap-2">
+                                                                        <span className="font-semibold text-gray-900 dark:text-white">
+                                                                            {displayName}
+                                                                        </span>
+                                                                        {isLatestInAll && (
+                                                                            <Tag className="bg-primary text-white w-fit">
+                                                                                Latest Update
+                                                                            </Tag>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                                                        <HiOutlineClock className="text-base" />
+                                                                        <span>{formatDate(latestUpdate.createdAt)}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 md:p-4">
+                                                                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed break-words">
+                                                                        {latestUpdate.note}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </Card>
                                                     </div>
-                                                </Card>
-                                            </div>
-                                        </div>
+                                                </div>
+                                            )
+                                        })()}
 
                                         {/* Previous updates */}
-                                        {updates.slice(1).map((update) => {
+                                        {filteredUpdates.slice(1).map((update) => {
                                             const updateUser = getUserById(update.createdBy)
                                             const storedName = update.createdByName
                                             // If stored name is "User" or empty, use actual user lookup
@@ -928,12 +1125,48 @@ const JobDetail = () => {
                                             )
                                         })}
 
-                                        {/* Original job creation */}
+                                        {/* Original job creation (show if it passes filters) */}
                                         {job && (() => {
+                                            // Check if job creation should be shown based on filters
+                                            let showJobCreation = true
+                                            
+                                            // Date range filter
+                                            if (updateDateFrom || updateDateTo) {
+                                                const jobDate = job.createdAt?.toDate ? job.createdAt.toDate() : new Date(job.createdAt)
+                                                if (updateDateFrom) {
+                                                    const fromDate = new Date(updateDateFrom)
+                                                    fromDate.setHours(0, 0, 0, 0)
+                                                    if (jobDate < fromDate) showJobCreation = false
+                                                }
+                                                if (updateDateTo) {
+                                                    const toDate = new Date(updateDateTo)
+                                                    toDate.setHours(23, 59, 59, 999)
+                                                    if (jobDate > toDate) showJobCreation = false
+                                                }
+                                            }
+                                            
+                                            // Creator filter
+                                            if (updateCreatorFilter && job.createdBy !== updateCreatorFilter) {
+                                                showJobCreation = false
+                                            }
+                                            
+                                            // Text search filter
+                                            if (updateSearchText.trim()) {
+                                                const searchLower = updateSearchText.toLowerCase()
+                                                const jobName = (job.name || '').toLowerCase()
+                                                const creatorUser = getUserById(job.createdBy)
+                                                const creatorName = getUserDisplayName(creatorUser).toLowerCase()
+                                                if (!jobName.includes(searchLower) && !creatorName.includes(searchLower)) {
+                                                    showJobCreation = false
+                                                }
+                                            }
+                                            
+                                            if (!showJobCreation) return null
+                                            
                                             const creatorUser = getUserById(job.createdBy)
                                             const creatorName = getUserDisplayName(creatorUser)
                                             return (
-                                                <div className="relative flex gap-2 md:gap-4">
+                                                <div key="job-creation" className="relative flex gap-2 md:gap-4">
                                                     <div className="relative z-10 flex-shrink-0 hidden md:block md:ml-1">
                                                         <Avatar
                                                             size={40}

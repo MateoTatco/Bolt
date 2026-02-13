@@ -16,17 +16,6 @@ const JobsTab = ({
 }) => {
     return (
         <>
-            {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div>
-                    <Input
-                        placeholder="Search jobs..."
-                        value={filters.search}
-                        onChange={(e) => setFilters({ search: e.target.value })}
-                    />
-                </div>
-            </div>
-
             {/* Jobs Table */}
             <div className="pt-4">
                 <DataTable

@@ -644,12 +644,48 @@ const CrewTracker = () => {
 
     // Filtered jobs - separate active and inactive
     const activeJobs = useMemo(() => {
-        return jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
-    }, [jobs])
+        let filtered = jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
+        
+        // Apply search filter if present (searches in project, name, address, and tasks)
+        if (jobFilters.search && jobFilters.search.trim()) {
+            const searchLower = jobFilters.search.toLowerCase().trim()
+            filtered = filtered.filter(job => {
+                const project = (job.project || '').toLowerCase()
+                const name = (job.name || '').toLowerCase()
+                const address = (job.address || '').toLowerCase()
+                const tasks = (job.tasks || '').toLowerCase()
+                
+                return project.includes(searchLower) ||
+                       name.includes(searchLower) ||
+                       address.includes(searchLower) ||
+                       tasks.includes(searchLower)
+            })
+        }
+        
+        return filtered
+    }, [jobs, jobFilters.search])
 
     const inactiveJobs = useMemo(() => {
-        return jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) === 'Inactive')
-    }, [jobs])
+        let filtered = jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) === 'Inactive')
+        
+        // Apply search filter if present (searches in project, name, address, and tasks)
+        if (jobFilters.search && jobFilters.search.trim()) {
+            const searchLower = jobFilters.search.toLowerCase().trim()
+            filtered = filtered.filter(job => {
+                const project = (job.project || '').toLowerCase()
+                const name = (job.name || '').toLowerCase()
+                const address = (job.address || '').toLowerCase()
+                const tasks = (job.tasks || '').toLowerCase()
+                
+                return project.includes(searchLower) ||
+                       name.includes(searchLower) ||
+                       address.includes(searchLower) ||
+                       tasks.includes(searchLower)
+            })
+        }
+        
+        return filtered
+    }, [jobs, jobFilters.search])
 
     const filteredJobs = useMemo(() => {
         return jobSubTab === 'active' ? activeJobs : inactiveJobs
@@ -1495,35 +1531,44 @@ const CrewTracker = () => {
                                 Messages
                             </button>
                         </div>
-                        {/* Job sub-tabs on the right */}
+                        {/* Job sub-tabs and search on the right */}
                         {activeTab === 'jobs' && (
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setJobSubTab('active')}
-                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
-                                        jobSubTab === 'active'
-                                            ? 'border-primary text-primary'
-                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                                    }`}
-                                >
-                                    Active Jobs
-                                    <Tag className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300 dark:border-green-700">
-                                        {activeJobs.length}
-                                    </Tag>
-                                </button>
-                                <button
-                                    onClick={() => setJobSubTab('inactive')}
-                                    className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
-                                        jobSubTab === 'inactive'
-                                            ? 'border-primary text-primary'
-                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
-                                    }`}
-                                >
-                                    Inactive Jobs
-                                    <Tag className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-300 dark:border-gray-700">
-                                        {inactiveJobs.length}
-                                    </Tag>
-                                </button>
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1 max-w-md min-w-[320px]">
+                                    <Input
+                                        placeholder="Search by project, name, address, or tasks..."
+                                        value={jobFilters.search || ''}
+                                        onChange={(e) => setJobFilters({ ...jobFilters, search: e.target.value })}
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setJobSubTab('active')}
+                                        className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                            jobSubTab === 'active'
+                                                ? 'border-primary text-primary'
+                                                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                        }`}
+                                    >
+                                        Active Jobs
+                                        <Tag className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300 dark:border-green-700">
+                                            {activeJobs.length}
+                                        </Tag>
+                                    </button>
+                                    <button
+                                        onClick={() => setJobSubTab('inactive')}
+                                        className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                            jobSubTab === 'inactive'
+                                                ? 'border-primary text-primary'
+                                                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                        }`}
+                                    >
+                                        Inactive Jobs
+                                        <Tag className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-300 dark:border-gray-700">
+                                            {inactiveJobs.length}
+                                        </Tag>
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
