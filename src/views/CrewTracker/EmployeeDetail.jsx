@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Tooltip } from '@/components/ui'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
-import { HiOutlineArrowLeft, HiOutlinePencil, HiOutlineCheck, HiOutlineX } from 'react-icons/hi'
+import { HiOutlineArrowLeft, HiOutlinePencil, HiOutlineCheck, HiOutlineX, HiOutlineChatAlt2 } from 'react-icons/hi'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import * as XLSX from 'xlsx'
@@ -27,6 +27,10 @@ const EmployeeDetail = () => {
     const [saving, setSaving] = useState(false)
     const { updateEmployee } = useCrewEmployeeStore()
     const [exportingSchedule, setExportingSchedule] = useState(false)
+    const [messageHistory, setMessageHistory] = useState([])
+    const [messageHistoryLoading, setMessageHistoryLoading] = useState(true)
+    const [messageHistoryError, setMessageHistoryError] = useState('')
+    const [messageSearchQuery, setMessageSearchQuery] = useState('')
 
     // Load employee data
     useEffect(() => {
@@ -72,6 +76,45 @@ const EmployeeDetail = () => {
             loadEmployee()
         }
     }, [employeeId, navigate])
+
+    // Load and subscribe to crew messages for this employee
+    useEffect(() => {
+        if (!employeeId) {
+            setMessageHistoryLoading(false)
+            return
+        }
+
+        const loadOnce = async () => {
+            setMessageHistoryLoading(true)
+            setMessageHistoryError('')
+            try {
+                const response = await FirebaseDbService.crewMessages.getAll()
+                if (response.success) {
+                    const all = response.data || []
+                    const forEmployee = all.filter((msg) => msg.employeeId === employeeId)
+                    setMessageHistory(forEmployee)
+                } else {
+                    setMessageHistoryError(response.error || 'Failed to load messages')
+                }
+            } catch (error) {
+                console.error('Failed to load crew messages for employee:', error)
+                setMessageHistoryError(error?.message || 'Failed to load messages')
+            } finally {
+                setMessageHistoryLoading(false)
+            }
+        }
+
+        loadOnce()
+
+        const unsubscribe = FirebaseDbService.crewMessages.subscribe((messages) => {
+            const forEmployee = (messages || []).filter((msg) => msg.employeeId === employeeId)
+            setMessageHistory(forEmployee)
+        })
+
+        return () => {
+            if (unsubscribe) unsubscribe()
+        }
+    }, [employeeId])
 
     // Format phone number for display
     const formatPhoneDisplay = (phone) => {
@@ -188,6 +231,69 @@ const EmployeeDetail = () => {
         setErrors({})
         setIsEditing(false)
     }
+
+    const formatMessageDate = (ts) => {
+        if (!ts) return ''
+        let d
+        if (ts.toDate) d = ts.toDate()
+        else if (ts instanceof Date) d = ts
+        else if (typeof ts === 'string') {
+            const parsed = new Date(ts)
+            d = Number.isNaN(parsed.getTime()) ? null : parsed
+        }
+        if (!d) return ''
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        const year = d.getFullYear()
+        return `${month}/${day}/${year}`
+    }
+
+    const formatMessageTime = (ts) => {
+        if (!ts) return ''
+        let d
+        if (ts.toDate) d = ts.toDate()
+        else if (ts instanceof Date) d = ts
+        else if (typeof ts === 'string') {
+            const parsed = new Date(ts)
+            d = Number.isNaN(parsed.getTime()) ? null : parsed
+        }
+        if (!d) return ''
+        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    }
+
+    // Message list for this employee (chronological, oldest first)
+    const employeeMessages = useMemo(() => {
+        const list = (messageHistory || []).filter((msg) => msg.employeeId === employeeId)
+        return list.sort((a, b) => {
+            const aTs = a.sentAt || a.date
+            const bTs = b.sentAt || b.date
+            const aTime = aTs?.toDate ? aTs.toDate().getTime() : (aTs instanceof Date ? aTs.getTime() : 0)
+            const bTime = bTs?.toDate ? bTs.toDate().getTime() : (bTs instanceof Date ? bTs.getTime() : 0)
+            return aTime - bTime
+        })
+    }, [messageHistory, employeeId])
+
+    // Filter messages by search query (body, job name, address, date/time)
+    const filteredEmployeeMessages = useMemo(() => {
+        const q = (messageSearchQuery || '').trim().toLowerCase()
+        if (!q) return employeeMessages
+        return employeeMessages.filter((msg) => {
+            const sentAt = msg.sentAt || msg.date
+            const dateStr = sentAt ? `${formatMessageDate(sentAt)} ${formatMessageTime(sentAt)}` : ''
+            const text = [
+                msg.body,
+                msg.tasks,
+                msg.notes,
+                msg.jobName,
+                msg.jobAddress,
+                dateStr,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase()
+            return text.includes(q)
+        })
+    }, [employeeMessages, messageSearchQuery])
 
     const formatDateOnly = (date) => {
         if (!date) return '-'
@@ -480,13 +586,111 @@ const EmployeeDetail = () => {
                 </div>
             </Card>
 
-            {/* Message History Section - Coming Soon */}
+            {/* Message History */}
             <Card>
                 <div className="p-6">
-                    <h2 className="text-lg font-semibold mb-4">Message History</h2>
-                    <p className="text-gray-600 dark:text-gray-400">
-                        Message history will be displayed here once messaging is implemented.
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-2">
+                            <HiOutlineChatAlt2 className="text-xl text-primary" />
+                            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Message History
+                            </h2>
+                            {messageHistoryLoading && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Loading...</span>
+                            )}
+                        </div>
+                        <Input
+                            placeholder="Search messages..."
+                            value={messageSearchQuery}
+                            onChange={(e) => setMessageSearchQuery(e.target.value)}
+                            className="max-w-xs ml-auto"
+                            size="sm"
+                        />
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Messages sent to this employee from the Crew Tracker (schedule or Messages tab).
+                        Once the Twilio A2P campaign is approved, new SMS will appear here in real time.
                     </p>
+
+                    {messageHistoryError && (
+                        <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-200">
+                            {messageHistoryError}
+                        </div>
+                    )}
+
+                    {!messageHistoryLoading && !messageHistoryError && employeeMessages.length === 0 && (
+                        <div className="py-8 text-center rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                No messages yet for this employee.
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
+                                Messages will appear here after you send job assignments or direct messages from Crew Tracker.
+                            </p>
+                        </div>
+                    )}
+
+                    {!messageHistoryLoading && !messageHistoryError && employeeMessages.length > 0 && filteredEmployeeMessages.length === 0 && (
+                        <div className="py-6 text-center rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                No messages match your search.
+                            </p>
+                        </div>
+                    )}
+
+                    {!messageHistoryLoading && filteredEmployeeMessages.length > 0 && (
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                            {filteredEmployeeMessages.map((msg) => {
+                                const isOutbound = msg.direction === 'outbound'
+                                const sentAt = msg.sentAt || msg.date
+                                const primaryText =
+                                    msg.body ||
+                                    msg.tasks ||
+                                    msg.notes ||
+                                    msg.jobName ||
+                                    ''
+                                const secondaryParts = []
+                                if (msg.jobName && primaryText !== msg.jobName) {
+                                    secondaryParts.push(`Job: ${msg.jobName}`)
+                                }
+                                if (msg.jobAddress) {
+                                    secondaryParts.push(msg.jobAddress)
+                                }
+
+                                return (
+                                    <div
+                                        key={msg.id}
+                                        className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div
+                                            className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs shadow-sm ${
+                                                isOutbound
+                                                    ? 'bg-primary text-white rounded-br-sm'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm border border-gray-200 dark:border-gray-700'
+                                            }`}
+                                        >
+                                            {primaryText && (
+                                                <div className="whitespace-pre-line leading-relaxed">
+                                                    {primaryText}
+                                                </div>
+                                            )}
+                                            {secondaryParts.length > 0 && (
+                                                <div className="mt-1 opacity-90 text-[10px]">
+                                                    {secondaryParts.join(' · ')}
+                                                </div>
+                                            )}
+                                            <div
+                                                className={`mt-1 text-[10px] flex justify-end ${
+                                                    isOutbound ? 'text-white/85' : 'text-gray-500 dark:text-gray-400'
+                                                }`}
+                                            >
+                                                {formatMessageTime(sentAt)} {formatMessageDate(sentAt)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
             </Card>
         </div>
