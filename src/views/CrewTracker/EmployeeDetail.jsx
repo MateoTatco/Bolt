@@ -17,7 +17,9 @@ const EmployeeDetail = () => {
     const [loading, setLoading] = useState(true)
     const [isEditing, setIsEditing] = useState(false)
     const [formData, setFormData] = useState({
-        name: '',
+        firstName: '',
+        lastName: '',
+        nickname: '',
         phone: '',
         email: '',
         language: 'en',
@@ -42,7 +44,9 @@ const EmployeeDetail = () => {
                     const emp = response.data
                     setEmployee(emp)
                     setFormData({
-                        name: emp.name || '',
+                        firstName: emp.firstName || '',
+                        lastName: emp.lastName || '',
+                        nickname: emp.nickname || '',
                         phone: emp.phone || '',
                         email: emp.email || '',
                         language: emp.language || 'en',
@@ -156,8 +160,8 @@ const EmployeeDetail = () => {
     const validate = () => {
         const newErrors = {}
         
-        if (!formData.name.trim()) {
-            newErrors.name = 'Name is required'
+        if (!formData.firstName.trim()) {
+            newErrors.firstName = 'First name is required'
         }
         
         if (!formData.phone) {
@@ -197,8 +201,20 @@ const EmployeeDetail = () => {
                 normalizedPhone = `+${normalizedPhone}`
             }
 
+            const firstName = formData.firstName.trim()
+            const lastName = formData.lastName.trim()
+            const nickname = formData.nickname.trim()
+            const combinedNameBase = `${firstName} ${lastName}`.trim() || nickname || ''
+
             const employeeData = {
                 ...formData,
+                firstName: firstName || null,
+                lastName: lastName || null,
+                nickname: nickname || null,
+                // Maintain a combined name string for existing tables/search
+                name: combinedNameBase
+                    ? (nickname && (firstName || lastName) ? `${combinedNameBase} (${nickname})` : combinedNameBase)
+                    : (employee?.name || null),
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
             }
@@ -221,7 +237,9 @@ const EmployeeDetail = () => {
     const handleCancel = () => {
         if (employee) {
             setFormData({
-                name: employee.name || '',
+                firstName: employee.firstName || '',
+                lastName: employee.lastName || '',
+                nickname: employee.nickname || '',
                 phone: employee.phone || '',
                 email: employee.email || '',
                 language: employee.language || 'en',
@@ -417,7 +435,11 @@ const EmployeeDetail = () => {
                         onClick={() => navigate('/crew-tracker')}
                     />
                     <div>
-                        <h1 className="text-2xl font-bold">{employee.name}</h1>
+                        <h1 className="text-2xl font-bold">
+                            {employee.firstName || employee.lastName
+                                ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim()
+                                : (employee.name || '-')}
+                        </h1>
                         <p className="text-gray-600 dark:text-gray-400 text-sm">
                             Employee Details
                         </p>
@@ -450,13 +472,36 @@ const EmployeeDetail = () => {
                         <FormContainer>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <FormItem
-                                    label="Name *"
-                                    invalid={!!errors.name}
-                                    errorMessage={errors.name}
+                                    label="First Name *"
+                                    invalid={!!errors.firstName}
+                                    errorMessage={errors.firstName}
                                 >
                                     <Input
-                                        value={formData.name}
-                                        onChange={(e) => handleChange('name', e.target.value)}
+                                        value={formData.firstName}
+                                        onChange={(e) => handleChange('firstName', e.target.value)}
+                                    />
+                                </FormItem>
+
+                                <FormItem
+                                    label="Last Name"
+                                    invalid={!!errors.lastName}
+                                    errorMessage={errors.lastName}
+                                >
+                                    <Input
+                                        value={formData.lastName}
+                                        onChange={(e) => handleChange('lastName', e.target.value)}
+                                    />
+                                </FormItem>
+
+                                <FormItem
+                                    label="Nickname / Role hint (optional)"
+                                    invalid={!!errors.nickname}
+                                    errorMessage={errors.nickname}
+                                >
+                                    <Input
+                                        value={formData.nickname}
+                                        onChange={(e) => handleChange('nickname', e.target.value)}
+                                        placeholder="e.g. Painter, Door Jamie"
                                     />
                                 </FormItem>
 
@@ -532,8 +577,15 @@ const EmployeeDetail = () => {
                                     Name
                                 </label>
                                 <p className="mt-1 text-gray-900 dark:text-gray-100">
-                                    {employee.name || '-'}
+                                    {employee.firstName || employee.lastName
+                                        ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim()
+                                        : (employee.name || '-')}
                                 </p>
+                                {employee.nickname && (
+                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Nickname / role: {employee.nickname}
+                                    </p>
+                                )}
                             </div>
 
                             <div>

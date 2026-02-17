@@ -4,7 +4,9 @@ import { HiOutlineX } from 'react-icons/hi'
 
 const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
     const [formData, setFormData] = useState({
-        name: '',
+        firstName: '',
+        lastName: '',
+        nickname: '',
         phone: '',
         email: '',
         language: 'en',
@@ -16,7 +18,9 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
     useEffect(() => {
         if (employee) {
             setFormData({
-                name: employee.name || '',
+                firstName: employee.firstName || '',
+                lastName: employee.lastName || '',
+                nickname: employee.nickname || '',
                 phone: employee.phone || '',
                 email: employee.email || '',
                 language: employee.language || 'en',
@@ -24,7 +28,9 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
             })
         } else {
             setFormData({
-                name: '',
+                firstName: '',
+                lastName: '',
+                nickname: '',
                 phone: '',
                 email: '',
                 language: 'en',
@@ -91,8 +97,8 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
     const validate = () => {
         const newErrors = {}
         
-        if (!formData.name.trim()) {
-            newErrors.name = 'Name is required'
+        if (!formData.firstName.trim()) {
+            newErrors.firstName = 'First name is required'
         }
         
         const phoneError = validatePhone(formData.phone)
@@ -129,8 +135,20 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 normalizedPhone = `+${normalizedPhone}`
             }
 
+            const firstName = formData.firstName.trim()
+            const lastName = formData.lastName.trim()
+            const nickname = formData.nickname.trim()
+            const combinedNameBase = `${firstName} ${lastName}`.trim() || nickname || ''
+
             const employeeData = {
                 ...formData,
+                firstName: firstName || null,
+                lastName: lastName || null,
+                nickname: nickname || null,
+                // Keep legacy combined name for existing views/search
+                name: combinedNameBase
+                    ? (nickname && (firstName || lastName) ? `${combinedNameBase} (${nickname})` : combinedNameBase)
+                    : employee?.name || null,
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
             }
@@ -160,15 +178,41 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
 
             <form onSubmit={handleSubmit}>
                 <FormContainer>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormItem
+                            label="First Name *"
+                            invalid={!!errors.firstName}
+                            errorMessage={errors.firstName}
+                        >
+                            <Input
+                                value={formData.firstName}
+                                onChange={(e) => handleChange('firstName', e.target.value)}
+                                placeholder="Enter first name"
+                            />
+                        </FormItem>
+
+                        <FormItem
+                            label="Last Name"
+                            invalid={!!errors.lastName}
+                            errorMessage={errors.lastName}
+                        >
+                            <Input
+                                value={formData.lastName}
+                                onChange={(e) => handleChange('lastName', e.target.value)}
+                                placeholder="Enter last name"
+                            />
+                        </FormItem>
+                    </div>
+
                     <FormItem
-                        label="Name *"
-                        invalid={!!errors.name}
-                        errorMessage={errors.name}
+                        label="Nickname / Role hint (optional)"
+                        invalid={!!errors.nickname}
+                        errorMessage={errors.nickname}
                     >
                         <Input
-                            value={formData.name}
-                            onChange={(e) => handleChange('name', e.target.value)}
-                            placeholder="Enter employee name"
+                            value={formData.nickname}
+                            onChange={(e) => handleChange('nickname', e.target.value)}
+                            placeholder="e.g. Painter, Door Jamie"
                         />
                     </FormItem>
 

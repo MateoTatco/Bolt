@@ -254,11 +254,24 @@ const JobDetail = () => {
 
     // Employee options for selects
     const employeeOptions = useMemo(() => {
+        const buildDisplayName = (emp) => {
+            const first = (emp.firstName || '').trim()
+            const last = (emp.lastName || '').trim()
+            const nickname = (emp.nickname || '').trim()
+            const base =
+                (first || last)
+                    ? `${first} ${last}`.trim()
+                    : (emp.name || nickname || 'Unnamed')
+            return nickname && (first || last)
+                ? `${base} (${nickname})`
+                : base
+        }
+
         return employees
             .filter(emp => emp.active !== false)
             .map(emp => ({
                 value: emp.id,
-                label: emp.name,
+                label: buildDisplayName(emp),
             }))
     }, [employees])
 
@@ -513,7 +526,7 @@ const JobDetail = () => {
         )
     }
 
-    const currentStatus = job.status || (job.active === false ? 'Inactive' : 'In Progress')
+    const currentStatus = job.status === 'Inactive' || job.active === false ? 'Inactive' : 'Active'
     const statusClass = currentStatus === 'Inactive'
         ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
         : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'

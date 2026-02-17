@@ -33,7 +33,7 @@ const CrewTracker = () => {
     const [jobsImporting, setJobsImporting] = useState(false)
     const jobsFileInputRef = useRef(null)
     const [selectedJobIds, setSelectedJobIds] = useState([])
-    const [bulkStatus, setBulkStatus] = useState('In Progress')
+    const [bulkStatus, setBulkStatus] = useState('Active')
 
     // Messaging state
     const [selectedJobIdForMessage, setSelectedJobIdForMessage] = useState(null)
@@ -382,6 +382,21 @@ const CrewTracker = () => {
         }
     }
 
+    // Helper to build a consistent employee display name using first/last/nickname when available
+    const getEmployeeDisplayName = (emp) => {
+        if (!emp) return 'Unnamed'
+        const first = (emp.firstName || '').trim()
+        const last = (emp.lastName || '').trim()
+        const nickname = (emp.nickname || '').trim()
+        const base =
+            (first || last)
+                ? `${first} ${last}`.trim()
+                : (emp.name || nickname || 'Unnamed')
+        return nickname && (first || last)
+            ? `${base} (${nickname})`
+            : base
+    }
+
     // Table columns for employees
     const employeeColumns = useMemo(() => [
         {
@@ -390,9 +405,10 @@ const CrewTracker = () => {
             size: 200,
             cell: ({ row }) => {
                 const employee = row.original
+                const displayName = getEmployeeDisplayName(employee)
                 return (
                     <div className="flex flex-col">
-                        <span className="font-medium">{employee.name || '-'}</span>
+                        <span className="font-medium">{displayName}</span>
                         {employee.email && (
                             <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {employee.email}
@@ -504,11 +520,9 @@ const CrewTracker = () => {
         return employees.filter(emp => emp.active === false)
     }, [employees])
 
+    // From the crew's perspective a job is either Active (they go there) or Inactive (they don't).
     const jobStatusOptions = [
-        { value: 'Proposal', label: 'Proposal' },
-        { value: 'In Progress', label: 'In Progress' },
-        { value: 'Request', label: 'Request' },
-        { value: 'Draft', label: 'Draft' },
+        { value: 'Active', label: 'Active' },
         { value: 'Inactive', label: 'Inactive' },
     ]
 
@@ -548,15 +562,19 @@ const CrewTracker = () => {
             size: 160,
             cell: ({ row }) => {
                 const job = row.original
-                const status = job.status || (job.active === false ? 'Inactive' : 'In Progress')
+                const status = job.status === 'Inactive' || job.active === false ? 'Inactive' : 'Active'
                 return (
                     <Select
                         className="min-w-[150px]"
                         options={jobStatusOptions}
-                        value={jobStatusOptions.find(opt => opt.value === status) || jobStatusOptions[1]}
+                        value={jobStatusOptions.find(opt => opt.value === status) || jobStatusOptions[0]}
                         onChange={async (option) => {
                             if (!option) return
-                            await updateJob(job.id, { status: option.value })
+                            const isActive = option.value !== 'Inactive'
+                            await updateJob(job.id, {
+                                status: option.value,
+                                active: isActive,
+                            })
                         }}
                         menuPortalTarget={document.body}
                         menuPosition="fixed"
@@ -599,8 +617,8 @@ const CrewTracker = () => {
             size: 180,
             cell: ({ row }) => {
                 const job = row.original
-                const status = job.status || (job.active === false ? 'Inactive' : 'In Progress')
-                const isActive = status !== 'Inactive'
+                const status = job.status === 'Inactive' || job.active === false ? 'Inactive' : 'Active'
+                const isActive = status === 'Active'
                 return (
                     <div className="flex items-center gap-2">
                         <Tooltip title="View Details">
@@ -634,7 +652,7 @@ const CrewTracker = () => {
                                 : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
                             }`}
                         >
-                            {status}
+                            {isActive ? 'Active' : 'Inactive'}
                         </Tag>
                     </div>
                 )
@@ -644,7 +662,7 @@ const CrewTracker = () => {
 
     // Filtered jobs - separate active and inactive
     const activeJobs = useMemo(() => {
-        let filtered = jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
+        let filtered = jobs.filter(job => (job.active !== false) && job.status !== 'Inactive')
         
         // Apply search filter if present (searches in project, name, address, and tasks)
         if (jobFilters.search && jobFilters.search.trim()) {
@@ -666,7 +684,7 @@ const CrewTracker = () => {
     }, [jobs, jobFilters.search])
 
     const inactiveJobs = useMemo(() => {
-        let filtered = jobs.filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) === 'Inactive')
+        let filtered = jobs.filter(job => job.active === false || job.status === 'Inactive')
         
         // Apply search filter if present (searches in project, name, address, and tasks)
         if (jobFilters.search && jobFilters.search.trim()) {
@@ -718,7 +736,7 @@ const CrewTracker = () => {
     // Job & employee options for messaging composer
     const jobOptionsForMessages = useMemo(() => {
         return jobs
-            .filter(job => (job.status || (job.active === false ? 'Inactive' : 'In Progress')) !== 'Inactive')
+            .filter(job => (job.active !== false) && job.status !== 'Inactive')
             .map(job => ({
                 value: job.id,
                 label: job.address ? `${job.name || 'Untitled Job'} — ${job.address}` : (job.name || 'Untitled Job'),
@@ -728,10 +746,13 @@ const CrewTracker = () => {
     const employeeOptionsForMessages = useMemo(() => {
         return employees
             .filter(emp => emp.active !== false && emp.phone)
-            .map(emp => ({
-                value: emp.id,
-                label: `${emp.name || 'Unnamed'} (${formatPhoneDisplay(emp.phone)})${emp.language === 'es' ? ' — ES' : ' — EN'}`,
-            }))
+            .map(emp => {
+                const name = getEmployeeDisplayName(emp)
+                return ({
+                    value: emp.id,
+                    label: `${name} (${formatPhoneDisplay(emp.phone)})${emp.language === 'es' ? ' — ES' : ' — EN'}`,
+                })
+            })
     }, [employees])
 
     const selectedJobForMessage = useMemo(
@@ -1022,7 +1043,7 @@ const CrewTracker = () => {
         () =>
             employees.map((emp) => ({
                 value: emp.id,
-                label: emp.name || 'Unnamed',
+                label: getEmployeeDisplayName(emp),
             })),
         [employees],
     )
