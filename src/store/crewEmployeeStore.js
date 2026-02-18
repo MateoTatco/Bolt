@@ -36,20 +36,10 @@ export const useCrewEmployeeStore = create((set, get) => ({
             
             const response = await FirebaseDbService.crewEmployees.getAll(queryFilters)
             if (response.success) {
-                // Apply client-side search filter if provided
-                let filteredEmployees = response.data || []
-                
-                if (filters.search) {
-                    const searchLower = filters.search.toLowerCase()
-                    filteredEmployees = filteredEmployees.filter(emp => 
-                        emp.name?.toLowerCase().includes(searchLower) ||
-                        emp.phone?.toLowerCase().includes(searchLower) ||
-                        emp.email?.toLowerCase().includes(searchLower)
-                    )
-                }
-                
+                // Don't apply search filter here - search is local to EmployeesTab only
+                // This keeps the full employee list available for schedule dropdown
                 set({ 
-                    employees: filteredEmployees, 
+                    employees: response.data || [], 
                     loading: false 
                 })
             } else {

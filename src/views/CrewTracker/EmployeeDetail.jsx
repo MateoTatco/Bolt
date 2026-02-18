@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Tooltip } from '@/components/ui'
+import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
-import { HiOutlineArrowLeft, HiOutlinePencil, HiOutlineCheck, HiOutlineX, HiOutlineChatAlt2 } from 'react-icons/hi'
+import { HiOutlineArrowLeft, HiOutlinePencil, HiOutlineCheck, HiOutlineX, HiOutlineChatAlt2, HiOutlineTrash } from 'react-icons/hi'
 import { toast } from '@/components/ui/toast'
 import Notification from '@/components/ui/Notification'
 import * as XLSX from 'xlsx'
@@ -24,6 +25,7 @@ const EmployeeDetail = () => {
         email: '',
         language: 'en',
         active: true,
+        timeOffRanges: [],
     })
     const [errors, setErrors] = useState({})
     const [saving, setSaving] = useState(false)
@@ -51,6 +53,7 @@ const EmployeeDetail = () => {
                         email: emp.email || '',
                         language: emp.language || 'en',
                         active: emp.active !== undefined ? emp.active : true,
+                        timeOffRanges: emp.timeOffRanges || [],
                     })
                 } else {
                     toast.push(
@@ -206,6 +209,12 @@ const EmployeeDetail = () => {
             const nickname = formData.nickname.trim()
             const combinedNameBase = `${firstName} ${lastName}`.trim() || nickname || ''
 
+            // Process time-off ranges
+            const processedTimeOffRanges = (formData.timeOffRanges || []).map(range => ({
+                start: range.start,
+                end: range.end,
+            }))
+
             const employeeData = {
                 ...formData,
                 firstName: firstName || null,
@@ -217,6 +226,7 @@ const EmployeeDetail = () => {
                     : (employee?.name || null),
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
+                timeOffRanges: processedTimeOffRanges,
             }
 
             await updateEmployee(employeeId, employeeData)
@@ -244,6 +254,7 @@ const EmployeeDetail = () => {
                 email: employee.email || '',
                 language: employee.language || 'en',
                 active: employee.active !== undefined ? employee.active : true,
+                timeOffRanges: employee.timeOffRanges || [],
             })
         }
         setErrors({})
@@ -387,14 +398,46 @@ const EmployeeDetail = () => {
                 })
             }
 
-            if (exportRows.length === 0) {
-                alert('No schedule assignments found for this employee.')
-                return
+            // Prepare time-off ranges data
+            const timeOffRows = []
+            if (employee.timeOffRanges && Array.isArray(employee.timeOffRanges) && employee.timeOffRanges.length > 0) {
+                employee.timeOffRanges.forEach((range, index) => {
+                    let startDate = range.start
+                    let endDate = range.end
+                    
+                    if (startDate?.toDate) startDate = startDate.toDate()
+                    else if (typeof startDate === 'string') startDate = new Date(startDate)
+                    
+                    if (endDate?.toDate) endDate = endDate.toDate()
+                    else if (typeof endDate === 'string') endDate = new Date(endDate)
+
+                    timeOffRows.push({
+                        'Time Off Range': `Range ${index + 1}`,
+                        'Start Date': formatDateOnly(startDate),
+                        'End Date': formatDateOnly(endDate),
+                    })
+                })
             }
 
-            const ws = XLSX.utils.json_to_sheet(exportRows)
+            // Create workbook with multiple sheets
             const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+            
+            // Schedule sheet
+            if (exportRows.length > 0) {
+                const ws = XLSX.utils.json_to_sheet(exportRows)
+                XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+            }
+
+            // Time Off Ranges sheet
+            if (timeOffRows.length > 0) {
+                const wsTimeOff = XLSX.utils.json_to_sheet(timeOffRows)
+                XLSX.utils.book_append_sheet(wb, wsTimeOff, 'Time Off Ranges')
+            }
+
+            if (exportRows.length === 0 && timeOffRows.length === 0) {
+                alert('No schedule assignments or time-off ranges found for this employee.')
+                return
+            }
 
             const employeePart = safeFileNamePart(employee.name || employeeId)
             const today = new Date().toISOString().split('T')[0]
@@ -552,6 +595,96 @@ const EmployeeDetail = () => {
                                 </FormItem>
                             </div>
 
+                            <FormItem label="Time Off Ranges">
+                                <div className="space-y-3">
+                                    {formData.timeOffRanges.map((range, index) => {
+                                        let startDate = range.start
+                                        let endDate = range.end
+                                        
+                                        if (startDate?.toDate) startDate = startDate.toDate()
+                                        else if (typeof startDate === 'string') startDate = new Date(startDate)
+                                        
+                                        if (endDate?.toDate) endDate = endDate.toDate()
+                                        else if (typeof endDate === 'string') endDate = new Date(endDate)
+
+                                        return (
+                                            <div key={index} className="flex items-start gap-2 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                <div className="flex-1">
+                                                    <DatePickerRange
+                                                        value={startDate && endDate ? [startDate, endDate] : (startDate ? [startDate, null] : undefined)}
+                                                        onChange={(dates) => {
+                                                            if (!dates || !Array.isArray(dates)) {
+                                                                // Clear the range if dates is null/undefined
+                                                                const newRanges = [...formData.timeOffRanges]
+                                                                newRanges[index] = {
+                                                                    start: null,
+                                                                    end: null,
+                                                                }
+                                                                setFormData({ ...formData, timeOffRanges: newRanges })
+                                                                return
+                                                            }
+                                                            const newRanges = [...formData.timeOffRanges]
+                                                            // Only update when we have at least one date
+                                                            if (dates.length >= 1 && dates[0]) {
+                                                                if (dates.length >= 2 && dates[1]) {
+                                                                    // Both dates selected - complete range
+                                                                    newRanges[index] = {
+                                                                        start: dates[0],
+                                                                        end: dates[1],
+                                                                    }
+                                                                } else {
+                                                                    // Only first date selected - partial range
+                                                                    newRanges[index] = {
+                                                                        start: dates[0],
+                                                                        end: null,
+                                                                    }
+                                                                }
+                                                                setFormData({ ...formData, timeOffRanges: newRanges })
+                                                            }
+                                                        }}
+                                                        inputFormat="MM/DD/YYYY"
+                                                        closePickerOnChange={true}
+                                                    />
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="plain"
+                                                    icon={<HiOutlineTrash />}
+                                                    className="text-red-500 hover:text-red-600"
+                                                    onClick={() => {
+                                                        const newRanges = formData.timeOffRanges.filter((_, i) => i !== index)
+                                                        setFormData({ ...formData, timeOffRanges: newRanges })
+                                                    }}
+                                                />
+                                            </div>
+                                        )
+                                    })}
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            setFormData({
+                                                ...formData,
+                                                timeOffRanges: [
+                                                    ...formData.timeOffRanges,
+                                                    { start: null, end: null },
+                                                ],
+                                            })
+                                        }}
+                                    >
+                                        Add Time Off Range
+                                    </Button>
+                                    {formData.timeOffRanges.length === 0 && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            No time-off ranges set. Click "Add Time Off Range" to add one.
+                                        </p>
+                                    )}
+                                </div>
+                            </FormItem>
+
                             <div className="flex justify-end gap-2 mt-6">
                                 <Button
                                     variant="plain"
@@ -631,6 +764,36 @@ const EmployeeDetail = () => {
                                     }>
                                         {employee.active !== false ? 'Active' : 'Inactive'}
                                     </Tag>
+                                </div>
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Time Off Ranges
+                                </label>
+                                <div className="mt-2 space-y-2">
+                                    {employee.timeOffRanges && employee.timeOffRanges.length > 0 ? (
+                                        employee.timeOffRanges.map((range, index) => {
+                                            let startDate = range.start
+                                            let endDate = range.end
+                                            
+                                            if (startDate?.toDate) startDate = startDate.toDate()
+                                            else if (typeof startDate === 'string') startDate = new Date(startDate)
+                                            
+                                            if (endDate?.toDate) endDate = endDate.toDate()
+                                            else if (typeof endDate === 'string') endDate = new Date(endDate)
+
+                                            return (
+                                                <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700">
+                                                    <span className="text-sm text-gray-900 dark:text-gray-100">
+                                                        {formatDateOnly(startDate)} - {formatDateOnly(endDate)}
+                                                    </span>
+                                                </div>
+                                            )
+                                        })
+                                    ) : (
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">No time-off ranges set</p>
+                                    )}
                                 </div>
                             </div>
                         </div>

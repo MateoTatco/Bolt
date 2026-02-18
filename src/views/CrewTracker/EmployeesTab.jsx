@@ -1,8 +1,25 @@
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import { Input, Select } from '@/components/ui'
 import DataTable from '@/components/shared/DataTable'
 
 const EmployeesTab = ({ filters, setFilters, columns, data, loading }) => {
+    // Local search state - doesn't affect global employee list
+    const [localSearch, setLocalSearch] = useState(filters.search || '')
+    
+    // Filter data locally for display only
+    const filteredData = useMemo(() => {
+        if (!localSearch.trim()) return data
+        const searchLower = localSearch.toLowerCase()
+        return data.filter(emp => 
+            (emp.firstName || '').toLowerCase().includes(searchLower) ||
+            (emp.lastName || '').toLowerCase().includes(searchLower) ||
+            (emp.name || '').toLowerCase().includes(searchLower) ||
+            (emp.nickname || '').toLowerCase().includes(searchLower) ||
+            (emp.phone || '').toLowerCase().includes(searchLower) ||
+            (emp.email || '').toLowerCase().includes(searchLower)
+        )
+    }, [data, localSearch])
+
     return (
         <>
             {/* Filters */}
@@ -10,8 +27,8 @@ const EmployeesTab = ({ filters, setFilters, columns, data, loading }) => {
                 <div>
                     <Input
                         placeholder="Search employees..."
-                        value={filters.search}
-                        onChange={(e) => setFilters({ search: e.target.value })}
+                        value={localSearch}
+                        onChange={(e) => setLocalSearch(e.target.value)}
                     />
                 </div>
                 <div>
@@ -38,7 +55,7 @@ const EmployeesTab = ({ filters, setFilters, columns, data, loading }) => {
             <div className="pt-4">
                 <DataTable
                     columns={columns}
-                    data={data}
+                    data={filteredData}
                     loading={loading}
                     skeletonAvatarColumns={[0]}
                     skeletonAvatarProps={{ size: 32 }}

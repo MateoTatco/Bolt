@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
-import { Button, DatePicker, Alert, Input, Select, Tag, Tooltip } from '@/components/ui'
+import { Button, DatePicker, Alert, Input, Select, Tag, Tooltip, Dialog, Card } from '@/components/ui'
+import Chart from '@/components/shared/Chart'
 import {
     HiOutlineClock,
     HiOutlineChatAlt2,
@@ -8,6 +9,10 @@ import {
     HiOutlineTrash,
     HiOutlineSearch,
     HiOutlineX,
+    HiOutlineDuplicate,
+    HiOutlinePlus,
+    HiOutlineUserGroup,
+    HiOutlineBriefcase,
 } from 'react-icons/hi'
 
 // Auto-grow textarea helper component
@@ -80,11 +85,19 @@ const ScheduleTab = ({
     sendingMessages,
     handleExportScheduleToExcel,
     scheduleAssignments,
-    employeeOptionsForSchedule,
+    employees,
     jobOptionsForSchedule,
     updateScheduleRow,
     handleRemoveScheduleRow,
+    handleInsertScheduleSeparatorBelow,
     jobs,
+    showDuplicateDayModal,
+    setShowDuplicateDayModal,
+    duplicateTargetDate,
+    setDuplicateTargetDate,
+    handleDuplicateDay,
+    duplicatingDay,
+    formatDateOnly,
 }) => {
     const [columnWidths, setColumnWidths] = useState({
         employee: 200,
@@ -100,7 +113,7 @@ const ScheduleTab = ({
         actions: 100,
     })
     const [resizingColumn, setResizingColumn] = useState(null)
-    const [activeView, setActiveView] = useState('schedule') // 'schedule' | 'exceptions'
+    const [activeView, setActiveView] = useState('schedule') // 'schedule' | 'exceptions' | 'summary'
     const [highlightedRowIds, setHighlightedRowIds] = useState([])
     const [exceptionAttentionSet, setExceptionAttentionSet] = useState(new Set()) // 'rowKey-fieldName' until user focuses
     const [visibleColumns, setVisibleColumns] = useState({
@@ -117,6 +130,68 @@ const ScheduleTab = ({
         actions: true,
     })
     const [scheduleSearchText, setScheduleSearchText] = useState('')
+
+    // Base employee options with rich display name
+    const allEmployeeOptions = useMemo(
+        () =>
+            (employees || []).map((emp) => {
+                const first = (emp.firstName || '').trim()
+                const last = (emp.lastName || '').trim()
+                const nickname = (emp.nickname || '').trim()
+                const base =
+                    (first || last)
+                        ? `${first} ${last}`.trim()
+                        : (emp.name || nickname || 'Unnamed')
+
+                const isOffToday = (() => {
+                    const ranges = emp.timeOffRanges || []
+                    if (!ranges.length) return false
+                    let jsDate
+                    if (scheduleDate?.toDate) jsDate = scheduleDate.toDate()
+                    else if (scheduleDate instanceof Date) jsDate = scheduleDate
+                    else jsDate = new Date(scheduleDate)
+                    jsDate.setHours(0, 0, 0, 0)
+                    return ranges.some((r) => {
+                        if (!r || (!r.start && !r.end)) return false
+                        let start = r.start
+                        let end = r.end
+                        if (start?.toDate) start = start.toDate()
+                        else if (typeof start === 'string') start = new Date(start)
+                        if (end?.toDate) end = end.toDate()
+                        else if (typeof end === 'string') end = new Date(end)
+                        const startMs = start ? new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime() : null
+                        const endMs = end ? new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime() : null
+                        const dMs = jsDate.getTime()
+                        if (startMs !== null && dMs < startMs) return false
+                        if (endMs !== null && dMs > endMs) return false
+                        return true
+                    })
+                })()
+
+                const labelBase = nickname && (first || last)
+                    ? `${base} (${nickname})`
+                    : base
+
+                return {
+                    value: emp.id,
+                    label: isOffToday ? `${labelBase} — ⏸️ Time off` : labelBase,
+                    isOffToday,
+                    disabled: false, // Still allow selection but show visual indicator
+                }
+            }),
+        [employees, scheduleDate],
+    )
+
+    // Employees already scheduled for this date (for uniqueness)
+    const usedEmployeeIds = useMemo(
+        () =>
+            new Set(
+                (scheduleAssignments || [])
+                    .map((row) => row.employeeId)
+                    .filter(Boolean),
+            ),
+        [scheduleAssignments],
+    )
 
     // Filter schedule assignments based on search text
     const filteredScheduleAssignments = useMemo(() => {
@@ -384,6 +459,63 @@ const ScheduleTab = ({
         }
     }, [visibleColumns])
 
+    // Ensure there is always at least one completely empty row for adding new assignments
+    useEffect(() => {
+        const hasEmptyRow = scheduleAssignments.some((row) => {
+            return (
+                !row.employeeId &&
+                !row.jobId &&
+                !row.costCode &&
+                !row.w2Hours &&
+                !row.scheduledTasks &&
+                !row.addedTasks &&
+                !row.notes &&
+                !row.tasksNotCompleted &&
+                !row.materialsNeeded
+            )
+        })
+
+        if (!hasEmptyRow) {
+            handleAddScheduleRow()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scheduleAssignments])
+
+    // Simple counts for header KPI
+    const totalActiveEmployees = useMemo(
+        () => (employees || []).filter((e) => e.active !== false).length,
+        [employees],
+    )
+    const scheduledCount = useMemo(
+        () => (scheduleAssignments || []).filter((row) => row.employeeId).length,
+        [scheduleAssignments],
+    )
+
+    // Simple per-job summary for KPI view
+    const jobSummaries = useMemo(() => {
+        const map = new Map()
+        ;(scheduleAssignments || []).forEach((row) => {
+            if (!row.jobId) return
+            const key = row.jobId
+            if (!map.has(key)) {
+                const job = jobs.find((j) => j.id === row.jobId)
+                map.set(key, {
+                    jobId: row.jobId,
+                    jobName: job?.name || row.jobName || 'Job',
+                    jobAddress: job?.address || row.jobAddress || '',
+                    employeeCount: 0,
+                })
+            }
+            const entry = map.get(key)
+            if (row.employeeId) {
+                entry.employeeCount += 1
+            }
+        })
+        return Array.from(map.values()).sort((a, b) =>
+            a.jobName.localeCompare(b.jobName),
+        )
+    }, [scheduleAssignments, jobs])
+
     return (
         <div className="pt-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -391,9 +523,14 @@ const ScheduleTab = ({
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <HiOutlineClock className="text-xl" />
                     </div>
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Daily crew schedule
-                    </h2>
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Daily crew schedule
+                        </h2>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                            {scheduledCount} scheduled / {totalActiveEmployees} active employees
+                        </p>
+                    </div>
                 </div>
                 <div className="flex-1 max-w-md flex justify-end">
                     <Input
@@ -453,6 +590,7 @@ const ScheduleTab = ({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <Button
+                        size="sm"
                         variant="twoTone"
                         icon={<HiOutlineRefresh />}
                         loading={scheduleLoading}
@@ -460,36 +598,49 @@ const ScheduleTab = ({
                             setScheduleDate(new Date(scheduleDate))
                         }}
                     >
-                        Reload
+                        <span className="hidden sm:inline">Reload</span>
                     </Button>
                     <Button
+                        size="sm"
                         variant="outline"
+                        icon={<HiOutlinePlus />}
                         onClick={handleAddScheduleRow}
                     >
-                        Add row
+                        <span className="hidden sm:inline">Add row</span>
                     </Button>
                     <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<HiOutlineDuplicate />}
+                        onClick={() => setShowDuplicateDayModal(true)}
+                    >
+                        <span className="hidden sm:inline">Duplicate Day</span>
+                    </Button>
+                    <Button
+                        size="sm"
                         variant="outline"
                         icon={<HiOutlineDownload />}
                         onClick={handleExportScheduleToExcel}
                     >
-                        Export to Excel
+                        <span className="hidden sm:inline">Export</span>
                     </Button>
                     <Button
+                        size="sm"
                         variant="twoTone"
                         loading={scheduleSaving}
                         onClick={handleSaveSchedule}
                     >
-                        Save schedule
+                        <span className="hidden sm:inline">Save</span>
                     </Button>
                     <Button
+                        size="sm"
                         variant="solid"
                         icon={<HiOutlineChatAlt2 />}
                         loading={sendingMessages}
                         disabled={sendingMessages}
                         onClick={handleSendScheduleMessages}
                     >
-                        Send SMS for this date
+                        <span className="hidden sm:inline">Send SMS</span>
                     </Button>
                 </div>
             </div>
@@ -521,6 +672,17 @@ const ScheduleTab = ({
                         <Tag className="text-[10px] sm:text-xs bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 border-indigo-200 dark:border-indigo-700">
                             {exceptions.length}
                         </Tag>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveView('summary')}
+                        className={`px-3 py-1 text-xs sm:text-sm rounded-md ${
+                            activeView === 'summary'
+                                ? 'bg-white dark:bg-gray-900 text-primary shadow-sm'
+                                : 'text-gray-600 dark:text-gray-300'
+                        }`}
+                    >
+                        Summary
                     </button>
                 </div>
 
@@ -658,6 +820,150 @@ const ScheduleTab = ({
                             })}
                         </div>
                     )}
+                </div>
+            )}
+
+            {activeView === 'summary' && (
+                <div className="space-y-4">
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">Total Scheduled</p>
+                                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                                        {scheduledCount}
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <HiOutlineUserGroup className="text-2xl text-primary" />
+                                </div>
+                            </div>
+                        </Card>
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">Active Employees</p>
+                                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                                        {totalActiveEmployees}
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                                    <HiOutlineUserGroup className="text-2xl text-green-600 dark:text-green-400" />
+                                </div>
+                            </div>
+                        </Card>
+                        <Card className="p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">Active Jobs</p>
+                                    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                                        {jobSummaries.length}
+                                    </p>
+                                </div>
+                                <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                                    <HiOutlineBriefcase className="text-2xl text-blue-600 dark:text-blue-400" />
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Charts */}
+                    {jobSummaries.length > 0 && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <Card className="p-4">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                                    Employees per Job
+                                </h3>
+                                <Chart
+                                    type="bar"
+                                    series={[
+                                        {
+                                            name: 'Employees',
+                                            data: jobSummaries.map((job) => job.employeeCount),
+                                        },
+                                    ]}
+                                    xAxis={jobSummaries.map((job) => job.jobName)}
+                                    height={300}
+                                    customOptions={{
+                                        chart: {
+                                            toolbar: { show: false },
+                                        },
+                                        colors: ['#3b82f6'],
+                                        dataLabels: {
+                                            enabled: true,
+                                        },
+                                    }}
+                                />
+                            </Card>
+                            <Card className="p-4">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                                    Job Distribution
+                                </h3>
+                                <Chart
+                                    type="donut"
+                                    series={jobSummaries.map((job) => job.employeeCount)}
+                                    height={300}
+                                    customOptions={{
+                                        labels: jobSummaries.map((job) => job.jobName),
+                                        legend: {
+                                            position: 'bottom',
+                                        },
+                                    }}
+                                />
+                            </Card>
+                        </div>
+                    )}
+
+                    {/* Job Details Table */}
+                    <Card className="p-4">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                            Job Details
+                        </h3>
+                        {jobSummaries.length === 0 ? (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-8">
+                                No scheduled assignments yet. Add rows in the schedule view to see per-job counts.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-300">
+                                                Job Name
+                                            </th>
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-300">
+                                                Address
+                                            </th>
+                                            <th className="text-right py-2 px-3 font-semibold text-gray-700 dark:text-gray-300">
+                                                Employees
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {jobSummaries.map((job) => (
+                                            <tr
+                                                key={job.jobId}
+                                                className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                                            >
+                                                <td className="py-3 px-3 text-gray-900 dark:text-white font-medium">
+                                                    {job.jobName}
+                                                </td>
+                                                <td className="py-3 px-3 text-gray-600 dark:text-gray-400">
+                                                    {job.jobAddress || '-'}
+                                                </td>
+                                                <td className="py-3 px-3 text-right">
+                                                    <Tag className="bg-primary/10 text-primary border-primary/20">
+                                                        {job.employeeCount}
+                                                    </Tag>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Card>
                 </div>
             )}
 
@@ -890,33 +1196,79 @@ const ScheduleTab = ({
                                         <tr
                                             key={rowKey}
                                             data-row-id={rowKey}
+                                            data-row-index={rowIndex}
                                             className={`align-top ${isHighlighted ? 'schedule-row-highlight' : ''}`}
                                         >
                                             {visibleColumns.employee && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
-                                                <Select
-                                                    placeholder="Employee"
-                                                    options={employeeOptionsForSchedule}
-                                                    value={
-                                                        employeeOptionsForSchedule.find(
-                                                            (opt) => opt.value === row.employeeId,
-                                                        ) || null
-                                                    }
-                                                    onChange={(option) =>
-                                                        updateScheduleRow(rowIndex, {
-                                                            employeeId: option ? option.value : '',
-                                                        })
-                                                    }
-                                                    menuPortalTarget={document.body}
-                                                    menuPosition="fixed"
-                                                    styles={{
-                                                        menuPortal: (provided) => ({
-                                                            ...provided,
-                                                            zIndex: 10000,
-                                                        }),
-                                                    }}
-                                                />
-                                            </td>
+                                                    <Select
+                                                        placeholder="Employee"
+                                                        options={allEmployeeOptions.filter((opt) =>
+                                                            opt.value === row.employeeId ||
+                                                            !usedEmployeeIds.has(opt.value),
+                                                        )}
+                                                        value={
+                                                            allEmployeeOptions.find(
+                                                                (opt) => opt.value === row.employeeId,
+                                                            ) || null
+                                                        }
+                                                        onChange={(option) =>
+                                                            updateScheduleRow(rowIndex, {
+                                                                employeeId: option ? option.value : '',
+                                                            })
+                                                        }
+                                                        formatOptionLabel={(option) => (
+                                                            <span className={option.isOffToday ? 'text-orange-600 dark:text-orange-400 font-medium' : ''}>
+                                                                {option.label}
+                                                            </span>
+                                                        )}
+                                                        menuPortalTarget={document.body}
+                                                        menuPosition="fixed"
+                                                        menuPlacement="auto"
+                                                        styles={{
+                                                            menuPortal: (provided) => ({
+                                                                ...provided,
+                                                                zIndex: 10000,
+                                                            }),
+                                                            menu: (provided, state) => {
+                                                                // Detect if near bottom of viewport
+                                                                const selectElement = state.selectProps.menuPortalTarget?.querySelector(`[id*="react-select"]`)
+                                                                if (selectElement) {
+                                                                    const rect = selectElement.getBoundingClientRect()
+                                                                    const viewportHeight = window.innerHeight
+                                                                    const spaceBelow = viewportHeight - rect.bottom
+                                                                    const spaceAbove = rect.top
+                                                                    // If less than 300px below and more space above, open upward
+                                                                    if (spaceBelow < 300 && spaceAbove > spaceBelow) {
+                                                                        return {
+                                                                            ...provided,
+                                                                            bottom: `${viewportHeight - rect.top}px`,
+                                                                            top: 'auto',
+                                                                        }
+                                                                    }
+                                                                }
+                                                                return provided
+                                                            },
+                                                            option: (provided, state) => ({
+                                                                ...provided,
+                                                                backgroundColor: state.data?.isOffToday && state.isFocused
+                                                                    ? 'rgba(251, 146, 60, 0.1)'
+                                                                    : state.isSelected
+                                                                    ? provided.backgroundColor
+                                                                    : provided.backgroundColor,
+                                                                color: state.data?.isOffToday
+                                                                    ? 'rgb(234, 88, 12)'
+                                                                    : provided.color,
+                                                            }),
+                                                            singleValue: (provided, state) => ({
+                                                                ...provided,
+                                                                color: state.data?.isOffToday
+                                                                    ? 'rgb(234, 88, 12)'
+                                                                    : provided.color,
+                                                            }),
+                                                        }}
+                                                    />
+                                                </td>
                                             )}
                                             {visibleColumns.costCode && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
@@ -1159,6 +1511,27 @@ const ScheduleTab = ({
                                                                 </Button>
                                                             </Tooltip>
                                                         )}
+                                                        <Tooltip title="Insert 3 blank separator rows below this row to visually organize your schedule">
+                                                            <Button
+                                                                size="xs"
+                                                                variant="plain"
+                                                                icon={<HiOutlinePlus />}
+                                                                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                                                                onClick={() => {
+                                                                    handleInsertScheduleSeparatorBelow(rowIndex, 3)
+                                                                    // Show a brief visual feedback
+                                                                    setTimeout(() => {
+                                                                        const row = document.querySelector(`[data-row-index="${rowIndex}"]`)
+                                                                        if (row) {
+                                                                            row.classList.add('bg-blue-50', 'dark:bg-blue-900/20')
+                                                                            setTimeout(() => {
+                                                                                row.classList.remove('bg-blue-50', 'dark:bg-blue-900/20')
+                                                                            }, 1000)
+                                                                        }
+                                                                    }, 100)
+                                                                }}
+                                                            />
+                                                        </Tooltip>
                                                         <Button
                                                             size="xs"
                                                             variant="plain"
@@ -1178,6 +1551,57 @@ const ScheduleTab = ({
                 )}
             </div>
             )}
+
+            {/* Duplicate Day Modal */}
+            <Dialog
+                isOpen={showDuplicateDayModal}
+                onClose={() => {
+                    setShowDuplicateDayModal(false)
+                    setDuplicateTargetDate(null)
+                }}
+            >
+                <div className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Duplicate Day</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Copy assignments from <strong>{formatDateOnly(scheduleDate)}</strong> to another date. This will copy Employee, Cost Code, Job, Address, and Scheduled Tasks (but not W2 Hours or Materials Needed).
+                    </p>
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Target Date (copy to)
+                        </label>
+                        <DatePicker
+                            inputtable
+                            inputtableBlurClose={false}
+                            inputFormat="MM/DD/YYYY"
+                            value={duplicateTargetDate}
+                            onChange={(date) => setDuplicateTargetDate(date)}
+                            minDate={new Date(new Date(scheduleDate).setDate(new Date(scheduleDate).getDate() + 1))}
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Select a date after {formatDateOnly(scheduleDate)} to copy assignments to.
+                        </p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            variant="plain"
+                            onClick={() => {
+                                setShowDuplicateDayModal(false)
+                                setDuplicateTargetDate(null)
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="solid"
+                            loading={duplicatingDay}
+                            disabled={!duplicateTargetDate || duplicatingDay}
+                            onClick={handleDuplicateDay}
+                        >
+                            Duplicate
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
         </div>
     )
 }

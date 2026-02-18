@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
-import { HiOutlineX } from 'react-icons/hi'
+import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
+import { HiOutlineX, HiOutlineTrash } from 'react-icons/hi'
 
 const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
     const [formData, setFormData] = useState({
@@ -11,6 +12,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
         email: '',
         language: 'en',
         active: true,
+        timeOffRanges: [],
     })
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
@@ -25,6 +27,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: employee.email || '',
                 language: employee.language || 'en',
                 active: employee.active !== undefined ? employee.active : true,
+                timeOffRanges: employee.timeOffRanges || [],
             })
         } else {
             setFormData({
@@ -35,6 +38,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: '',
                 language: 'en',
                 active: true,
+                timeOffRanges: [],
             })
         }
         setErrors({})
@@ -140,6 +144,12 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
             const nickname = formData.nickname.trim()
             const combinedNameBase = `${firstName} ${lastName}`.trim() || nickname || ''
 
+            // Process time-off ranges - keep as is (Firebase will handle Timestamp conversion)
+            const processedTimeOffRanges = (formData.timeOffRanges || []).map(range => ({
+                start: range.start,
+                end: range.end,
+            }))
+
             const employeeData = {
                 ...formData,
                 firstName: firstName || null,
@@ -151,6 +161,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                     : employee?.name || null,
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
+                timeOffRanges: processedTimeOffRanges,
             }
 
             await onSave(employeeData)
@@ -163,22 +174,36 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
     }
 
     return (
-        <Dialog isOpen={isOpen} onClose={onClose} width={600} closable={false}>
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">
-                    {employee ? 'Edit Employee' : 'Add New Employee'}
-                </h3>
-                <Button
-                    size="sm"
-                    variant="plain"
-                    icon={<HiOutlineX />}
-                    onClick={onClose}
-                />
-            </div>
+        <Dialog 
+            isOpen={isOpen} 
+            onClose={onClose} 
+            width={600} 
+            closable={false}
+            style={{
+                content: {
+                    maxHeight: '80vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                }
+            }}
+        >
+            <div className="flex flex-col h-full max-h-[80vh] overflow-hidden">
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <h3 className="text-lg font-semibold">
+                        {employee ? 'Edit Employee' : 'Add New Employee'}
+                    </h3>
+                    <Button
+                        size="sm"
+                        variant="plain"
+                        icon={<HiOutlineX />}
+                        onClick={onClose}
+                    />
+                </div>
 
-            <form onSubmit={handleSubmit}>
-                <FormContainer>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+                        <FormContainer>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormItem
                             label="First Name *"
                             invalid={!!errors.firstName}
@@ -296,7 +321,104 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                         />
                     </FormItem>
 
-                    <div className="flex justify-end gap-2 mt-6">
+                    <FormItem label="Time Off Ranges">
+                        <div className="space-y-3">
+                            {formData.timeOffRanges.map((range, index) => {
+                                let startDate = range.start
+                                let endDate = range.end
+                                
+                                // Convert Firestore Timestamp to Date if needed
+                                if (startDate?.toDate) startDate = startDate.toDate()
+                                else if (typeof startDate === 'string') startDate = new Date(startDate)
+                                
+                                if (endDate?.toDate) endDate = endDate.toDate()
+                                else if (typeof endDate === 'string') endDate = new Date(endDate)
+
+                                return (
+                                    <div key={index} className="flex items-start gap-2 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Date Range
+                                            </label>
+                                            <DatePickerRange
+                                                value={startDate && endDate ? [startDate, endDate] : (startDate ? [startDate, null] : undefined)}
+                                                onChange={(dates) => {
+                                                    if (!dates || !Array.isArray(dates)) {
+                                                        // Clear the range if dates is null/undefined
+                                                        const newRanges = [...formData.timeOffRanges]
+                                                        newRanges[index] = {
+                                                            start: null,
+                                                            end: null,
+                                                        }
+                                                        setFormData({ ...formData, timeOffRanges: newRanges })
+                                                        return
+                                                    }
+                                                    const newRanges = [...formData.timeOffRanges]
+                                                    // Only update when we have at least one date
+                                                    if (dates.length >= 1 && dates[0]) {
+                                                        if (dates.length >= 2 && dates[1]) {
+                                                            // Both dates selected - complete range
+                                                            newRanges[index] = {
+                                                                start: dates[0],
+                                                                end: dates[1],
+                                                            }
+                                                        } else {
+                                                            // Only first date selected - partial range
+                                                            newRanges[index] = {
+                                                                start: dates[0],
+                                                                end: null,
+                                                            }
+                                                        }
+                                                        setFormData({ ...formData, timeOffRanges: newRanges })
+                                                    }
+                                                }}
+                                                inputFormat="MM/DD/YYYY"
+                                                closePickerOnChange={true}
+                                            />
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="plain"
+                                            icon={<HiOutlineTrash />}
+                                            className="text-red-500 hover:text-red-600 mt-6"
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                const newRanges = formData.timeOffRanges.filter((_, i) => i !== index)
+                                                setFormData({ ...formData, timeOffRanges: newRanges })
+                                            }}
+                                        />
+                                    </div>
+                                )
+                            })}
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setFormData({
+                                        ...formData,
+                                        timeOffRanges: [
+                                            ...formData.timeOffRanges,
+                                            { start: null, end: null },
+                                        ],
+                                    })
+                                }}
+                            >
+                                Add Time Off Range
+                            </Button>
+                            {formData.timeOffRanges.length === 0 && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    No time-off ranges set. Click "Add Time Off Range" to add one.
+                                </p>
+                            )}
+                        </div>
+                    </FormItem>
+                    </FormContainer>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-900 sticky bottom-0">
                         <Button type="button" variant="plain" onClick={onClose}>
                             Cancel
                         </Button>
@@ -308,8 +430,8 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                             {employee ? 'Update' : 'Create'}
                         </Button>
                     </div>
-                </FormContainer>
-            </form>
+                </form>
+            </div>
         </Dialog>
     )
 }

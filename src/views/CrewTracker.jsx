@@ -55,6 +55,9 @@ const CrewTracker = () => {
     const [scheduleSaving, setScheduleSaving] = useState(false)
     const [scheduleError, setScheduleError] = useState('')
     const [scheduleSendSuccess, setScheduleSendSuccess] = useState('')
+    const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false)
+    const [duplicateTargetDate, setDuplicateTargetDate] = useState(null)
+    const [duplicatingDay, setDuplicatingDay] = useState(false)
 
     const {
         employees,
@@ -117,12 +120,8 @@ const CrewTracker = () => {
         }
     }, [activeTab, employeeFilters.active])
 
-    // Reload when search filter changes
-    useEffect(() => {
-        if (activeTab === 'employees') {
-            loadEmployees()
-        }
-    }, [employeeFilters.search])
+    // Note: Search filter is now local to EmployeesTab only, so we don't reload on search changes
+    // This prevents the search from affecting the schedule dropdown
 
     // Ensure jobs are loaded at least once on mount so counts & options are correct,
     // even before visiting the Jobs or Schedule/Messages tabs.
@@ -194,32 +193,10 @@ const CrewTracker = () => {
                         unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
 
-                    // Ensure at least 30 rows
-                    const minRows = 30
-                    while (mappedAssignments.length < minRows) {
-                        mappedAssignments.push({
-                            id: `local-${Date.now()}-${mappedAssignments.length}`,
-                            employeeId: '',
-                            employeeName: '',
-                            jobId: '',
-                            jobName: '',
-                            jobAddress: '',
-                            costCode: '',
-                            w2Hours: '',
-                            scheduledTasks: '',
-                            addedTasks: '',
-                            notes: '',
-                            tasksNotCompleted: '',
-                            materialsNeeded: '',
-                            exceptionAcknowledged: false,
-                            unmergedFromJob: false,
-                        })
-                    }
-
                     setScheduleAssignments(mappedAssignments)
                 } else {
-                    // Even on error, ensure 30 rows
-                    const emptyRows = Array.from({ length: 30 }, (_, i) => ({
+                    // Even on error, ensure at least one empty row
+                    const emptyRows = Array.from({ length: 1 }, (_, i) => ({
                         id: `local-${Date.now()}-${i}`,
                         employeeId: '',
                         employeeName: '',
@@ -241,8 +218,8 @@ const CrewTracker = () => {
                 }
             } catch (error) {
                 console.error('Failed to load crew schedule:', error)
-                // Even on error, ensure 30 rows
-                const emptyRows = Array.from({ length: 30 }, (_, i) => ({
+                // Even on error, ensure at least one empty row
+                const emptyRows = Array.from({ length: 1 }, (_, i) => ({
                     id: `local-${Date.now()}-${i}`,
                     employeeId: '',
                     employeeName: '',
@@ -506,10 +483,13 @@ const CrewTracker = () => {
         },
     ], [navigate, updateEmployee])
 
-    // Filtered employees
+    // Filtered employees - only apply active filter, not search (search is local to EmployeesTab)
     const filteredEmployees = useMemo(() => {
-        return employees
-    }, [employees])
+        if (employeeFilters.active === null || employeeFilters.active === undefined) {
+            return employees
+        }
+        return employees.filter(emp => emp.active === employeeFilters.active)
+    }, [employees, employeeFilters.active])
 
     // Count active/inactive employees
     const activeEmployees = useMemo(() => {
@@ -1038,16 +1018,6 @@ const CrewTracker = () => {
     }
 
     // ---------- Schedule helpers ----------
-
-    const employeeOptionsForSchedule = useMemo(
-        () =>
-            employees.map((emp) => ({
-                value: emp.id,
-                label: getEmployeeDisplayName(emp),
-            })),
-        [employees],
-    )
-
     const jobOptionsForSchedule = useMemo(
         () =>
             jobs.map((job) => ({
@@ -1083,10 +1053,9 @@ const CrewTracker = () => {
     const handleRemoveScheduleRow = (index) => {
         setScheduleAssignments((prev) => {
             const filtered = prev.filter((_, i) => i !== index)
-            // Ensure at least 30 rows
-            const minRows = 30
+            // Ensure at least one empty row remains so users always have a place to add a new line
+            const minRows = 1
             if (filtered.length < minRows) {
-                // Add empty rows to reach minimum
                 const needed = minRows - filtered.length
                 const newRows = Array.from({ length: needed }, (_, i) => ({
                     id: `local-${Date.now()}-${filtered.length + i}`,
@@ -1108,6 +1077,31 @@ const CrewTracker = () => {
                 return [...filtered, ...newRows]
             }
             return filtered
+        })
+    }
+
+    const handleInsertScheduleSeparatorBelow = (rowIndex, count = 4) => {
+        setScheduleAssignments((prev) => {
+            const before = prev.slice(0, rowIndex + 1)
+            const after = prev.slice(rowIndex + 1)
+            const newRows = Array.from({ length: count }, (_, i) => ({
+                id: `local-${Date.now()}-${rowIndex + 1 + i}`,
+                employeeId: '',
+                employeeName: '',
+                jobId: '',
+                jobName: '',
+                jobAddress: '',
+                costCode: '',
+                w2Hours: '',
+                scheduledTasks: '',
+                addedTasks: '',
+                notes: '',
+                tasksNotCompleted: '',
+                materialsNeeded: '',
+                exceptionAcknowledged: false,
+                unmergedFromJob: false,
+            }))
+            return [...before, ...newRows, ...after]
         })
     }
 
@@ -1149,7 +1143,7 @@ const CrewTracker = () => {
                 return
             }
 
-            // Prepare export data
+            // Prepare export data for Schedule sheet
             const exportData = validAssignments.map((row) => {
                 const employee = employees.find((e) => e.id === row.employeeId)
                 const job = jobs.find((j) => j.id === row.jobId)
@@ -1170,10 +1164,46 @@ const CrewTracker = () => {
                 }
             })
 
-            // Create workbook and worksheet
-            const ws = XLSX.utils.json_to_sheet(exportData)
+            // Prepare summary data
+            const jobSummariesMap = new Map()
+            validAssignments.forEach((row) => {
+                if (!row.jobId) return
+                const key = row.jobId
+                if (!jobSummariesMap.has(key)) {
+                    const job = jobs.find((j) => j.id === row.jobId)
+                    jobSummariesMap.set(key, {
+                        'Job Name': job?.name || row.jobName || 'Job',
+                        'Address': job?.address || row.jobAddress || '',
+                        'Employee Count': 0,
+                    })
+                }
+                const entry = jobSummariesMap.get(key)
+                if (row.employeeId) {
+                    entry['Employee Count'] += 1
+                }
+            })
+            const summaryData = Array.from(jobSummariesMap.values()).sort((a, b) =>
+                a['Job Name'].localeCompare(b['Job Name']),
+            )
+
+            // Add overall summary row
+            const totalCount = validAssignments.filter((row) => row.employeeId).length
+            summaryData.unshift({
+                'Job Name': 'TOTAL',
+                'Address': '',
+                'Employee Count': totalCount,
+            })
+
+            // Create workbook with multiple sheets
             const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+            
+            // Schedule sheet
+            const wsSchedule = XLSX.utils.json_to_sheet(exportData)
+            XLSX.utils.book_append_sheet(wb, wsSchedule, 'Schedule')
+
+            // Summary sheet
+            const wsSummary = XLSX.utils.json_to_sheet(summaryData)
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary')
 
             // Generate filename with date
             const dateStr = formatDateOnly(scheduleDate).replace(/\//g, '-')
@@ -1240,6 +1270,82 @@ const CrewTracker = () => {
             setScheduleError(error.message || 'Failed to save schedule.')
         } finally {
             setScheduleSaving(false)
+        }
+    }
+
+    const handleDuplicateDay = async () => {
+        if (!duplicateTargetDate) {
+            setScheduleError('Please select a target date to copy to.')
+            return
+        }
+
+        // Source date is the current schedule date (what we're copying FROM)
+        const sourceDate = scheduleDate
+
+        setDuplicatingDay(true)
+        setScheduleError('')
+        setScheduleSendSuccess('')
+
+        try {
+            // Get assignments from current date (source)
+            const sourceResponse = await FirebaseDbService.crewSchedules.getByDate(sourceDate)
+            
+            if (!sourceResponse.success || !sourceResponse.data?.assignments) {
+                setScheduleError('Failed to load current date assignments.')
+                setDuplicatingDay(false)
+                return
+            }
+
+            const sourceAssignments = sourceResponse.data.assignments || []
+            
+            if (sourceAssignments.length === 0) {
+                setScheduleError('No assignments found for the current date. Please add assignments first.')
+                setDuplicatingDay(false)
+                return
+            }
+
+            // Copy assignments, only copying: Employee, Cost Code, Job, Address, Scheduled Tasks
+            // NOT copying: W2 Hours, Materials Needed, Added Tasks, Notes, Tasks Not Completed
+            const copiedAssignments = sourceAssignments
+                .filter(assignment => assignment.employeeId && assignment.jobId) // Only valid assignments
+                .map(assignment => ({
+                    employeeId: assignment.employeeId,
+                    employeeName: assignment.employeeName || '',
+                    jobId: assignment.jobId,
+                    jobName: assignment.jobName || '',
+                    jobAddress: assignment.jobAddress || '',
+                    costCode: assignment.costCode || '',
+                    scheduledTasks: assignment.scheduledTasks || '',
+                    // Explicitly NOT copying:
+                    w2Hours: '', // Don't copy W2 Hours
+                    materialsNeeded: '', // Don't copy Materials Needed
+                    addedTasks: '', // Don't copy Added Tasks
+                    notes: '', // Don't copy Notes
+                    tasksNotCompleted: '', // Don't copy Tasks Not Completed
+                    exceptionAcknowledged: false,
+                    unmergedFromJob: false,
+                }))
+
+            // Save to target date instead of setting current schedule
+            const saveResponse = await FirebaseDbService.crewSchedules.saveAssignments(
+                duplicateTargetDate,
+                copiedAssignments
+            )
+
+            if (!saveResponse.success) {
+                setScheduleError('Failed to save assignments to target date.')
+                setDuplicatingDay(false)
+                return
+            }
+
+            setShowDuplicateDayModal(false)
+            setDuplicateTargetDate(null)
+            setScheduleSendSuccess(`Successfully copied ${copiedAssignments.length} assignment(s) from ${formatDateOnly(sourceDate)} to ${formatDateOnly(duplicateTargetDate)}.`)
+        } catch (error) {
+            console.error('Failed to duplicate day:', error)
+            setScheduleError(error.message || 'Failed to duplicate day assignments.')
+        } finally {
+            setDuplicatingDay(false)
         }
     }
 
@@ -1503,37 +1609,37 @@ const CrewTracker = () => {
             <Card>
                 <div className="p-4 md:p-6 space-y-4">
                     {/* Tab Navigation */}
-                    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 items-center justify-between">
-                        <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 border-b border-gray-200 dark:border-gray-700 items-start sm:items-center justify-between">
+                        <div className="flex flex-wrap gap-1 sm:gap-2 w-full sm:w-auto overflow-x-auto sm:overflow-x-visible">
                             <button
                                 onClick={() => setActiveTab('employees')}
-                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap ${
                                     activeTab === 'employees'
                                         ? 'border-primary text-primary'
                                         : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                                 }`}
                             >
                                 Employees
-                                <Tag className="bg-primary/10 text-primary border-primary/20">
-                                    {activeEmployees.length}
+                                <Tag className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs">
+                                    {employees.length}
                                 </Tag>
                             </button>
                             <button
                                 onClick={() => setActiveTab('jobs')}
-                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap ${
                                     activeTab === 'jobs'
                                         ? 'border-primary text-primary'
                                         : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                                 }`}
                             >
                                 Jobs
-                                <Tag className="bg-primary/10 text-primary border-primary/20">
+                                <Tag className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs">
                                     {activeJobs.length + inactiveJobs.length}
                                 </Tag>
                             </button>
                             <button
                                 onClick={() => setActiveTab('schedule')}
-                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                                className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${
                                     activeTab === 'schedule'
                                         ? 'border-primary text-primary'
                                         : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
@@ -1543,7 +1649,7 @@ const CrewTracker = () => {
                             </button>
                             <button
                                 onClick={() => setActiveTab('messages')}
-                                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                                className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${
                                     activeTab === 'messages'
                                         ? 'border-primary text-primary'
                                         : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
@@ -1554,38 +1660,39 @@ const CrewTracker = () => {
                         </div>
                         {/* Job sub-tabs and search on the right */}
                         {activeTab === 'jobs' && (
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1 max-w-md min-w-[320px]">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                                <div className="flex-1 sm:flex-initial sm:max-w-md sm:min-w-[280px] w-full">
                                     <Input
                                         placeholder="Search by project, name, address, or tasks..."
                                         value={jobFilters.search || ''}
                                         onChange={(e) => setJobFilters({ ...jobFilters, search: e.target.value })}
+                                        className="w-full"
                                     />
                                 </div>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setJobSubTab('active')}
-                                        className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                        className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap ${
                                             jobSubTab === 'active'
                                                 ? 'border-primary text-primary'
                                                 : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                                         }`}
                                     >
-                                        Active Jobs
-                                        <Tag className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300 dark:border-green-700">
+                                        Active
+                                        <Tag className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-300 dark:border-green-700 text-[10px] sm:text-xs">
                                             {activeJobs.length}
                                         </Tag>
                                     </button>
                                     <button
                                         onClick={() => setJobSubTab('inactive')}
-                                        className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                        className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap ${
                                             jobSubTab === 'inactive'
                                                 ? 'border-primary text-primary'
                                                 : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                                         }`}
                                     >
-                                        Inactive Jobs
-                                        <Tag className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-300 dark:border-gray-700">
+                                        Inactive
+                                        <Tag className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 border-gray-300 dark:border-gray-700 text-[10px] sm:text-xs">
                                             {inactiveJobs.length}
                                         </Tag>
                                     </button>
@@ -1644,11 +1751,20 @@ const CrewTracker = () => {
                             sendingMessages={sendingMessages}
                             handleExportScheduleToExcel={handleExportScheduleToExcel}
                             scheduleAssignments={scheduleAssignments}
-                            employeeOptionsForSchedule={employeeOptionsForSchedule}
+                            employees={employees}
                             jobOptionsForSchedule={jobOptionsForSchedule}
                             updateScheduleRow={updateScheduleRow}
                             handleRemoveScheduleRow={handleRemoveScheduleRow}
+                            handleInsertScheduleSeparatorBelow={handleInsertScheduleSeparatorBelow}
                             jobs={jobs}
+                            showDuplicateDayModal={showDuplicateDayModal}
+                            setShowDuplicateDayModal={setShowDuplicateDayModal}
+                            duplicateTargetDate={duplicateTargetDate}
+                            setDuplicateTargetDate={setDuplicateTargetDate}
+                            handleDuplicateDay={handleDuplicateDay}
+                            duplicatingDay={duplicatingDay}
+                            formatDateOnly={formatDateOnly}
+                            scheduleDate={scheduleDate}
                         />
                     )}
                 </div>
