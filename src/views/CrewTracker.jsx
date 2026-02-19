@@ -58,6 +58,7 @@ const CrewTracker = () => {
     const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false)
     const [duplicateTargetDate, setDuplicateTargetDate] = useState(null)
     const [duplicatingDay, setDuplicatingDay] = useState(false)
+    const autoSaveTimeoutRef = useRef(null)
 
     const {
         employees,
@@ -1217,16 +1218,22 @@ const CrewTracker = () => {
         }
     }
 
-    const handleSaveSchedule = async () => {
+    const handleSaveSchedule = async (silent = false) => {
         setScheduleError('')
-        setScheduleSendSuccess('')
+        if (!silent) {
+            setScheduleSendSuccess('')
+        }
 
         const validAssignments = scheduleAssignments.filter(
             (row) => row.employeeId && row.jobId,
         )
 
         if (validAssignments.length === 0) {
-            setScheduleError('Please add at least one row with an employee and a job before saving.')
+            if (!silent) {
+                setScheduleError(
+                    'Please add at least one row with an employee and a job before saving.',
+                )
+            }
             return
         }
 
@@ -1260,14 +1267,16 @@ const CrewTracker = () => {
                 assignmentsToSave,
             )
 
-            if (!response.success) {
-                setScheduleError(response.error || 'Failed to save schedule.')
-            } else {
-                setScheduleSendSuccess('Schedule saved successfully.')
-            }
+                if (!response.success) {
+                    setScheduleError(response.error || 'Failed to save schedule.')
+                } else if (!silent) {
+                    setScheduleSendSuccess('Schedule saved successfully.')
+                }
         } catch (error) {
             console.error('Failed to save crew schedule:', error)
-            setScheduleError(error.message || 'Failed to save schedule.')
+                if (!silent) {
+                    setScheduleError(error.message || 'Failed to save schedule.')
+                }
         } finally {
             setScheduleSaving(false)
         }
@@ -1349,16 +1358,96 @@ const CrewTracker = () => {
         }
     }
 
-    const handleSendScheduleMessages = async () => {
-        setScheduleError('')
-        setScheduleSendSuccess('')
+    // Auto-save schedule when there are valid assignments and the user is on the Schedule tab
+    useEffect(() => {
+        if (activeTab !== 'schedule') {
+            return
+        }
 
-        const validAssignments = scheduleAssignments.filter(
+        const hasValidAssignments = scheduleAssignments.some(
             (row) => row.employeeId && row.jobId,
         )
 
-        if (validAssignments.length === 0) {
-            setScheduleError('Please add at least one row with an employee and a job before sending messages.')
+        if (!hasValidAssignments) {
+            return
+        }
+
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current)
+        }
+
+        autoSaveTimeoutRef.current = setTimeout(() => {
+            handleSaveSchedule(true)
+        }, 1000)
+
+        return () => {
+            if (autoSaveTimeoutRef.current) {
+                clearTimeout(autoSaveTimeoutRef.current)
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scheduleAssignments, scheduleDate, activeTab])
+
+    const handleSendScheduleMessages = async (selectedRowIdsForSms = []) => {
+        setScheduleError('')
+        setScheduleSendSuccess('')
+
+        // Filter rows that are selected (if any) and have both employee & job
+        const hasRowSelection =
+            Array.isArray(selectedRowIdsForSms) && selectedRowIdsForSms.length > 0
+        const baseAssignments = scheduleAssignments.filter(
+            (row) =>
+                row.employeeId &&
+                row.jobId &&
+                (!hasRowSelection || selectedRowIdsForSms.includes(row.id)),
+        )
+
+        if (baseAssignments.length === 0) {
+            setScheduleError(
+                hasRowSelection
+                    ? 'Please select at least one row with an employee and a job before sending messages.'
+                    : 'Please add at least one row with an employee and a job before sending messages.',
+            )
+            return
+        }
+
+        // Avoid duplicate texts: skip employees who already received an outbound message for this date
+        let assignmentsToSend = baseAssignments
+
+        try {
+            const historyResp = await FirebaseDbService.crewMessages.getAll()
+            if (historyResp.success && Array.isArray(historyResp.data)) {
+                const dateLabel = formatDateOnly(scheduleDate)
+                const alreadySent = new Set(
+                    historyResp.data
+                        .filter(
+                            (msg) =>
+                                msg.direction === 'outbound' &&
+                                msg.date === dateLabel &&
+                                msg.employeeId,
+                        )
+                        .map((msg) => msg.employeeId),
+                )
+
+                if (alreadySent.size > 0) {
+                    assignmentsToSend = baseAssignments.filter(
+                        (row) => !alreadySent.has(row.employeeId),
+                    )
+                }
+            }
+        } catch (historyError) {
+            console.warn(
+                'Failed to load crew message history for duplicate-prevention check:',
+                historyError,
+            )
+            // In case of error, fall back to sending to all baseAssignments
+            assignmentsToSend = baseAssignments
+        }
+
+        if (assignmentsToSend.length === 0) {
+            setScheduleError(
+                'All selected employees have already received a schedule text for this date. No new messages were sent.',
+            )
             return
         }
 
@@ -1374,7 +1463,7 @@ const CrewTracker = () => {
 
             // Group by jobId to get merged data
             const jobGroups = new Map()
-            validAssignments.forEach((row) => {
+            assignmentsToSend.forEach((row) => {
                 if (!row.jobId) return
                 if (!jobGroups.has(row.jobId)) {
                     jobGroups.set(row.jobId, [])
@@ -1382,7 +1471,7 @@ const CrewTracker = () => {
                 jobGroups.get(row.jobId).push(row)
             })
 
-            for (const row of validAssignments) {
+            for (const row of assignmentsToSend) {
                 const employee = employees.find((e) => e.id === row.employeeId)
                 const job = jobs.find((j) => j.id === row.jobId)
 

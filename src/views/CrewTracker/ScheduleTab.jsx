@@ -13,6 +13,7 @@ import {
     HiOutlinePlus,
     HiOutlineUserGroup,
     HiOutlineBriefcase,
+    HiOutlineSave,
 } from 'react-icons/hi'
 
 // Auto-grow textarea helper component
@@ -130,6 +131,11 @@ const ScheduleTab = ({
         actions: true,
     })
     const [scheduleSearchText, setScheduleSearchText] = useState('')
+    const [separatorControl, setSeparatorControl] = useState({
+        rowIndex: null,
+        value: '3',
+    })
+    const [selectedSmsRowIds, setSelectedSmsRowIds] = useState([])
 
     // Base employee options with rich display name
     const allEmployeeOptions = useMemo(
@@ -603,14 +609,6 @@ const ScheduleTab = ({
                     <Button
                         size="sm"
                         variant="outline"
-                        icon={<HiOutlinePlus />}
-                        onClick={handleAddScheduleRow}
-                    >
-                        <span className="hidden sm:inline">Add row</span>
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant="outline"
                         icon={<HiOutlineDuplicate />}
                         onClick={() => setShowDuplicateDayModal(true)}
                     >
@@ -626,19 +624,11 @@ const ScheduleTab = ({
                     </Button>
                     <Button
                         size="sm"
-                        variant="twoTone"
-                        loading={scheduleSaving}
-                        onClick={handleSaveSchedule}
-                    >
-                        <span className="hidden sm:inline">Save</span>
-                    </Button>
-                    <Button
-                        size="sm"
                         variant="solid"
                         icon={<HiOutlineChatAlt2 />}
                         loading={sendingMessages}
                         disabled={sendingMessages}
-                        onClick={handleSendScheduleMessages}
+                        onClick={() => handleSendScheduleMessages(selectedSmsRowIds)}
                     >
                         <span className="hidden sm:inline">Send SMS</span>
                     </Button>
@@ -1499,6 +1489,25 @@ const ScheduleTab = ({
                                                     style={{ width: columnWidths.actions }}
                                                 >
                                                     <div className="flex items-center justify-center gap-1">
+                                                        <Tooltip title="Include this row when sending SMS from the schedule">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="h-3 w-3 cursor-pointer"
+                                                                checked={selectedSmsRowIds.includes(row.id)}
+                                                                onChange={(e) => {
+                                                                    const checked = e.target.checked
+                                                                    setSelectedSmsRowIds((prev) => {
+                                                                        if (checked) {
+                                                                            if (!prev.includes(row.id)) {
+                                                                                return [...prev, row.id]
+                                                                            }
+                                                                            return prev
+                                                                        }
+                                                                        return prev.filter((id) => id !== row.id)
+                                                                    })
+                                                                }}
+                                                            />
+                                                        </Tooltip>
                                                         {group.rowspan > 1 && !row.unmergedFromJob && (
                                                             <Tooltip title="Unmerge this job group for this row">
                                                                 <Button
@@ -1511,27 +1520,69 @@ const ScheduleTab = ({
                                                                 </Button>
                                                             </Tooltip>
                                                         )}
-                                                        <Tooltip title="Insert 3 blank separator rows below this row to visually organize your schedule">
-                                                            <Button
-                                                                size="xs"
-                                                                variant="plain"
-                                                                icon={<HiOutlinePlus />}
-                                                                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                                                onClick={() => {
-                                                                    handleInsertScheduleSeparatorBelow(rowIndex, 3)
-                                                                    // Show a brief visual feedback
-                                                                    setTimeout(() => {
-                                                                        const row = document.querySelector(`[data-row-index="${rowIndex}"]`)
-                                                                        if (row) {
-                                                                            row.classList.add('bg-blue-50', 'dark:bg-blue-900/20')
-                                                                            setTimeout(() => {
-                                                                                row.classList.remove('bg-blue-50', 'dark:bg-blue-900/20')
-                                                                            }, 1000)
+                                                        {separatorControl.rowIndex === rowIndex ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    type="number"
+                                                                    min={1}
+                                                                    className="w-14 text-xs px-1 py-0.5"
+                                                                    value={separatorControl.value}
+                                                                    autoFocus
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.replace(/[^0-9]/g, '')
+                                                                        setSeparatorControl((prev) => ({
+                                                                            ...prev,
+                                                                            value: val,
+                                                                        }))
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            const count = parseInt(separatorControl.value, 10)
+                                                                            if (!isNaN(count) && count > 0) {
+                                                                                handleInsertScheduleSeparatorBelow(rowIndex, count)
+                                                                                // Show a brief visual feedback
+                                                                                setTimeout(() => {
+                                                                                    const rowEl = document.querySelector(
+                                                                                        `[data-row-index="${rowIndex}"]`,
+                                                                                    )
+                                                                                    if (rowEl) {
+                                                                                        rowEl.classList.add(
+                                                                                            'bg-blue-50',
+                                                                                            'dark:bg-blue-900/20',
+                                                                                        )
+                                                                                        setTimeout(() => {
+                                                                                            rowEl.classList.remove(
+                                                                                                'bg-blue-50',
+                                                                                                'dark:bg-blue-900/20',
+                                                                                            )
+                                                                                        }, 1000)
+                                                                                    }
+                                                                                }, 100)
+                                                                            }
+                                                                            setSeparatorControl({ rowIndex: null, value: '3' })
                                                                         }
-                                                                    }, 100)
-                                                                }}
-                                                            />
-                                                        </Tooltip>
+                                                                        if (e.key === 'Escape') {
+                                                                            setSeparatorControl({ rowIndex: null, value: '3' })
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <Tooltip title="Insert blank separator rows below this row (click to choose how many)">
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="plain"
+                                                                    icon={<HiOutlinePlus />}
+                                                                    className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                                                                    onClick={() => {
+                                                                        setSeparatorControl({
+                                                                            rowIndex,
+                                                                            value: '3',
+                                                                        })
+                                                                    }}
+                                                                />
+                                                            </Tooltip>
+                                                        )}
                                                         <Button
                                                             size="xs"
                                                             variant="plain"
