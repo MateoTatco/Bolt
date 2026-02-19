@@ -53,6 +53,7 @@ const CrewTracker = () => {
     const [scheduleAssignments, setScheduleAssignments] = useState([])
     const [scheduleLoading, setScheduleLoading] = useState(false)
     const [scheduleSaving, setScheduleSaving] = useState(false)
+    const [scheduleAutoSaveStatus, setScheduleAutoSaveStatus] = useState('idle') // 'idle' | 'saving' | 'saved'
     const [scheduleError, setScheduleError] = useState('')
     const [scheduleSendSuccess, setScheduleSendSuccess] = useState('')
     const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false)
@@ -175,7 +176,10 @@ const CrewTracker = () => {
                 const response = await FirebaseDbService.crewSchedules.getByDate(scheduleDate)
                 if (response.success) {
                     const assignments = response.data?.assignments || []
-                    const mappedAssignments = assignments.map((a) => ({
+                    const sorted = [...assignments].sort(
+                        (a, b) => (a.order ?? 999999) - (b.order ?? 999999),
+                    )
+                    const mappedAssignments = sorted.map((a) => ({
                         id: a.id,
                         employeeId: a.employeeId || '',
                         employeeName: a.employeeName || '',
@@ -189,7 +193,6 @@ const CrewTracker = () => {
                         notes: a.notes || '',
                         tasksNotCompleted: a.tasksNotCompleted || '',
                         materialsNeeded: a.materialsNeeded || '',
-                        // Exceptions & merge flags (defaults for older data)
                         exceptionAcknowledged: Boolean(a.exceptionAcknowledged),
                         unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
@@ -1224,30 +1227,27 @@ const CrewTracker = () => {
             setScheduleSendSuccess('')
         }
 
-        const validAssignments = scheduleAssignments.filter(
-            (row) => row.employeeId && row.jobId,
-        )
-
-        if (validAssignments.length === 0) {
+        if (scheduleAssignments.length === 0) {
             if (!silent) {
-                setScheduleError(
-                    'Please add at least one row with an employee and a job before saving.',
-                )
+                setScheduleError('No rows to save.')
             }
             return
         }
 
+        if (silent) {
+            setScheduleAutoSaveStatus('saving')
+        }
         setScheduleSaving(true)
         try {
-            // Enrich with denormalized employee/job data
-            const assignmentsToSave = validAssignments.map((row) => {
+            // Save all rows (any field change); enrich with denormalized employee/job when present
+            const assignmentsToSave = scheduleAssignments.map((row, index) => {
                 const employee = employees.find((e) => e.id === row.employeeId)
                 const job = jobs.find((j) => j.id === row.jobId)
-
                 return {
-                    employeeId: row.employeeId,
+                    order: index,
+                    employeeId: row.employeeId || '',
                     employeeName: employee?.name || row.employeeName || '',
-                    jobId: row.jobId,
+                    jobId: row.jobId || '',
                     jobName: job?.name || row.jobName || '',
                     jobAddress: job?.address || row.jobAddress || '',
                     costCode: row.costCode || '',
@@ -1267,18 +1267,22 @@ const CrewTracker = () => {
                 assignmentsToSave,
             )
 
-                if (!response.success) {
-                    setScheduleError(response.error || 'Failed to save schedule.')
-                } else if (!silent) {
-                    setScheduleSendSuccess('Schedule saved successfully.')
-                }
+            if (!response.success) {
+                setScheduleError(response.error || 'Failed to save schedule.')
+            } else if (!silent) {
+                setScheduleSendSuccess('Schedule saved successfully.')
+            }
         } catch (error) {
             console.error('Failed to save crew schedule:', error)
-                if (!silent) {
-                    setScheduleError(error.message || 'Failed to save schedule.')
-                }
+            if (!silent) {
+                setScheduleError(error.message || 'Failed to save schedule.')
+            }
         } finally {
             setScheduleSaving(false)
+            if (silent) {
+                setScheduleAutoSaveStatus('saved')
+                setTimeout(() => setScheduleAutoSaveStatus('idle'), 2000)
+            }
         }
     }
 
@@ -1361,14 +1365,6 @@ const CrewTracker = () => {
     // Auto-save schedule when there are valid assignments and the user is on the Schedule tab
     useEffect(() => {
         if (activeTab !== 'schedule') {
-            return
-        }
-
-        const hasValidAssignments = scheduleAssignments.some(
-            (row) => row.employeeId && row.jobId,
-        )
-
-        if (!hasValidAssignments) {
             return
         }
 
@@ -1747,6 +1743,16 @@ const CrewTracker = () => {
                                 Messages
                             </button>
                         </div>
+                        {/* Schedule save indicator – right side of tab row */}
+                        {activeTab === 'schedule' && (scheduleAutoSaveStatus !== 'idle' || scheduleSaving) && (
+                            <div className="flex items-center ml-auto shrink-0 text-xs font-medium">
+                                {scheduleAutoSaveStatus === 'saving' || scheduleSaving ? (
+                                    <span className="text-amber-600 dark:text-amber-400">Saving…</span>
+                                ) : (
+                                    <span className="text-green-600 dark:text-green-400">Saved</span>
+                                )}
+                            </div>
+                        )}
                         {/* Job sub-tabs and search on the right */}
                         {activeTab === 'jobs' && (
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
@@ -1853,7 +1859,6 @@ const CrewTracker = () => {
                             handleDuplicateDay={handleDuplicateDay}
                             duplicatingDay={duplicatingDay}
                             formatDateOnly={formatDateOnly}
-                            scheduleDate={scheduleDate}
                         />
                     )}
                 </div>

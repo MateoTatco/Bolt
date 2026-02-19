@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react'
+import React, { useMemo, useRef, useEffect, useLayoutEffect, useState } from 'react'
 import { Button, DatePicker, Alert, Input, Select, Tag, Tooltip, Dialog, Card } from '@/components/ui'
 import Chart from '@/components/shared/Chart'
 import {
@@ -101,6 +101,7 @@ const ScheduleTab = ({
     formatDateOnly,
 }) => {
     const [columnWidths, setColumnWidths] = useState({
+        smsSelect: 52,
         employee: 200,
         costCode: 120,
         w2Hours: 100,
@@ -118,6 +119,7 @@ const ScheduleTab = ({
     const [highlightedRowIds, setHighlightedRowIds] = useState([])
     const [exceptionAttentionSet, setExceptionAttentionSet] = useState(new Set()) // 'rowKey-fieldName' until user focuses
     const [visibleColumns, setVisibleColumns] = useState({
+        smsSelect: true,
         employee: true,
         costCode: true,
         w2Hours: true,
@@ -136,6 +138,10 @@ const ScheduleTab = ({
         value: '3',
     })
     const [selectedSmsRowIds, setSelectedSmsRowIds] = useState([])
+    const scheduleScrollRef = useRef(null)
+    const prevScrollTopRef = useRef(0)
+    const prevScrollLeftRef = useRef(0)
+    const prevScheduleDateRef = useRef(null)
 
     // Base employee options with rich display name
     const allEmployeeOptions = useMemo(
@@ -464,6 +470,21 @@ const ScheduleTab = ({
             // ignore
         }
     }, [visibleColumns])
+
+    // Preserve scroll position when schedule data updates for the same date (e.g. after reload or auto-save)
+    useLayoutEffect(() => {
+        const el = scheduleScrollRef.current
+        if (!el) return
+        const dateKey = scheduleDate?.getTime?.() ?? scheduleDate
+        if (prevScheduleDateRef.current !== dateKey) {
+            prevScheduleDateRef.current = dateKey
+            el.scrollTop = 0
+            el.scrollLeft = 0
+        } else {
+            el.scrollTop = prevScrollTopRef.current
+            el.scrollLeft = prevScrollLeftRef.current
+        }
+    }, [scheduleAssignments, scheduleDate])
 
     // Ensure there is always at least one completely empty row for adding new assignments
     useEffect(() => {
@@ -958,7 +979,16 @@ const ScheduleTab = ({
             )}
 
             {activeView === 'schedule' && (
-                <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div
+                    ref={scheduleScrollRef}
+                    className="overflow-auto max-h-[70vh] border border-gray-200 dark:border-gray-700 rounded-lg"
+                    onScroll={() => {
+                        if (scheduleScrollRef.current) {
+                            prevScrollTopRef.current = scheduleScrollRef.current.scrollTop
+                            prevScrollLeftRef.current = scheduleScrollRef.current.scrollLeft
+                        }
+                    }}
+                >
                 {scheduleLoading ? (
                     <div className="p-4 space-y-2 animate-pulse min-w-[960px]">
                         {[...Array(6)].map((_, idx) => (
@@ -983,6 +1013,15 @@ const ScheduleTab = ({
                     >
                         <thead className="bg-gray-50 dark:bg-gray-800/60">
                             <tr>
+                                {visibleColumns.smsSelect && (
+                                    <th
+                                        className="px-2 py-3 text-center font-semibold text-gray-900 dark:text-white text-xs sm:text-sm"
+                                        style={{ width: columnWidths.smsSelect }}
+                                        title="Select rows to send individual SMS"
+                                    >
+                                        SMS
+                                    </th>
+                                )}
                                 {visibleColumns.employee && (
                                     <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
@@ -1157,7 +1196,7 @@ const ScheduleTab = ({
                             {scheduleAssignments.length === 0 && !scheduleLoading && (
                                 <tr>
                                     <td
-                                        colSpan={11}
+                                        colSpan={14}
                                         className="px-2 py-3 text-center text-xs text-gray-500 dark:text-gray-400"
                                     >
                                         No rows yet for this date. Click &quot;Add row&quot; to start
@@ -1189,6 +1228,32 @@ const ScheduleTab = ({
                                             data-row-index={rowIndex}
                                             className={`align-top ${isHighlighted ? 'schedule-row-highlight' : ''}`}
                                         >
+                                            {visibleColumns.smsSelect && (
+                                                <td
+                                                    className="px-1 py-1 text-center align-middle"
+                                                    style={{ width: columnWidths.smsSelect }}
+                                                >
+                                                    <Tooltip title="Include this row when sending SMS from the schedule">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-3 w-3 cursor-pointer"
+                                                            checked={selectedSmsRowIds.includes(row.id)}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked
+                                                                setSelectedSmsRowIds((prev) => {
+                                                                    if (checked) {
+                                                                        if (!prev.includes(row.id)) {
+                                                                            return [...prev, row.id]
+                                                                        }
+                                                                        return prev
+                                                                    }
+                                                                    return prev.filter((id) => id !== row.id)
+                                                                })
+                                                            }}
+                                                        />
+                                                    </Tooltip>
+                                                </td>
+                                            )}
                                             {visibleColumns.employee && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
                                                     <Select
@@ -1489,25 +1554,6 @@ const ScheduleTab = ({
                                                     style={{ width: columnWidths.actions }}
                                                 >
                                                     <div className="flex items-center justify-center gap-1">
-                                                        <Tooltip title="Include this row when sending SMS from the schedule">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="h-3 w-3 cursor-pointer"
-                                                                checked={selectedSmsRowIds.includes(row.id)}
-                                                                onChange={(e) => {
-                                                                    const checked = e.target.checked
-                                                                    setSelectedSmsRowIds((prev) => {
-                                                                        if (checked) {
-                                                                            if (!prev.includes(row.id)) {
-                                                                                return [...prev, row.id]
-                                                                            }
-                                                                            return prev
-                                                                        }
-                                                                        return prev.filter((id) => id !== row.id)
-                                                                    })
-                                                                }}
-                                                            />
-                                                        </Tooltip>
                                                         {group.rowspan > 1 && !row.unmergedFromJob && (
                                                             <Tooltip title="Unmerge this job group for this row">
                                                                 <Button
