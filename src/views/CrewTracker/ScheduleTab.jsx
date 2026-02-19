@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useEffect, useLayoutEffect, useState } from 'react'
 import { Button, DatePicker, Alert, Input, Select, Tag, Tooltip, Dialog, Card } from '@/components/ui'
+import { getCurrentUserId } from '@/utils/notificationHelper'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 import Chart from '@/components/shared/Chart'
 import {
     HiOutlineClock,
@@ -138,10 +140,39 @@ const ScheduleTab = ({
         value: '3',
     })
     const [selectedSmsRowIds, setSelectedSmsRowIds] = useState([])
+    const [users, setUsers] = useState([])
     const scheduleScrollRef = useRef(null)
     const prevScrollTopRef = useRef(0)
     const prevScrollLeftRef = useRef(0)
     const prevScheduleDateRef = useRef(null)
+
+    // Load users for reviewer display names in exceptions history
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const response = await FirebaseDbService.users.getAll()
+                if (response.success) {
+                    setUsers(response.data || [])
+                }
+            } catch (error) {
+                console.error('Failed to load users for schedule:', error)
+            }
+        }
+        loadUsers()
+    }, [])
+
+    // Resolve user ID to full display name (for "Recently reviewed")
+    const getReviewerDisplayName = (userId) => {
+        if (!userId) return 'Unknown'
+        const user = users.find((u) => u.id === userId || u.uid === userId)
+        if (!user) return userId
+        if (user.firstName && user.lastName) {
+            return `${user.firstName} ${user.lastName}`.trim()
+        }
+        if (user.firstName) return user.firstName
+        if (user.lastName) return user.lastName
+        return user.userName || user.displayName || (user.email && user.email.split('@')[0]) || userId
+    }
 
     // Base employee options with rich display name
     const allEmployeeOptions = useMemo(
@@ -193,6 +224,8 @@ const ScheduleTab = ({
             }),
         [employees, scheduleDate],
     )
+
+    const unassignedOption = useMemo(() => ({ value: '', label: '— Unassigned —' }), [])
 
     // Employees already scheduled for this date (for uniqueness)
     const usedEmployeeIds = useMemo(
@@ -322,6 +355,39 @@ const ScheduleTab = ({
             .filter((item) => item.hasDeviation && !item.allAcknowledged)
     }, [groupedRows, filteredScheduleAssignments])
 
+    // Exceptions that have been reviewed (for history / who cleared what)
+    const reviewedExceptions = useMemo(() => {
+        return groupedRows
+            .map((group) => {
+                const firstIndex = group.indices[0]
+                const row = filteredScheduleAssignments[firstIndex]
+                const hasDeviation =
+                    (group.mergedData.addedTasks && group.mergedData.addedTasks.trim() !== '') ||
+                    (group.mergedData.notes && group.mergedData.notes.trim() !== '') ||
+                    (group.mergedData.tasksNotCompleted &&
+                        group.mergedData.tasksNotCompleted.trim() !== '')
+                const allAcknowledged = group.indices.every(
+                    (idx) => filteredScheduleAssignments[idx]?.exceptionAcknowledged,
+                )
+                const reviewedBy = row?.exceptionReviewedBy
+                const reviewedAt = row?.exceptionReviewedAt
+                return {
+                    group,
+                    row,
+                    hasDeviation,
+                    allAcknowledged,
+                    reviewedBy,
+                    reviewedAt,
+                }
+            })
+            .filter((item) => item.hasDeviation && item.allAcknowledged && (item.reviewedBy || item.reviewedAt))
+            .sort((a, b) => {
+                const tA = a.reviewedAt ? new Date(a.reviewedAt).getTime() : 0
+                const tB = b.reviewedAt ? new Date(b.reviewedAt).getTime() : 0
+                return tB - tA
+            })
+    }, [groupedRows, filteredScheduleAssignments])
+
     // Column resizing handlers
     const handleResizeStart = (columnKey, e) => {
         e.preventDefault()
@@ -373,17 +439,13 @@ const ScheduleTab = ({
     }, [columnWidths, visibleColumns])
 
     const handleAcknowledgeException = (group) => {
-        group.indices.forEach((idx) => {
-            updateScheduleRow(idx, { exceptionAcknowledged: true })
-        })
-    }
-
-    const handleClearException = (group) => {
+        const reviewedBy = getCurrentUserId() || 'unknown'
+        const reviewedAt = new Date().toISOString()
         group.indices.forEach((idx) => {
             updateScheduleRow(idx, {
-                addedTasks: '',
-                notes: '',
-                tasksNotCompleted: '',
+                exceptionAcknowledged: true,
+                exceptionReviewedBy: reviewedBy,
+                exceptionReviewedAt: reviewedAt,
             })
         })
     }
@@ -813,22 +875,57 @@ const ScheduleTab = ({
                                                 >
                                                     Mark reviewed
                                                 </Button>
-                                                <Button
-                                                    size="xs"
-                                                    variant="plain"
-                                                    className="text-red-500 hover:text-red-600"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        handleClearException(group)
-                                                    }}
-                                                >
-                                                    Clear note
-                                                </Button>
                                             </div>
                                         </div>
                                     </div>
                                 )
                             })}
+                        </div>
+                    )}
+
+                    {/* Recently reviewed — who cleared what */}
+                    {reviewedExceptions.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-indigo-200 dark:border-indigo-800">
+                            <h4 className="text-xs font-semibold text-indigo-800 dark:text-indigo-200 mb-2">
+                                Recently reviewed
+                            </h4>
+                            <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1 text-xs">
+                                {reviewedExceptions.map(({ group, row, reviewedBy, reviewedAt }, idx) => {
+                                    const job = jobs.find((j) => j.id === row.jobId)
+                                    const jobLabel = job?.name || row.jobName || 'Job'
+                                    const atLabel = reviewedAt
+                                        ? (() => {
+                                              try {
+                                                  const d = new Date(reviewedAt)
+                                                  const mm = String(d.getMonth() + 1).padStart(2, '0')
+                                                  const dd = String(d.getDate()).padStart(2, '0')
+                                                  const yyyy = d.getFullYear()
+                                                  const h = d.getHours()
+                                                  const m = String(d.getMinutes()).padStart(2, '0')
+                                                  const ampm = h >= 12 ? 'PM' : 'AM'
+                                                  const h12 = h % 12 || 12
+                                                  return `${mm}/${dd}/${yyyy}, ${h12}:${m} ${ampm}`
+                                              } catch {
+                                                  return reviewedAt
+                                              }
+                                          })()
+                                        : ''
+                                    return (
+                                        <li
+                                            key={`reviewed-${row.id || row.jobId}-${idx}`}
+                                            className="flex items-center justify-between gap-2 rounded bg-white/70 dark:bg-gray-900/50 border border-indigo-100 dark:border-indigo-800 px-2 py-1.5 cursor-pointer hover:bg-indigo-50/80 dark:hover:bg-indigo-900/30"
+                                            onClick={() => scrollToGroup(group)}
+                                        >
+                                            <span className="font-medium text-gray-800 dark:text-gray-200 truncate">
+                                                {jobLabel}
+                                            </span>
+                                            <span className="text-gray-600 dark:text-gray-400 shrink-0">
+                                                Cleared by {getReviewerDisplayName(reviewedBy)} at {atLabel}
+                                            </span>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
                         </div>
                     )}
                 </div>
@@ -1258,15 +1355,19 @@ const ScheduleTab = ({
                                                 <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
                                                     <Select
                                                         placeholder="Employee"
-                                                        options={allEmployeeOptions.filter((opt) =>
-                                                            opt.value === row.employeeId ||
-                                                            !usedEmployeeIds.has(opt.value),
-                                                        )}
-                                                        value={
-                                                            allEmployeeOptions.find(
-                                                                (opt) => opt.value === row.employeeId,
-                                                            ) || null
-                                                        }
+                                                        options={[
+                                                            unassignedOption,
+                                                            ...allEmployeeOptions.filter((opt) =>
+                                                                opt.value === (row.employeeId ?? '') ||
+                                                                !usedEmployeeIds.has(opt.value),
+                                                            ),
+                                                        ]}
+                                                        value={(() => {
+                                                            const id = row.employeeId ?? ''
+                                                            if (id === '') return unassignedOption
+                                                            const found = allEmployeeOptions.find((opt) => opt.value === id)
+                                                            return found || unassignedOption
+                                                        })()}
                                                         onChange={(option) =>
                                                             updateScheduleRow(rowIndex, {
                                                                 employeeId: option ? option.value : '',

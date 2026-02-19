@@ -194,6 +194,8 @@ const CrewTracker = () => {
                         tasksNotCompleted: a.tasksNotCompleted || '',
                         materialsNeeded: a.materialsNeeded || '',
                         exceptionAcknowledged: Boolean(a.exceptionAcknowledged),
+                        exceptionReviewedBy: a.exceptionReviewedBy || null,
+                        exceptionReviewedAt: a.exceptionReviewedAt || null,
                         unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
 
@@ -1258,6 +1260,8 @@ const CrewTracker = () => {
                     tasksNotCompleted: row.tasksNotCompleted || '',
                     materialsNeeded: row.materialsNeeded || '',
                     exceptionAcknowledged: Boolean(row.exceptionAcknowledged),
+                    exceptionReviewedBy: row.exceptionReviewedBy || null,
+                    exceptionReviewedAt: row.exceptionReviewedAt || null,
                     unmergedFromJob: Boolean(row.unmergedFromJob),
                 }
             })
