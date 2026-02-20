@@ -105,6 +105,7 @@ const ScheduleTab = ({
     const [columnWidths, setColumnWidths] = useState({
         smsSelect: 52,
         employee: 200,
+        startTime: 95,
         costCode: 120,
         w2Hours: 100,
         job: 220,
@@ -123,6 +124,7 @@ const ScheduleTab = ({
     const [visibleColumns, setVisibleColumns] = useState({
         smsSelect: true,
         employee: true,
+        startTime: true,
         costCode: true,
         w2Hours: true,
         job: true,
@@ -671,6 +673,7 @@ const ScheduleTab = ({
                             inputFormat="MM/DD/YYYY"
                             value={scheduleDate}
                             onChange={(date) => setScheduleDate(date)}
+                            firstDayOfWeek="sunday"
                         />
                     </div>
                     <div className="mt-6 text-sm text-gray-600 dark:text-gray-400">
@@ -761,7 +764,7 @@ const ScheduleTab = ({
 
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                     <span className="text-gray-600 dark:text-gray-400">Columns:</span>
-                    {['costCode', 'w2Hours', 'address', 'scheduledTasks', 'addedTasks', 'notes', 'tasksNotCompleted', 'materialsNeeded'].map(
+                    {['startTime', 'costCode', 'w2Hours', 'address', 'scheduledTasks', 'addedTasks', 'notes', 'tasksNotCompleted', 'materialsNeeded'].map(
                         (key) => (
                             <button
                                 key={key}
@@ -773,6 +776,7 @@ const ScheduleTab = ({
                                         : 'bg-transparent text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600'
                                 }`}
                             >
+                                {key === 'startTime' && 'Start time'}
                                 {key === 'costCode' && 'Cost Code'}
                                 {key === 'w2Hours' && 'W2 Hours'}
                                 {key === 'address' && 'Address'}
@@ -1135,6 +1139,22 @@ const ScheduleTab = ({
                                     />
                                 </th>
                                 )}
+                                {visibleColumns.startTime && (
+                                    <th
+                                    className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
+                                    style={{ width: columnWidths.startTime }}
+                                >
+                                    Start time
+                                    <div
+                                        className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
+                                            resizingColumn === 'startTime'
+                                                ? 'bg-primary'
+                                                : 'bg-gray-200 dark:bg-gray-700 hover:bg-primary/50'
+                                        }`}
+                                        onMouseDown={(e) => handleResizeStart('startTime', e)}
+                                    />
+                                </th>
+                                )}
                                 {visibleColumns.costCode && (
                                     <th
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
@@ -1423,6 +1443,21 @@ const ScheduleTab = ({
                                                                     : provided.color,
                                                             }),
                                                         }}
+                                                    />
+                                                </td>
+                                            )}
+                                            {visibleColumns.startTime && (
+                                                <td className="px-1 py-1" style={{ width: columnWidths.startTime }}>
+                                                    <Input
+                                                        type="time"
+                                                        value={row.startTime ?? '07:00'}
+                                                        onChange={(e) =>
+                                                            updateScheduleRow(rowIndex, {
+                                                                startTime: e.target.value || '07:00',
+                                                            })
+                                                        }
+                                                        placeholder="Time"
+                                                        className="text-xs w-full"
                                                     />
                                                 </td>
                                             )}

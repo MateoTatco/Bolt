@@ -4,13 +4,23 @@ import {
     HiOutlineChatAlt2,
     HiOutlineClock,
     HiOutlineExclamationCircle,
+    HiOutlineSearch,
+    HiOutlineBookmark,
+    HiOutlineTrash,
 } from 'react-icons/hi'
+import { Tooltip } from '@/components/ui'
+
+const ALL_HANDS_ID = '__all_hands__'
+const PINNED_CHATS_KEY = 'crewTracker_pinnedChats'
+const HIDDEN_CHATS_KEY = 'crewTracker_hiddenChats'
 
 const MessagesTab = ({
     messageHistory,
     messageHistoryLoading,
     messageHistoryError,
     formatDateOnly,
+    employees = [],
+    onSendAllHands,
 }) => {
     // Build per-employee threads from message history
     const threads = useMemo(() => {
@@ -60,31 +70,79 @@ const MessagesTab = ({
         )
     }, [messageHistory])
 
+    const [conversationSearchText, setConversationSearchText] = useState('')
+    const [pinnedIds, setPinnedIds] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem(PINNED_CHATS_KEY) || '[]')
+        } catch {
+            return []
+        }
+    })
+    const [hiddenIds, setHiddenIds] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem(HIDDEN_CHATS_KEY) || '[]')
+        } catch {
+            return []
+        }
+    })
+
+    const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds])
+
+    const displayThreads = useMemo(() => {
+        let list = threads.filter((t) => !hiddenSet.has(t.employeeId))
+        const search = conversationSearchText.trim().toLowerCase()
+        if (search) {
+            list = list.filter(
+                (t) =>
+                    (t.employeeName || '').toLowerCase().includes(search) ||
+                    (t.phone || '').toLowerCase().includes(search) ||
+                    (t.lastMessageText || '').toLowerCase().includes(search),
+            )
+        }
+        const pinnedOrder = pinnedIds.filter((id) => list.some((t) => t.employeeId === id))
+        const pinnedThreads = pinnedOrder
+            .map((id) => list.find((t) => t.employeeId === id))
+            .filter(Boolean)
+        const unpinnedThreads = list.filter((t) => !pinnedOrder.includes(t.employeeId))
+        unpinnedThreads.sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+        return [...pinnedThreads, ...unpinnedThreads]
+    }, [threads, hiddenSet, pinnedIds, conversationSearchText])
+
     const [selectedEmployeeId, setSelectedEmployeeId] = useState(
-        () => (threads[0] && threads[0].employeeId) || null,
+        () =>
+            (typeof onSendAllHands === 'function' ? ALL_HANDS_ID : null) ||
+            (threads[0] && threads[0].employeeId) ||
+            null,
     )
 
-    // Keep selection in sync if threads change
+    // Keep selection in sync: if selected thread is hidden or not in display list, switch
     React.useEffect(() => {
-        if (!threads.length) {
-            setSelectedEmployeeId(null)
+        if (selectedEmployeeId === ALL_HANDS_ID) return
+        if (!displayThreads.length) {
+            if (typeof onSendAllHands === 'function') {
+                setSelectedEmployeeId(ALL_HANDS_ID)
+            } else {
+                setSelectedEmployeeId(null)
+            }
             return
         }
-        const exists = threads.some(
-            (t) => t.employeeId === selectedEmployeeId,
-        )
+        const exists = displayThreads.some((t) => t.employeeId === selectedEmployeeId)
         if (!exists) {
-            setSelectedEmployeeId(threads[0].employeeId)
+            setSelectedEmployeeId(displayThreads[0].employeeId)
         }
-    }, [threads, selectedEmployeeId])
+    }, [displayThreads, selectedEmployeeId, onSendAllHands])
 
+    const isAllHandsSelected = selectedEmployeeId === ALL_HANDS_ID
     const activeThread = useMemo(
-        () => threads.find((t) => t.employeeId === selectedEmployeeId) || null,
-        [threads, selectedEmployeeId],
+        () =>
+            isAllHandsSelected
+                ? null
+                : threads.find((t) => t.employeeId === selectedEmployeeId) || null,
+        [threads, selectedEmployeeId, isAllHandsSelected],
     )
 
     const threadMessages = useMemo(() => {
-        if (!selectedEmployeeId) return []
+        if (!selectedEmployeeId || selectedEmployeeId === ALL_HANDS_ID) return []
         const msgs = (messageHistory || []).filter(
             (msg) => msg.employeeId === selectedEmployeeId,
         )
@@ -129,6 +187,10 @@ const MessagesTab = ({
     const [sendError, setSendError] = useState('')
     const [sendSuccess, setSendSuccess] = useState('')
 
+    const [allHandsText, setAllHandsText] = useState('')
+    const [allHandsSending, setAllHandsSending] = useState(false)
+    const [allHandsResult, setAllHandsResult] = useState(null)
+
     const handleSendReply = async () => {
         if (!activeThread || !replyText.trim()) {
             return
@@ -153,6 +215,87 @@ const MessagesTab = ({
         } finally {
             setSending(false)
         }
+    }
+
+    const activeCount = useMemo(
+        () => (employees || []).filter((e) => e.active !== false && (e.phone || e.phoneNumber)).length,
+        [employees],
+    )
+
+    const handleSendAllHands = async () => {
+        if (!allHandsText.trim() || typeof onSendAllHands !== 'function') return
+        setAllHandsSending(true)
+        setAllHandsResult(null)
+        try {
+            const result = await onSendAllHands(allHandsText)
+            setAllHandsResult(result)
+            if (result.sent > 0) {
+                setAllHandsText('')
+            }
+        } catch (err) {
+            setAllHandsResult({ sent: 0, failed: 0, error: err?.message || 'Failed to send' })
+        } finally {
+            setAllHandsSending(false)
+        }
+    }
+
+    const togglePin = (employeeId, e) => {
+        e.stopPropagation()
+        setPinnedIds((prev) => {
+            const next = prev.includes(employeeId)
+                ? prev.filter((id) => id !== employeeId)
+                : [...prev, employeeId]
+            try {
+                localStorage.setItem(PINNED_CHATS_KEY, JSON.stringify(next))
+            } catch (err) {
+                console.warn('Failed to save pinned chats', err)
+            }
+            return next
+        })
+    }
+
+    const hideChat = (employeeId, e) => {
+        e.stopPropagation()
+        if (selectedEmployeeId === employeeId) {
+            const remaining = displayThreads.filter((t) => t.employeeId !== employeeId)
+            setSelectedEmployeeId(
+                remaining.length > 0 ? remaining[0].employeeId : (typeof onSendAllHands === 'function' ? ALL_HANDS_ID : null),
+            )
+        }
+        setHiddenIds((prev) => {
+            const next = prev.includes(employeeId) ? prev : [...prev, employeeId]
+            try {
+                localStorage.setItem(HIDDEN_CHATS_KEY, JSON.stringify(next))
+            } catch (err) {
+                console.warn('Failed to save hidden chats', err)
+            }
+            return next
+        })
+    }
+
+    const isPinned = (employeeId) => pinnedIds.includes(employeeId)
+
+    const hiddenThreadNames = useMemo(() => {
+        return hiddenIds.map((id) => {
+            const t = threads.find((tr) => tr.employeeId === id)
+            if (t) return { id, name: t.employeeName }
+            const emp = (employees || []).find((e) => e.id === id)
+            const empName = emp ? (emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}`.trim() : emp.name || emp.nickname || id) : id
+            return { id, name: empName }
+        })
+    }, [hiddenIds, threads, employees])
+
+    const restoreChat = (employeeId, e) => {
+        e.stopPropagation()
+        setHiddenIds((prev) => {
+            const next = prev.filter((id) => id !== employeeId)
+            try {
+                localStorage.setItem(HIDDEN_CHATS_KEY, JSON.stringify(next))
+            } catch (err) {
+                console.warn('Failed to save hidden chats', err)
+            }
+            return next
+        })
     }
 
     return (
@@ -195,7 +338,61 @@ const MessagesTab = ({
             <div className="flex flex-1 min-h-0 border border-primary/20 dark:border-primary/40 rounded-lg overflow-hidden bg-white dark:bg-gray-900/60 shadow-sm">
                 {/* Chat panel */}
                 <div className="flex-1 flex flex-col min-w-0">
-                    {(!threads.length && !messageHistoryLoading) && (
+                    {isAllHandsSelected && typeof onSendAllHands === 'function' && (
+                        <>
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-primary/15 dark:border-primary/40 bg-primary/5 dark:bg-primary/20">
+                                <div>
+                                    <div className="font-medium text-sm text-gray-900 dark:text-white">
+                                        All hands
+                                    </div>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                                        Send one message to all active employees with a phone number ({activeCount} recipient{activeCount !== 1 ? 's' : ''}).
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 bg-gradient-to-b from-primary/5 via-gray-50/80 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Messages sent here go to everyone. Use for announcements (e.g. weather, office closure).
+                                </p>
+                            </div>
+                            <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-2 bg-white/90 dark:bg-gray-900/80">
+                                <div className="flex items-end gap-2">
+                                    <div className="flex-1">
+                                        <Input
+                                            textArea
+                                            rows={2}
+                                            placeholder="e.g. Roads are icy today. We're not coming in. Stay safe."
+                                            value={allHandsText}
+                                            onChange={(e) => setAllHandsText(e.target.value)}
+                                        />
+                                    </div>
+                                    <Button
+                                        variant="solid"
+                                        size="sm"
+                                        disabled={!allHandsText.trim() || allHandsSending || activeCount === 0}
+                                        loading={allHandsSending}
+                                        onClick={handleSendAllHands}
+                                    >
+                                        Send to all
+                                    </Button>
+                                </div>
+                                {allHandsResult && (
+                                    <div className="mt-2 text-xs">
+                                        {allHandsResult.error ? (
+                                            <span className="text-red-600 dark:text-red-400">{allHandsResult.error}</span>
+                                        ) : (
+                                            <span className="text-gray-600 dark:text-gray-400">
+                                                Sent: {allHandsResult.sent}
+                                                {allHandsResult.failed > 0 && `, Failed: ${allHandsResult.failed}`}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {!isAllHandsSelected && (!threads.length && !messageHistoryLoading) && (
                         <div className="flex flex-1 flex-col items-center justify-center px-4 text-center bg-gradient-to-b from-primary/5 to-transparent dark:from-primary/15">
                             <HiOutlineExclamationCircle className="mb-2 text-3xl text-primary/60 dark:text-primary/70" />
                             <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
@@ -208,7 +405,7 @@ const MessagesTab = ({
                         </div>
                     )}
 
-                    {threads.length > 0 && activeThread && (
+                    {!isAllHandsSelected && threads.length > 0 && activeThread && (
                         <>
                             {/* Chat header */}
                             <div className="flex items-center justify-between px-4 py-3 border-b border-primary/15 dark:border-primary/40 bg-primary/5 dark:bg-primary/20">
@@ -333,38 +530,117 @@ const MessagesTab = ({
                             </span>
                         )}
                     </div>
+                    <div className="px-2 py-1.5 border-b border-gray-100 dark:border-gray-800">
+                        <Input
+                            size="sm"
+                            placeholder="Search chats..."
+                            value={conversationSearchText}
+                            onChange={(e) => setConversationSearchText(e.target.value)}
+                            prefix={<HiOutlineSearch className="text-gray-400 text-sm" />}
+                            className="text-xs"
+                        />
+                    </div>
                     <div className="flex-1 overflow-y-auto">
-                        {threads.map((thread) => {
+                        {typeof onSendAllHands === 'function' && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedEmployeeId(ALL_HANDS_ID)}
+                                className={`w-full text-left px-3 py-2 border-b border-gray-100/80 dark:border-gray-800 hover:bg-primary/5 dark:hover:bg-primary/20 focus:outline-none transition-colors ${
+                                    isAllHandsSelected ? 'bg-primary/15 dark:bg-primary/30' : ''
+                                }`}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="text-xs font-medium text-gray-900 dark:text-white">
+                                            All hands
+                                        </div>
+                                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                                            {activeCount} recipient{activeCount !== 1 ? 's' : ''} · Send to everyone
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+                        )}
+                        {displayThreads.map((thread) => {
                             const isActive = thread.employeeId === selectedEmployeeId
+                            const pinned = isPinned(thread.employeeId)
                             return (
-                                <button
+                                <div
                                     key={thread.employeeId}
-                                    type="button"
-                                    onClick={() => setSelectedEmployeeId(thread.employeeId)}
-                                    className={`w-full text-left px-3 py-2 border-b border-gray-100/80 dark:border-gray-800 hover:bg-primary/5 dark:hover:bg-primary/20 focus:outline-none transition-colors ${
+                                    className={`group flex items-center gap-1 w-full text-left px-3 py-2 border-b border-gray-100/80 dark:border-gray-800 hover:bg-primary/5 dark:hover:bg-primary/20 ${
                                         isActive ? 'bg-primary/15 dark:bg-primary/30' : ''
                                     }`}
                                 >
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                                                {thread.employeeName}
-                                            </div>
-                                            {thread.lastMessageText && (
-                                                <div className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
-                                                    {thread.lastMessageText}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedEmployeeId(thread.employeeId)}
+                                        className="flex-1 min-w-0 py-0.5 focus:outline-none"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                                                    {thread.employeeName}
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <span className="text-[10px] text-gray-500 dark:text-gray-300">
+                                                {thread.lastMessageText && (
+                                                    <div className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
+                                                        {thread.lastMessageText}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-300 shrink-0">
                                                 {formatTime(thread.lastMessageAt)}
                                             </span>
                                         </div>
+                                    </button>
+                                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Tooltip title={pinned ? 'Unpin' : 'Pin to top'}>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => togglePin(thread.employeeId, e)}
+                                                className={`p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none ${
+                                                    pinned ? 'text-primary' : 'text-gray-500 dark:text-gray-400'
+                                                }`}
+                                            >
+                                                <HiOutlineBookmark className="text-sm" />
+                                            </button>
+                                        </Tooltip>
+                                        <Tooltip title="Remove from list">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => hideChat(thread.employeeId, e)}
+                                                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 focus:outline-none"
+                                            >
+                                                <HiOutlineTrash className="text-sm" />
+                                            </button>
+                                        </Tooltip>
                                     </div>
-                                </button>
+                                </div>
                             )
                         })}
+                        {hiddenThreadNames.length > 0 && (
+                            <div className="border-t border-gray-200 dark:border-gray-700 mt-auto">
+                                <div className="px-3 py-1.5 text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                                    Hidden ({hiddenThreadNames.length})
+                                </div>
+                                {hiddenThreadNames.map(({ id, name }) => (
+                                    <div
+                                        key={id}
+                                        className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800/50"
+                                    >
+                                        <span className="text-xs text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
+                                            {name}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => restoreChat(id, e)}
+                                            className="text-xs text-primary hover:underline shrink-0 focus:outline-none"
+                                        >
+                                            Restore
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

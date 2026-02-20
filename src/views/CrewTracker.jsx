@@ -188,6 +188,7 @@ const CrewTracker = () => {
                         jobAddress: a.jobAddress || '',
                         costCode: a.costCode || '',
                         w2Hours: a.w2Hours || '',
+                        startTime: a.startTime || '07:00',
                         scheduledTasks: a.scheduledTasks || '',
                         addedTasks: a.addedTasks || '',
                         notes: a.notes || '',
@@ -211,6 +212,7 @@ const CrewTracker = () => {
                         jobAddress: '',
                         costCode: '',
                         w2Hours: '',
+                        startTime: '07:00',
                         scheduledTasks: '',
                         addedTasks: '',
                         notes: '',
@@ -234,6 +236,7 @@ const CrewTracker = () => {
                     jobAddress: '',
                     costCode: '',
                     w2Hours: '',
+                    startTime: '07:00',
                     scheduledTasks: '',
                     addedTasks: '',
                     notes: '',
@@ -830,6 +833,30 @@ const CrewTracker = () => {
         }
     }
 
+    const handleSendAllHandsMessage = async (messageText) => {
+        const activeWithPhone = (employees || []).filter(
+            (e) => e.active !== false && (e.phone || e.phoneNumber),
+        )
+        if (activeWithPhone.length === 0) {
+            return { sent: 0, failed: 0, error: 'No active employees with phone numbers.' }
+        }
+        const { getFunctions, httpsCallable } = await import('firebase/functions')
+        const functions = getFunctions()
+        const sendCrewDirectMessage = httpsCallable(functions, 'sendCrewDirectMessage')
+        let sent = 0
+        let failed = 0
+        for (const emp of activeWithPhone) {
+            try {
+                await sendCrewDirectMessage({ employeeId: emp.id, body: messageText.trim() })
+                sent += 1
+            } catch (err) {
+                console.warn('All-hands send failed for', emp.name || emp.id, err)
+                failed += 1
+            }
+        }
+        return { sent, failed }
+    }
+
     // ---------- Jobs import / export ----------
 
     const handleExportJobsToExcel = () => {
@@ -1045,6 +1072,7 @@ const CrewTracker = () => {
                 jobAddress: '',
                 costCode: '',
                 w2Hours: '',
+                startTime: '07:00',
                 scheduledTasks: '',
                 addedTasks: '',
                 notes: '',
@@ -1072,6 +1100,7 @@ const CrewTracker = () => {
                     jobAddress: '',
                     costCode: '',
                     w2Hours: '',
+                    startTime: '07:00',
                     scheduledTasks: '',
                     addedTasks: '',
                     notes: '',
@@ -1099,6 +1128,7 @@ const CrewTracker = () => {
                 jobAddress: '',
                 costCode: '',
                 w2Hours: '',
+                startTime: '07:00',
                 scheduledTasks: '',
                 addedTasks: '',
                 notes: '',
@@ -1158,6 +1188,7 @@ const CrewTracker = () => {
                     'Day': getDayOfWeek(scheduleDate),
                     'Date': formatDateOnly(scheduleDate),
                     'Employee Name': employee?.name || row.employeeName || '',
+                    'Start Time': row.startTime || '07:00',
                     'Cost Code': row.costCode || '',
                     'W2 Hours Worked': row.w2Hours || '',
                     'Job Name': job?.name || row.jobName || '',
@@ -1254,6 +1285,7 @@ const CrewTracker = () => {
                     jobAddress: job?.address || row.jobAddress || '',
                     costCode: row.costCode || '',
                     w2Hours: row.w2Hours || '',
+                    startTime: row.startTime || '07:00',
                     scheduledTasks: row.scheduledTasks || '',
                     addedTasks: row.addedTasks || '',
                     notes: row.notes || '',
@@ -1332,6 +1364,7 @@ const CrewTracker = () => {
                     jobName: assignment.jobName || '',
                     jobAddress: assignment.jobAddress || '',
                     costCode: assignment.costCode || '',
+                    startTime: assignment.startTime || '07:00',
                     scheduledTasks: assignment.scheduledTasks || '',
                     // Explicitly NOT copying:
                     w2Hours: '', // Don't copy W2 Hours
@@ -1518,6 +1551,7 @@ const CrewTracker = () => {
                     tasks: mergedRow.scheduledTasks || '',
                     date: dateLabel,
                     notes: notesParts.join(' | ') || '',
+                    startTime: row.startTime || mergedRow.startTime || '07:00',
                 }
 
                 try {
@@ -1550,6 +1584,53 @@ const CrewTracker = () => {
             const successCount = results.filter((r) => r.success).length
             const failureDetails = results.filter((r) => !r.success)
 
+            // No-work-today: notify active employees who are not assigned for this date
+            const NO_WORK_MESSAGE =
+                'No scheduled work today. Check back tomorrow. Questions? Contact your supervisor.'
+            const assignedIdsForDate = new Set(
+                scheduleAssignments.map((r) => r.employeeId).filter(Boolean),
+            )
+            const activeEmployees = (employees || []).filter((e) => e.active !== false)
+            const unassignedActive = activeEmployees.filter(
+                (e) => !assignedIdsForDate.has(e.id) && (e.phone || e.phoneNumber),
+            )
+            let noWorkSent = 0
+            if (unassignedActive.length > 0) {
+                try {
+                    const historyResp = await FirebaseDbService.crewMessages.getAll()
+                    const alreadySentNoWork = new Set()
+                    if (historyResp.success && Array.isArray(historyResp.data)) {
+                        const dateLabel = formatDateOnly(scheduleDate)
+                        historyResp.data
+                            .filter(
+                                (msg) =>
+                                    msg.direction === 'outbound' &&
+                                    msg.date === dateLabel &&
+                                    msg.body &&
+                                    (msg.body.includes('No scheduled work') || msg.body.includes('no work today')),
+                            )
+                            .forEach((msg) => {
+                                if (msg.employeeId) alreadySentNoWork.add(msg.employeeId)
+                            })
+                    }
+                    const toNotify = unassignedActive.filter((e) => !alreadySentNoWork.has(e.id))
+                    const sendCrewDirectMessage = httpsCallable(functions, 'sendCrewDirectMessage')
+                    for (const emp of toNotify) {
+                        try {
+                            await sendCrewDirectMessage({
+                                employeeId: emp.id,
+                                body: NO_WORK_MESSAGE,
+                            })
+                            noWorkSent += 1
+                        } catch (err) {
+                            console.warn('Failed to send no-work message to', emp.name || emp.id, err)
+                        }
+                    }
+                } catch (noWorkErr) {
+                    console.warn('No-work-today send failed:', noWorkErr)
+                }
+            }
+
             if (failureDetails.length > 0) {
                 const detailText = failureDetails
                     .map((fd) => {
@@ -1564,10 +1645,16 @@ const CrewTracker = () => {
                 setScheduleError('')
             }
 
+            const noWorkText =
+                noWorkSent > 0
+                    ? ` ${noWorkSent} "no work today" notice(s) sent to active employees who were not scheduled for this date.`
+                    : ''
             setScheduleSendSuccess(
                 successCount > 0
-                    ? `${successCount} message(s) sent successfully from the schedule.`
-                    : 'No messages were sent.',
+                    ? `${successCount} schedule message(s) sent to assigned employees.${noWorkText}`
+                    : noWorkSent > 0
+                      ? `${noWorkSent} "no work today" notice(s) sent to employees not scheduled today.`
+                      : 'No messages were sent.',
             )
         } catch (error) {
             console.error('Failed to send crew schedule messages:', error)
@@ -1832,6 +1919,8 @@ const CrewTracker = () => {
                             messageHistoryLoading={messageHistoryLoading}
                             messageHistoryError={messageHistoryError}
                             formatDateOnly={formatDateOnly}
+                            employees={employees}
+                            onSendAllHands={handleSendAllHandsMessage}
                         />
                     )}
 
