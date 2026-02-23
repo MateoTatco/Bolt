@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem, Checkbox } from '@/components/ui'
 import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
 import { HiOutlineX, HiOutlineTrash } from 'react-icons/hi'
 
@@ -12,6 +12,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
         email: '',
         language: 'en',
         active: true,
+        countInCrew: true,
         timeOffRanges: [],
     })
     const [errors, setErrors] = useState({})
@@ -27,6 +28,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: employee.email || '',
                 language: employee.language || 'en',
                 active: employee.active !== undefined ? employee.active : true,
+                countInCrew: employee.countInCrew !== undefined ? employee.countInCrew : true,
                 timeOffRanges: employee.timeOffRanges || [],
             })
         } else {
@@ -38,6 +40,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: '',
                 language: 'en',
                 active: true,
+                countInCrew: true,
                 timeOffRanges: [],
             })
         }
@@ -190,7 +193,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
             <div className="flex flex-col h-full max-h-[80vh] overflow-hidden">
                 <div className="flex items-center justify-between mb-4 flex-shrink-0">
                     <h3 className="text-lg font-semibold">
-                        {employee ? 'Edit Employee' : 'Add New Employee'}
+                        {employee ? 'Edit crew member' : 'Add crew member'}
                     </h3>
                     <Button
                         size="sm"
@@ -319,6 +322,18 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                                 menu: (provided) => ({ ...provided, zIndex: 10000 }),
                             }}
                         />
+                    </FormItem>
+
+                    <FormItem label="Schedule">
+                        <Checkbox
+                            checked={formData.countInCrew}
+                            onChange={(checked) => handleChange('countInCrew', checked)}
+                        >
+                            Count toward crew schedule
+                        </Checkbox>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            When unchecked, this person still receives messages but is excluded from schedule counts (e.g. &quot;scheduled out of X&quot;, &quot;available to assign&quot;).
+                        </p>
                     </FormItem>
 
                     <FormItem label="Time Off Ranges">

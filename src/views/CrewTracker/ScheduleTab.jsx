@@ -573,8 +573,12 @@ const ScheduleTab = ({
     }, [scheduleAssignments])
 
     // Simple counts for header KPI
+    // Crew members who count toward schedule stats (scheduled out of X, available to assign)
     const totalActiveEmployees = useMemo(
-        () => (employees || []).filter((e) => e.active !== false).length,
+        () =>
+            (employees || []).filter(
+                (e) => e.active !== false && e.countInCrew !== false,
+            ).length,
         [employees],
     )
     const scheduledCount = useMemo(
@@ -607,6 +611,22 @@ const ScheduleTab = ({
         )
     }, [scheduleAssignments, jobs])
 
+    // Active jobs with no crew assigned for the selected date (for Summary)
+    const unmannedActiveJobs = useMemo(() => {
+        const activeJobs = (jobs || []).filter(
+            (j) => j.active !== false && j.status !== 'Inactive',
+        )
+        const assignedJobIds = new Set(
+            (scheduleAssignments || [])
+                .filter((row) => row.jobId && row.employeeId)
+                .map((row) => row.jobId),
+        )
+        return activeJobs.filter((j) => !assignedJobIds.has(j.id))
+    }, [jobs, scheduleAssignments])
+
+    // Focus styling for Job Select is applied via shared Option component (isFocused class)
+    const selectOptionFocusStyles = {}
+
     return (
         <div className="pt-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -619,7 +639,7 @@ const ScheduleTab = ({
                             Daily crew schedule
                         </h2>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                            {scheduledCount} scheduled / {totalActiveEmployees} active employees
+                            {scheduledCount} scheduled / {totalActiveEmployees} active crew members
                         </p>
                     </div>
                 </div>
@@ -955,7 +975,7 @@ const ScheduleTab = ({
                         <Card className="p-4">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">Active Employees</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">Active crew members</p>
                                     <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
                                         {totalActiveEmployees}
                                     </p>
@@ -985,13 +1005,13 @@ const ScheduleTab = ({
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
-                                    Employees per Job
+                                    Crew members per job
                                 </h3>
                                 <Chart
                                     type="bar"
                                     series={[
                                         {
-                                            name: 'Employees',
+                                            name: 'Crew members',
                                             data: jobSummaries.map((job) => job.employeeCount),
                                         },
                                     ]}
@@ -1048,8 +1068,8 @@ const ScheduleTab = ({
                                                 Address
                                             </th>
                                             <th className="text-right py-2 px-3 font-semibold text-gray-700 dark:text-gray-300">
-                                                Employees
-                                            </th>
+Crew members
+                                                </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1073,6 +1093,53 @@ const ScheduleTab = ({
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+                    </Card>
+
+                    {/* Active jobs with no crew today — at bottom of summary */}
+                    <Card className={`overflow-hidden ${unmannedActiveJobs.length > 0 ? 'border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20' : 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/30 dark:bg-emerald-950/20'}`}>
+                        <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${unmannedActiveJobs.length > 0 ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-emerald-100 dark:bg-emerald-900/40'}`}>
+                                    <HiOutlineBriefcase className={`text-xl ${unmannedActiveJobs.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        Jobs to schedule
+                                    </h3>
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                        {unmannedActiveJobs.length === 0
+                                            ? 'All active jobs have crew assigned for this date.'
+                                            : `${unmannedActiveJobs.length} active job${unmannedActiveJobs.length === 1 ? '' : 's'} with no crew today.`}
+                                    </p>
+                                </div>
+                            </div>
+                            {unmannedActiveJobs.length > 0 && (
+                                <Tag className={`shrink-0 self-start sm:self-center ${unmannedActiveJobs.length > 0 ? 'bg-amber-200/80 dark:bg-amber-800/50 text-amber-800 dark:text-amber-200' : ''}`}>
+                                    {unmannedActiveJobs.length} unmanned
+                                </Tag>
+                            )}
+                        </div>
+                        {unmannedActiveJobs.length > 0 && (
+                            <div className="border-t border-amber-200/50 dark:border-amber-800/30 px-4 py-3">
+                                <ul className="space-y-2">
+                                    {unmannedActiveJobs.map((job) => (
+                                        <li
+                                            key={job.id}
+                                            className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-2 text-sm rounded-lg py-2 px-3 bg-white/60 dark:bg-gray-900/40 border border-amber-100 dark:border-amber-900/30"
+                                        >
+                                            <span className="font-medium text-gray-900 dark:text-white">
+                                                {job.name || 'Untitled Job'}
+                                            </span>
+                                            {job.address && (
+                                                <span className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm truncate">
+                                                    {job.address}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
                         )}
                     </Card>
@@ -1128,7 +1195,7 @@ const ScheduleTab = ({
                                     className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white relative text-xs sm:text-sm"
                                     style={{ width: columnWidths.employee }}
                                 >
-                                    Employee
+                                    Crew member
                                     <div
                                         className={`absolute right-0 top-[10%] h-[80%] w-1 cursor-col-resize z-10 border-r border-gray-300 dark:border-gray-600 ${
                                             resizingColumn === 'employee'
@@ -1374,7 +1441,7 @@ const ScheduleTab = ({
                                             {visibleColumns.employee && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.employee }}>
                                                     <Select
-                                                        placeholder="Employee"
+                                                        placeholder="Crew member"
                                                         options={[
                                                             unassignedOption,
                                                             ...allEmployeeOptions.filter((opt) =>
@@ -1427,11 +1494,6 @@ const ScheduleTab = ({
                                                             },
                                                             option: (provided, state) => ({
                                                                 ...provided,
-                                                                backgroundColor: state.data?.isOffToday && state.isFocused
-                                                                    ? 'rgba(251, 146, 60, 0.1)'
-                                                                    : state.isSelected
-                                                                    ? provided.backgroundColor
-                                                                    : provided.backgroundColor,
                                                                 color: state.data?.isOffToday
                                                                     ? 'rgb(234, 88, 12)'
                                                                     : provided.color,
@@ -1512,6 +1574,7 @@ const ScheduleTab = ({
                                                             ...provided,
                                                             zIndex: 10000,
                                                         }),
+                                                        ...selectOptionFocusStyles,
                                                     }}
                                                 />
                                             </td>
@@ -1796,7 +1859,7 @@ const ScheduleTab = ({
                 <div className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Duplicate Day</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                        Copy assignments from <strong>{formatDateOnly(scheduleDate)}</strong> to another date. This will copy Employee, Cost Code, Job, Address, and Scheduled Tasks (but not W2 Hours or Materials Needed).
+                        Copy assignments from <strong>{formatDateOnly(scheduleDate)}</strong> to another date. This will copy Crew member, Cost Code, Job, Address, and Scheduled Tasks (but not W2 Hours or Materials Needed).
                     </p>
                     <div className="mb-4">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

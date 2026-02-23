@@ -340,7 +340,7 @@ const CrewTracker = () => {
 
     // Handle delete employee
     const handleDeleteEmployee = async (employeeId) => {
-        if (window.confirm('Are you sure you want to delete this employee? This action cannot be undone.')) {
+        if (window.confirm('Are you sure you want to delete this crew member? This action cannot be undone.')) {
             await deleteEmployee(employeeId)
         }
     }
@@ -1053,10 +1053,12 @@ const CrewTracker = () => {
     // ---------- Schedule helpers ----------
     const jobOptionsForSchedule = useMemo(
         () =>
-            jobs.map((job) => ({
-                value: job.id,
-                label: job.name || 'Untitled Job',
-            })),
+            jobs
+                .filter((job) => job.active !== false && job.status !== 'Inactive')
+                .map((job) => ({
+                    value: job.id,
+                    label: job.name || 'Untitled Job',
+                })),
         [jobs],
     )
 
@@ -1187,7 +1189,7 @@ const CrewTracker = () => {
                 return {
                     'Day': getDayOfWeek(scheduleDate),
                     'Date': formatDateOnly(scheduleDate),
-                    'Employee Name': employee?.name || row.employeeName || '',
+                    'Crew member name': employee?.name || row.employeeName || '',
                     'Start Time': row.startTime || '07:00',
                     'Cost Code': row.costCode || '',
                     'W2 Hours Worked': row.w2Hours || '',
@@ -1211,12 +1213,12 @@ const CrewTracker = () => {
                     jobSummariesMap.set(key, {
                         'Job Name': job?.name || row.jobName || 'Job',
                         'Address': job?.address || row.jobAddress || '',
-                        'Employee Count': 0,
+                        'Crew member count': 0,
                     })
                 }
                 const entry = jobSummariesMap.get(key)
                 if (row.employeeId) {
-                    entry['Employee Count'] += 1
+                    entry['Crew member count'] += 1
                 }
             })
             const summaryData = Array.from(jobSummariesMap.values()).sort((a, b) =>
@@ -1228,7 +1230,7 @@ const CrewTracker = () => {
             summaryData.unshift({
                 'Job Name': 'TOTAL',
                 'Address': '',
-                'Employee Count': totalCount,
+                'Crew member count': totalCount,
             })
 
             // Create workbook with multiple sheets
@@ -1688,7 +1690,7 @@ const CrewTracker = () => {
                             }}
                             className="w-full sm:w-auto"
                         >
-                            Add Employee
+                            Add crew member
                         </Button>
                         <Button
                             variant="twoTone"
@@ -1795,9 +1797,9 @@ const CrewTracker = () => {
                                         : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
                                 }`}
                             >
-                                Employees
+                                Crew members
                                 <Tag className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs">
-                                    {employees.length}
+                                    {activeEmployees.length}
                                 </Tag>
                             </button>
                             <button
@@ -1810,7 +1812,7 @@ const CrewTracker = () => {
                             >
                                 Jobs
                                 <Tag className="bg-primary/10 text-primary border-primary/20 text-[10px] sm:text-xs">
-                                    {activeJobs.length + inactiveJobs.length}
+                                    {activeJobs.length}
                                 </Tag>
                             </button>
                             <button

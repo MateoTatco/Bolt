@@ -26,7 +26,7 @@ const EmployeesTab = ({ filters, setFilters, columns, data, loading }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                 <div>
                     <Input
-                        placeholder="Search employees..."
+                        placeholder="Search crew members..."
                         value={localSearch}
                         onChange={(e) => setLocalSearch(e.target.value)}
                     />
@@ -35,9 +35,9 @@ const EmployeesTab = ({ filters, setFilters, columns, data, loading }) => {
                     <Select
                         placeholder="Filter by status"
                         options={[
-                            { value: null, label: 'All Employees' },
-                            { value: true, label: 'Active Only' },
-                            { value: false, label: 'Inactive Only' },
+                            { value: null, label: 'All crew members' },
+                            { value: true, label: 'Active only' },
+                            { value: false, label: 'Inactive only' },
                         ]}
                         value={filters.active}
                         onChange={(option) => setFilters({ active: option.value })}
