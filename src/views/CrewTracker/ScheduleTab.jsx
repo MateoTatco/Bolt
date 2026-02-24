@@ -573,12 +573,9 @@ const ScheduleTab = ({
     }, [scheduleAssignments])
 
     // Simple counts for header KPI
-    // Crew members who count toward schedule stats (scheduled out of X, available to assign)
+    // Active crew members for header KPI
     const totalActiveEmployees = useMemo(
-        () =>
-            (employees || []).filter(
-                (e) => e.active !== false && e.countInCrew !== false,
-            ).length,
+        () => (employees || []).filter((e) => e.active !== false).length,
         [employees],
     )
     const scheduledCount = useMemo(

@@ -2748,6 +2748,243 @@ export const FirebaseDbService = {
             }
         },
     },
+
+    // CREW REGIONS (admin list for crew member location)
+    crewRegions: {
+        getAll: async () => {
+            try {
+                const ref = collection(db, 'crewRegions')
+                let q = query(ref, orderBy('name', 'asc'))
+                let snapshot
+                try {
+                    snapshot = await getDocs(q)
+                } catch (e) {
+                    snapshot = await getDocs(collection(db, 'crewRegions'))
+                }
+                const list = (snapshot.docs || []).map((d) => ({ id: d.id, ...d.data() }))
+                list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                return { success: true, data: list }
+            } catch (error) {
+                console.error('Firebase crewRegions getAll error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        create: async (data) => {
+            try {
+                const ref = collection(db, 'crewRegions')
+                const docRef = await addDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id: docRef.id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewRegions create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        update: async (id, data) => {
+            try {
+                const ref = doc(db, 'crewRegions', id)
+                await updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewRegions update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        delete: async (id) => {
+            try {
+                await deleteDoc(doc(db, 'crewRegions', id))
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase crewRegions delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // CREW COST CODES (admin list for schedule cost code column)
+    crewCostCodes: {
+        getAll: async () => {
+            try {
+                const ref = collection(db, 'crewCostCodes')
+                let q = query(ref, orderBy('code', 'asc'))
+                let snapshot
+                try {
+                    snapshot = await getDocs(q)
+                } catch (e) {
+                    snapshot = await getDocs(ref)
+                }
+                const list = (snapshot.docs || []).map((d) => ({ id: d.id, ...d.data() }))
+                list.sort((a, b) => (a.code || '').localeCompare(b.code || ''))
+                return { success: true, data: list }
+            } catch (error) {
+                console.error('Firebase crewCostCodes getAll error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        create: async (data) => {
+            try {
+                const ref = collection(db, 'crewCostCodes')
+                const docRef = await addDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id: docRef.id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewCostCodes create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        update: async (id, data) => {
+            try {
+                const ref = doc(db, 'crewCostCodes', id)
+                await updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewCostCodes update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        delete: async (id) => {
+            try {
+                await deleteDoc(doc(db, 'crewCostCodes', id))
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase crewCostCodes delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // CREW SKILL SETS (admin list for crew member skill set)
+    crewSkillSets: {
+        getAll: async () => {
+            try {
+                const ref = collection(db, 'crewSkillSets')
+                let q = query(ref, orderBy('name', 'asc'))
+                let snapshot
+                try {
+                    snapshot = await getDocs(q)
+                } catch (e) {
+                    snapshot = await getDocs(ref)
+                }
+                const list = (snapshot.docs || []).map((d) => ({ id: d.id, ...d.data() }))
+                list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                return { success: true, data: list }
+            } catch (error) {
+                console.error('Firebase crewSkillSets getAll error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        create: async (data) => {
+            try {
+                const ref = collection(db, 'crewSkillSets')
+                const docRef = await addDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id: docRef.id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewSkillSets create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        update: async (id, data) => {
+            try {
+                const ref = doc(db, 'crewSkillSets', id)
+                await updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
+                return { success: true, data: { id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewSkillSets update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        delete: async (id) => {
+            try {
+                await deleteDoc(doc(db, 'crewSkillSets', id))
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase crewSkillSets delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // CREW GROUPS (custom group chats: name + member ids)
+    crewGroups: {
+        getAll: async () => {
+            try {
+                const ref = collection(db, 'crewGroups')
+                const snapshot = await getDocs(ref)
+                const list = (snapshot.docs || []).map((d) => ({ id: d.id, ...d.data() }))
+                list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                return { success: true, data: list }
+            } catch (error) {
+                console.error('Firebase crewGroups getAll error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        create: async (data) => {
+            try {
+                const ref = collection(db, 'crewGroups')
+                const docRef = await addDoc(ref, {
+                    name: data.name || '',
+                    memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+                    updatedAt: serverTimestamp(),
+                })
+                return { success: true, data: { id: docRef.id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewGroups create error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        update: async (id, data) => {
+            try {
+                const ref = doc(db, 'crewGroups', id)
+                await updateDoc(ref, {
+                    ...data,
+                    updatedAt: serverTimestamp(),
+                })
+                return { success: true, data: { id, ...data } }
+            } catch (error) {
+                console.error('Firebase crewGroups update error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        delete: async (id) => {
+            try {
+                await deleteDoc(doc(db, 'crewGroups', id))
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase crewGroups delete error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
+
+    // CREW CONFIG (single-doc: message templates)
+    crewConfig: {
+        CONFIG_DOC_ID: 'crewConfig',
+        get: async () => {
+            try {
+                const ref = doc(db, 'crewConfig', FirebaseDbService.crewConfig.CONFIG_DOC_ID)
+                const snap = await getDoc(ref)
+                const data = snap.exists() ? snap.data() : {}
+                return {
+                    success: true,
+                    data: {
+                        noWorkTodayMessage: data.noWorkTodayMessage || 'No scheduled work today. Check back tomorrow. Questions? Contact your supervisor.',
+                        scheduleSmsTemplate: data.scheduleSmsTemplate || '',
+                    },
+                }
+            } catch (error) {
+                console.error('Firebase crewConfig get error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+        set: async (payload) => {
+            try {
+                const ref = doc(db, 'crewConfig', FirebaseDbService.crewConfig.CONFIG_DOC_ID)
+                await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true })
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase crewConfig set error:', error)
+                return { success: false, error: error.message }
+            }
+        },
+    },
 }
 
 // Utility functions for data processing

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem, Checkbox } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
 import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
 import { HiOutlineX, HiOutlineTrash } from 'react-icons/hi'
 
-const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
+const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], skillSets = [] }) => {
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -12,7 +12,8 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
         email: '',
         language: 'en',
         active: true,
-        countInCrew: true,
+        regionId: '',
+        skillSetIds: [],
         timeOffRanges: [],
     })
     const [errors, setErrors] = useState({})
@@ -28,7 +29,8 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: employee.email || '',
                 language: employee.language || 'en',
                 active: employee.active !== undefined ? employee.active : true,
-                countInCrew: employee.countInCrew !== undefined ? employee.countInCrew : true,
+                regionId: employee.regionId || '',
+                skillSetIds: Array.isArray(employee.skillSetIds) ? employee.skillSetIds : [],
                 timeOffRanges: employee.timeOffRanges || [],
             })
         } else {
@@ -40,7 +42,8 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                 email: '',
                 language: 'en',
                 active: true,
-                countInCrew: true,
+                regionId: '',
+                skillSetIds: [],
                 timeOffRanges: [],
             })
         }
@@ -324,16 +327,33 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave }) => {
                         />
                     </FormItem>
 
-                    <FormItem label="Schedule">
-                        <Checkbox
-                            checked={formData.countInCrew}
-                            onChange={(checked) => handleChange('countInCrew', checked)}
-                        >
-                            Count toward crew schedule
-                        </Checkbox>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            When unchecked, this person still receives messages but is excluded from schedule counts (e.g. &quot;scheduled out of X&quot;, &quot;available to assign&quot;).
-                        </p>
+                    <FormItem label="Location / Region">
+                        <Select
+                            options={[
+                                { value: '', label: '— None —' },
+                                ...(regions || []).map((r) => ({ value: r.id, label: r.name || '' })),
+                            ]}
+                            value={formData.regionId ? { value: formData.regionId, label: regions.find((r) => r.id === formData.regionId)?.name || formData.regionId } : { value: '', label: '— None —' }}
+                            onChange={(option) => handleChange('regionId', option?.value || '')}
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={{ menuPortal: (provided) => ({ ...provided, zIndex: 10000 }) }}
+                        />
+                    </FormItem>
+
+                    <FormItem label="Skill sets">
+                        <Select
+                            isMulti
+                            options={(skillSets || []).map((s) => ({ value: s.id, label: s.name || '' }))}
+                            value={(formData.skillSetIds || []).map((id) => {
+                                const s = (skillSets || []).find((x) => x.id === id)
+                                return s ? { value: s.id, label: s.name } : { value: id, label: id }
+                            })}
+                            onChange={(selected) => handleChange('skillSetIds', (selected || []).map((o) => o.value))}
+                            menuPortalTarget={document.body}
+                            menuPosition="fixed"
+                            styles={{ menuPortal: (provided) => ({ ...provided, zIndex: 10000 }) }}
+                        />
                     </FormItem>
 
                     <FormItem label="Time Off Ranges">

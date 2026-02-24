@@ -21,6 +21,7 @@ import EmployeesTab from './CrewTracker/EmployeesTab'
 import JobsTab from './CrewTracker/JobsTab'
 import MessagesTab from './CrewTracker/MessagesTab'
 import ScheduleTab from './CrewTracker/ScheduleTab'
+import AdminTab from './CrewTracker/AdminTab'
 
 const CrewTracker = () => {
     const navigate = useNavigate()
@@ -60,6 +61,9 @@ const CrewTracker = () => {
     const [duplicateTargetDate, setDuplicateTargetDate] = useState(null)
     const [duplicatingDay, setDuplicatingDay] = useState(false)
     const autoSaveTimeoutRef = useRef(null)
+    const [regions, setRegions] = useState([])
+    const [skillSets, setSkillSets] = useState([])
+    const [groups, setGroups] = useState([])
 
     const {
         employees,
@@ -121,6 +125,56 @@ const CrewTracker = () => {
             }
         }
     }, [activeTab, employeeFilters.active])
+
+    // Load regions and skill sets for crew member form and filters (employees or admin tab)
+    useEffect(() => {
+        if (activeTab === 'employees' || activeTab === 'admin') {
+            Promise.all([
+                FirebaseDbService.crewRegions.getAll(),
+                FirebaseDbService.crewSkillSets.getAll(),
+            ]).then(([rRes, sRes]) => {
+                if (rRes.success) setRegions(rRes.data || [])
+                if (sRes.success) setSkillSets(sRes.data || [])
+            })
+        }
+    }, [activeTab])
+
+    // Load groups for Messages tab
+    useEffect(() => {
+        if (activeTab === 'messages') {
+            FirebaseDbService.crewGroups.getAll().then((res) => {
+                if (res.success) setGroups(res.data || [])
+            })
+        }
+    }, [activeTab])
+
+    const handleSendToGroup = async (employeeIds, body) => {
+        if (!employeeIds?.length || !body?.trim()) return { sent: 0, failed: 0 }
+        const { getFunctions, httpsCallable } = await import('firebase/functions')
+        const functions = getFunctions()
+        const sendCrewDirectMessage = httpsCallable(functions, 'sendCrewDirectMessage')
+        let sent = 0
+        let failed = 0
+        for (const empId of employeeIds) {
+            try {
+                await sendCrewDirectMessage({ employeeId: empId, body: body.trim() })
+                sent += 1
+            } catch (err) {
+                console.warn('Group send failed for', empId, err)
+                failed += 1
+            }
+        }
+        return { sent, failed }
+    }
+
+    const handleCreateGroup = async (payload) => {
+        const res = await FirebaseDbService.crewGroups.create(payload)
+        if (res.success) {
+            const listRes = await FirebaseDbService.crewGroups.getAll()
+            if (listRes.success) setGroups(listRes.data || [])
+        }
+        return res
+    }
 
     // Note: Search filter is now local to EmployeesTab only, so we don't reload on search changes
     // This prevents the search from affecting the schedule dropdown
@@ -492,13 +546,20 @@ const CrewTracker = () => {
         },
     ], [navigate, updateEmployee])
 
-    // Filtered employees - only apply active filter, not search (search is local to EmployeesTab)
+    // Filtered employees: active, region, skill set (search is local to EmployeesTab)
     const filteredEmployees = useMemo(() => {
-        if (employeeFilters.active === null || employeeFilters.active === undefined) {
-            return employees
+        let list = employees
+        if (employeeFilters.active !== null && employeeFilters.active !== undefined) {
+            list = list.filter((emp) => emp.active === employeeFilters.active)
         }
-        return employees.filter(emp => emp.active === employeeFilters.active)
-    }, [employees, employeeFilters.active])
+        if (employeeFilters.regionId) {
+            list = list.filter((emp) => emp.regionId === employeeFilters.regionId)
+        }
+        if (employeeFilters.skillSetId) {
+            list = list.filter((emp) => Array.isArray(emp.skillSetIds) && emp.skillSetIds.includes(employeeFilters.skillSetId))
+        }
+        return list
+    }, [employees, employeeFilters.active, employeeFilters.regionId, employeeFilters.skillSetId])
 
     // Count active/inactive employees
     const activeEmployees = useMemo(() => {
@@ -1587,8 +1648,13 @@ const CrewTracker = () => {
             const failureDetails = results.filter((r) => !r.success)
 
             // No-work-today: notify active employees who are not assigned for this date
-            const NO_WORK_MESSAGE =
-                'No scheduled work today. Check back tomorrow. Questions? Contact your supervisor.'
+            let NO_WORK_MESSAGE = 'No scheduled work today. Check back tomorrow. Questions? Contact your supervisor.'
+            try {
+                const cfgRes = await FirebaseDbService.crewConfig.get()
+                if (cfgRes.success && cfgRes.data?.noWorkTodayMessage) {
+                    NO_WORK_MESSAGE = cfgRes.data.noWorkTodayMessage
+                }
+            } catch (_) {}
             const assignedIdsForDate = new Set(
                 scheduleAssignments.map((r) => r.employeeId).filter(Boolean),
             )
@@ -1609,7 +1675,7 @@ const CrewTracker = () => {
                                     msg.direction === 'outbound' &&
                                     msg.date === dateLabel &&
                                     msg.body &&
-                                    (msg.body.includes('No scheduled work') || msg.body.includes('no work today')),
+                                    (msg.body.toLowerCase().includes('no work') || msg.body.toLowerCase().includes('no scheduled')),
                             )
                             .forEach((msg) => {
                                 if (msg.employeeId) alreadySentNoWork.add(msg.employeeId)
@@ -1835,6 +1901,16 @@ const CrewTracker = () => {
                             >
                                 Messages
                             </button>
+                            <button
+                                onClick={() => setActiveTab('admin')}
+                                className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap ${
+                                    activeTab === 'admin'
+                                        ? 'border-primary text-primary'
+                                        : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                }`}
+                            >
+                                Admin
+                            </button>
                         </div>
                         {/* Schedule save indicator – right side of tab row */}
                         {activeTab === 'schedule' && (scheduleAutoSaveStatus !== 'idle' || scheduleSaving) && (
@@ -1897,6 +1973,8 @@ const CrewTracker = () => {
                             columns={employeeColumns}
                             data={filteredEmployees}
                             loading={employeesLoading}
+                            regions={regions}
+                            skillSets={skillSets}
                         />
                     )}
 
@@ -1923,8 +2001,17 @@ const CrewTracker = () => {
                             formatDateOnly={formatDateOnly}
                             employees={employees}
                             onSendAllHands={handleSendAllHandsMessage}
+                            groups={groups}
+                            onSendToGroup={handleSendToGroup}
+                            onCreateGroup={handleCreateGroup}
+                            onRefreshGroups={async () => {
+                                const res = await FirebaseDbService.crewGroups.getAll()
+                                if (res.success) setGroups(res.data || [])
+                            }}
                         />
                     )}
+
+                    {activeTab === 'admin' && <AdminTab />}
 
                     {activeTab === 'schedule' && (
                         <ScheduleTab
@@ -1968,6 +2055,8 @@ const CrewTracker = () => {
                 }}
                 employee={editingEmployee}
                 onSave={handleSaveEmployee}
+                regions={regions}
+                skillSets={skillSets}
             />
 
             {/* Job Form Modal */}

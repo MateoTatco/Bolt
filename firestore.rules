@@ -267,5 +267,27 @@ service cloud.firestore {
       allow update: if isAuthed();
       allow delete: if isAuthed();
     }
+
+    // Crew admin/config collections
+    match /crewRegions/{regionId} {
+      allow read, create, update, delete: if isAuthed();
+    }
+
+    match /crewCostCodes/{costCodeId} {
+      allow read, create, update, delete: if isAuthed();
+    }
+
+    match /crewSkillSets/{skillSetId} {
+      allow read, create, update, delete: if isAuthed();
+    }
+
+    match /crewGroups/{groupId} {
+      allow read, create, update, delete: if isAuthed();
+    }
+
+    // Single-doc config for crew tracker (message templates, etc.)
+    match /crewConfig/{configId} {
+      allow read, create, update, delete: if isAuthed();
+    }
   }
 }

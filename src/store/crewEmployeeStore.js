@@ -9,6 +9,8 @@ export const useCrewEmployeeStore = create((set, get) => ({
     filters: {
         search: '',
         active: null, // true | false | null (all) - default to show all
+        regionId: null,
+        skillSetId: null,
     },
     selectedEmployeeId: null,
     loading: false,
