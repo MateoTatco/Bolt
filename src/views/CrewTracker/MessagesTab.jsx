@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { Alert, Button, Input, Select, Dialog } from '@/components/ui'
+import { FirebaseDbService } from '@/services/FirebaseDbService'
 import {
     HiOutlineChatAlt2,
     HiOutlineClock,
@@ -765,14 +766,23 @@ const MessagesTab = ({
                                                         <HiOutlineBookmark className="text-sm" />
                                                     </button>
                                                 </Tooltip>
-                                                <Tooltip title="Remove group from list">
+                                                <Tooltip title="Delete group chat">
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => {
+                                                        onClick={async (e) => {
                                                             e.stopPropagation()
-                                                            setHiddenGroupIds((prev) =>
-                                                                prev.includes(g.id) ? prev : [...prev, g.id],
+                                                            const confirmed = window.confirm(
+                                                                'Delete this group chat? This will remove it for all users.',
                                                             )
+                                                            if (!confirmed) return
+                                                            try {
+                                                                await FirebaseDbService.crewGroups.delete(g.id)
+                                                                if (typeof onRefreshGroups === 'function') {
+                                                                    await onRefreshGroups()
+                                                                }
+                                                            } catch (err) {
+                                                                console.error('Failed to delete group chat', err)
+                                                            }
                                                         }}
                                                         className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 focus:outline-none"
                                                     >

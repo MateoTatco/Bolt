@@ -63,6 +63,7 @@ const CrewTracker = () => {
     const autoSaveTimeoutRef = useRef(null)
     const [regions, setRegions] = useState([])
     const [skillSets, setSkillSets] = useState([])
+    const [costCodes, setCostCodes] = useState([])
     const [groups, setGroups] = useState([])
 
     const {
@@ -126,15 +127,17 @@ const CrewTracker = () => {
         }
     }, [activeTab, employeeFilters.active])
 
-    // Load regions and skill sets for crew member form and filters (employees or admin tab)
+    // Load regions, skill sets, and cost codes for crew member form, filters, and schedule
     useEffect(() => {
-        if (activeTab === 'employees' || activeTab === 'admin') {
+        if (activeTab === 'employees' || activeTab === 'admin' || activeTab === 'schedule') {
             Promise.all([
                 FirebaseDbService.crewRegions.getAll(),
                 FirebaseDbService.crewSkillSets.getAll(),
-            ]).then(([rRes, sRes]) => {
+                FirebaseDbService.crewCostCodes.getAll(),
+            ]).then(([rRes, sRes, cRes]) => {
                 if (rRes.success) setRegions(rRes.data || [])
                 if (sRes.success) setSkillSets(sRes.data || [])
+                if (cRes.success) setCostCodes(cRes.data || [])
             })
         }
     }, [activeTab])
@@ -2034,6 +2037,7 @@ const CrewTracker = () => {
                             handleRemoveScheduleRow={handleRemoveScheduleRow}
                             handleInsertScheduleSeparatorBelow={handleInsertScheduleSeparatorBelow}
                             jobs={jobs}
+                            costCodes={costCodes}
                             showDuplicateDayModal={showDuplicateDayModal}
                             setShowDuplicateDayModal={setShowDuplicateDayModal}
                             duplicateTargetDate={duplicateTargetDate}

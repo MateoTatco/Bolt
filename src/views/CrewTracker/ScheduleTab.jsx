@@ -94,6 +94,7 @@ const ScheduleTab = ({
     handleRemoveScheduleRow,
     handleInsertScheduleSeparatorBelow,
     jobs,
+    costCodes = [],
     showDuplicateDayModal,
     setShowDuplicateDayModal,
     duplicateTargetDate,
@@ -1522,17 +1523,51 @@ Crew members
                                             )}
                                             {visibleColumns.costCode && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
-                                                <Input
-                                                    value={row.costCode}
-                                                    onChange={(e) =>
-                                                        updateScheduleRow(rowIndex, {
-                                                            costCode: e.target.value,
-                                                        })
-                                                    }
-                                                    placeholder="Cost code"
-                                                    className="text-xs"
-                                                />
-                                            </td>
+                                                    <Select
+                                                        placeholder="Cost code"
+                                                        options={(costCodes || []).map((c) => ({
+                                                            value: c.code || c.id,
+                                                            label: c.description
+                                                                ? `${c.code} — ${c.description}`
+                                                                : c.code || c.id,
+                                                        }))}
+                                                        value={
+                                                            row.costCode
+                                                                ? (() => {
+                                                                      const match =
+                                                                          (costCodes || []).find(
+                                                                              (c) => c.code === row.costCode,
+                                                                          ) || null
+                                                                      if (match) {
+                                                                          return {
+                                                                              value: match.code || match.id,
+                                                                              label: match.description
+                                                                                  ? `${match.code} — ${match.description}`
+                                                                                  : match.code || match.id,
+                                                                          }
+                                                                      }
+                                                                      return {
+                                                                          value: row.costCode,
+                                                                          label: row.costCode,
+                                                                      }
+                                                                  })()
+                                                                : null
+                                                        }
+                                                        onChange={(opt) =>
+                                                            updateScheduleRow(rowIndex, {
+                                                                costCode: opt ? opt.value : '',
+                                                            })
+                                                        }
+                                                        menuPortalTarget={document.body}
+                                                        menuPosition="fixed"
+                                                        styles={{
+                                                            menuPortal: (provided) => ({
+                                                                ...provided,
+                                                                zIndex: 10000,
+                                                            }),
+                                                        }}
+                                                    />
+                                                </td>
                                             )}
                                             {visibleColumns.w2Hours && (
                                                 <td className="px-1 py-1" style={{ width: columnWidths.w2Hours }}>
