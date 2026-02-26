@@ -106,8 +106,8 @@ const ScheduleTab = ({
     const [columnWidths, setColumnWidths] = useState({
         smsSelect: 52,
         employee: 200,
-        startTime: 95,
-        costCode: 120,
+        startTime: 130,
+        costCode: 160,
         w2Hours: 100,
         job: 220,
         address: 300,
@@ -1525,34 +1525,36 @@ Crew members
                                                 <td className="px-1 py-1" style={{ width: columnWidths.costCode }}>
                                                     <Select
                                                         placeholder="Cost code"
-                                                        options={(costCodes || []).map((c) => ({
-                                                            value: c.code || c.id,
-                                                            label: c.description
-                                                                ? `${c.code} — ${c.description}`
-                                                                : c.code || c.id,
-                                                        }))}
-                                                        value={
-                                                            row.costCode
-                                                                ? (() => {
-                                                                      const match =
-                                                                          (costCodes || []).find(
-                                                                              (c) => c.code === row.costCode,
-                                                                          ) || null
-                                                                      if (match) {
-                                                                          return {
-                                                                              value: match.code || match.id,
-                                                                              label: match.description
-                                                                                  ? `${match.code} — ${match.description}`
-                                                                                  : match.code || match.id,
-                                                                          }
-                                                                      }
-                                                                      return {
-                                                                          value: row.costCode,
-                                                                          label: row.costCode,
-                                                                      }
-                                                                  })()
-                                                                : null
-                                                        }
+                                                        options={[
+                                                            { value: '', label: 'Unassigned' },
+                                                            ...(costCodes || []).map((c) => ({
+                                                                value: c.code || c.id,
+                                                                label: c.description
+                                                                    ? `${c.code} — ${c.description}`
+                                                                    : c.code || c.id,
+                                                            })),
+                                                        ]}
+                                                        value={(() => {
+                                                            if (!row.costCode) {
+                                                                return { value: '', label: 'Unassigned' }
+                                                            }
+                                                            const match =
+                                                                (costCodes || []).find(
+                                                                    (c) => c.code === row.costCode,
+                                                                ) || null
+                                                            if (match) {
+                                                                return {
+                                                                    value: match.code || match.id,
+                                                                    label: match.description
+                                                                        ? `${match.code} — ${match.description}`
+                                                                        : match.code || match.id,
+                                                                }
+                                                            }
+                                                            return {
+                                                                value: row.costCode,
+                                                                label: row.costCode,
+                                                            }
+                                                        })()}
                                                         onChange={(opt) =>
                                                             updateScheduleRow(rowIndex, {
                                                                 costCode: opt ? opt.value : '',

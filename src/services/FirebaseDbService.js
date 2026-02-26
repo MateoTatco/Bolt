@@ -2618,6 +2618,30 @@ export const FirebaseDbService = {
                 return () => {} // Return empty unsubscribe function
             }
         },
+
+        // Delete all messages for a given employee (used to fully remove a conversation)
+        deleteByEmployee: async (employeeId) => {
+            try {
+                if (!employeeId) {
+                    return { success: false, error: 'Missing employeeId' }
+                }
+                const messagesRef = collection(db, 'crewMessages')
+                const q = query(messagesRef, where('employeeId', '==', employeeId))
+                const snapshot = await getDocs(q)
+                if (snapshot.empty) {
+                    return { success: true }
+                }
+                const batch = writeBatch(db)
+                snapshot.docs.forEach((docSnap) => {
+                    batch.delete(docSnap.ref)
+                })
+                await batch.commit()
+                return { success: true }
+            } catch (error) {
+                console.error('Firebase delete crew messages by employee error:', error)
+                return { success: false, error: error.message }
+            }
+        },
     },
 
     // CREW SCHEDULES COLLECTION

@@ -10,6 +10,7 @@ import {
     HiOutlineTrash,
     HiOutlineUserGroup,
     HiOutlinePlus,
+    HiOutlineRefresh,
 } from 'react-icons/hi'
 import { Tooltip } from '@/components/ui'
 
@@ -369,13 +370,17 @@ const MessagesTab = ({
 
     const hiddenThreadNames = useMemo(() => {
         return hiddenIds.map((id) => {
-            const t = threads.find((tr) => tr.employeeId === id)
+            const t = effectiveThreads.find((tr) => tr.employeeId === id)
             if (t) return { id, name: t.employeeName }
             const emp = (employees || []).find((e) => e.id === id)
-            const empName = emp ? (emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}`.trim() : emp.name || emp.nickname || id) : id
+            const empName = emp
+                ? (emp.firstName && emp.lastName
+                      ? `${emp.firstName} ${emp.lastName}`.trim()
+                      : emp.name || emp.nickname || id)
+                : id
             return { id, name: empName }
         })
-    }, [hiddenIds, threads, employees])
+    }, [hiddenIds, effectiveThreads, employees])
 
     const restoreChat = (employeeId, e) => {
         e.stopPropagation()
@@ -401,15 +406,44 @@ const MessagesTab = ({
                         : e.name || e.nickname || e.id) + (e.phone ? ` (${e.phone})` : ''),
             }))
         const selectedSet = new Set(createGroupMemberIds || [])
-        return [
-            ...base.filter((o) => selectedSet.has(o.value)),
-            ...base.filter((o) => !selectedSet.has(o.value)),
-        ]
+        const selectedOptions = base.filter((o) => selectedSet.has(o.value))
+        const unselectedOptions = base.filter((o) => !selectedSet.has(o.value))
+        return [...selectedOptions, ...unselectedOptions]
     }, [employees, createGroupMemberIds])
+
+    const CrewMemberOption = (props) => {
+        const {
+            innerProps,
+            label,
+            isSelected,
+            isFocused,
+        } = props
+        return (
+            <div
+                {...innerProps}
+                className={`flex items-center gap-2 px-2 py-1 text-xs cursor-pointer ${
+                    isFocused ? 'bg-blue-100 dark:bg-blue-600/40' : ''
+                }`}
+            >
+                <div
+                    className={`h-3 w-3 rounded-full border flex items-center justify-center ${
+                        isSelected
+                            ? 'bg-primary border-primary'
+                            : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                >
+                    {isSelected && (
+                        <span className="block h-2 w-2 bg-white rounded-full" />
+                    )}
+                </div>
+                <span className="truncate">{label}</span>
+            </div>
+        )
+    }
 
     return (
         <div className="pt-4 h-[calc(100vh-200px)] flex flex-col">
-            <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary">
                         <HiOutlineChatAlt2 className="text-xl" />
@@ -711,6 +745,64 @@ const MessagesTab = ({
                             className="text-xs"
                         />
                     </div>
+                    {hiddenThreadNames.length > 0 && (
+                        <div className="border-b border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center justify-between px-3 py-1.5">
+                                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                                    Hidden ({hiddenThreadNames.length})
+                                </span>
+                            </div>
+                            {hiddenThreadNames.map(({ id, name }) => (
+                                <div
+                                    key={id}
+                                    className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800/50"
+                                >
+                                    <span className="text-xs text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
+                                        {name}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => restoreChat(id, e)}
+                                            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-primary focus:outline-none"
+                                            title="Restore chat"
+                                        >
+                                            <HiOutlineRefresh className="text-xs" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async (e) => {
+                                                e.stopPropagation()
+                                                try {
+                                                    // Fully delete all messages for this employee
+                                                    await FirebaseDbService.crewMessages.deleteByEmployee(id)
+                                                } catch (err) {
+                                                    console.error('Failed to delete crew messages for chat', err)
+                                                }
+                                                setHiddenIds((prev) => {
+                                                    const next = prev.filter((hid) => hid !== id)
+                                                    try {
+                                                        localStorage.setItem(
+                                                            HIDDEN_CHATS_KEY,
+                                                            JSON.stringify(next),
+                                                        )
+                                                    } catch (err) {
+                                                        console.warn('Failed to save hidden chats', err)
+                                                    }
+                                                    return next
+                                                })
+                                                setPinnedIds((prev) => prev.filter((pid) => prev !== id))
+                                            }}
+                                            className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 focus:outline-none"
+                                            title="Delete chat"
+                                        >
+                                            <HiOutlineTrash className="text-xs" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     <div className="flex-1 overflow-y-auto">
                         {(groups || []).filter((g) => !hiddenGroupIds.includes(g.id)).length > 0 && (
                             <div className="border-b border-gray-200 dark:border-gray-700">
@@ -834,11 +926,6 @@ const MessagesTab = ({
                                                 <div className="text-xs font-medium text-gray-900 dark:text-white truncate">
                                                     {thread.employeeName}
                                                 </div>
-                                                {thread.lastMessageText && (
-                                                    <div className="text-[11px] text-gray-600 dark:text-gray-300 truncate">
-                                                        {thread.lastMessageText}
-                                                    </div>
-                                                )}
                                             </div>
                                             <span className="text-[10px] text-gray-500 dark:text-gray-300 shrink-0">
                                                 {formatTime(thread.lastMessageAt)}
@@ -851,7 +938,9 @@ const MessagesTab = ({
                                                 type="button"
                                                 onClick={(e) => togglePin(thread.employeeId, e)}
                                                 className={`p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none ${
-                                                    pinned ? 'text-primary' : 'text-gray-500 dark:text-gray-400'
+                                                    pinned
+                                                        ? 'bg-primary/10 text-primary'
+                                                        : 'text-gray-500 dark:text-gray-400'
                                                 }`}
                                             >
                                                 <HiOutlineBookmark className="text-sm" />
@@ -870,30 +959,6 @@ const MessagesTab = ({
                                 </div>
                             )
                         })}
-                        {hiddenThreadNames.length > 0 && (
-                            <div className="border-t border-gray-200 dark:border-gray-700 mt-auto">
-                                <div className="px-3 py-1.5 text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                                    Hidden ({hiddenThreadNames.length})
-                                </div>
-                                {hiddenThreadNames.map(({ id, name }) => (
-                                    <div
-                                        key={id}
-                                        className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800/50"
-                                    >
-                                        <span className="text-xs text-gray-600 dark:text-gray-400 truncate flex-1 min-w-0">
-                                            {name}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => restoreChat(id, e)}
-                                            className="text-xs text-primary hover:underline shrink-0 focus:outline-none"
-                                        >
-                                            Restore
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
@@ -921,6 +986,7 @@ const MessagesTab = ({
                             <Select
                                 isMulti
                                 closeMenuOnSelect={false}
+                                hideSelectedOptions={false}
                                 placeholder="Select crew members..."
                                 options={groupMemberOptions}
                                 value={(createGroupMemberIds || []).map((id) => {
@@ -932,6 +998,7 @@ const MessagesTab = ({
                                 menuPosition="fixed"
                                 styles={{ menuPortal: (provided) => ({ ...provided, zIndex: 10000 }) }}
                                 components={{
+                                    Option: CrewMemberOption,
                                     MultiValueLabel: (props) => {
                                         const count = props.selectProps.value ? props.selectProps.value.length : 0
                                         return (
