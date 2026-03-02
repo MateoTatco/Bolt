@@ -231,6 +231,8 @@ const AdvancedFeatures = () => {
     const [showProcoreTemplates, setShowProcoreTemplates] = useState(false)
     const [procoreTemplates, setProcoreTemplates] = useState(null)
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+    const [isFixingProjectStatuses, setIsFixingProjectStatuses] = useState(false)
+    const [fixedStatusSummary, setFixedStatusSummary] = useState(null)
 
     // Simple Bolt user invite state
     const [inviteForm, setInviteForm] = useState({
@@ -727,6 +729,111 @@ const AdvancedFeatures = () => {
             }
         } catch (error) {
             console.error('Error updating Tatco Contact column:', error)
+        }
+    }
+
+    const handleFixMasterTrackerStatuses = async () => {
+        if (isFixingProjectStatuses) return
+
+        const confirmed = window.confirm(
+            'This will update ProjectStatus in Master Tracker for existing projects to match Project Profitability (Azure) based on Project Number. This will NOT push any changes to Procore.\n\nDo you want to continue?'
+        )
+        if (!confirmed) {
+            return
+        }
+
+        setIsFixingProjectStatuses(true)
+        setFixedStatusSummary(null)
+
+        try {
+            const [profitResult, projectsResult] = await Promise.all([
+                ProcoreService.getAllProjectsProfitability(),
+                FirebaseDbService.projects.getAll(),
+            ])
+
+            if (!projectsResult?.success) {
+                throw new Error(projectsResult?.error || 'Failed to load projects from Firestore')
+            }
+
+            const profitabilityProjects = Array.isArray(profitResult) ? profitResult : []
+            const statusByProjectNumber = new Map()
+
+            profitabilityProjects.forEach((proj) => {
+                const number = proj?.projectNumber
+                const status = proj?.projectStatus
+                if (!number || !status) return
+                const key = String(number).trim()
+                const value = String(status).trim()
+                if (!key || !value) return
+                if (!statusByProjectNumber.has(key)) {
+                    statusByProjectNumber.set(key, value)
+                }
+            })
+
+            const allProjects = projectsResult.data || []
+            let checkedCount = 0
+            let updatedCount = 0
+            let skippedNoMatch = 0
+            let skippedNoNumber = 0
+
+            for (const project of allProjects) {
+                checkedCount += 1
+                const rawNumber = project?.ProjectNumber
+                if (!rawNumber) {
+                    skippedNoNumber += 1
+                    continue
+                }
+
+                const key = String(rawNumber).trim()
+                if (!key) {
+                    skippedNoNumber += 1
+                    continue
+                }
+
+                const canonicalStatus = statusByProjectNumber.get(key)
+                if (!canonicalStatus) {
+                    skippedNoMatch += 1
+                    continue
+                }
+
+                const currentStatus = project?.ProjectStatus || ''
+                if (currentStatus === canonicalStatus) {
+                    continue
+                }
+
+                try {
+                    await FirebaseDbService.projects.update(project.id, {
+                        ProjectStatus: canonicalStatus,
+                    })
+                    updatedCount += 1
+                } catch (updateError) {
+                    console.error(`Failed to update status for project ${project.id} (${key}):`, updateError)
+                }
+            }
+
+            const summary = {
+                totalProjects: checkedCount,
+                updatedCount,
+                skippedNoMatch,
+                skippedNoNumber,
+                profitabilityCount: profitabilityProjects.length,
+            }
+            setFixedStatusSummary(summary)
+
+            toast.push(
+                <Notification type="success" duration={4000} title="Master Tracker Status Fix Complete">
+                    Updated {updatedCount} project(s). Checked {checkedCount}. {skippedNoMatch} had no profitability match and {skippedNoNumber} had no ProjectNumber.
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Error fixing Master Tracker statuses:', error)
+            toast.push(
+                <Notification type="danger" duration={4000} title="Error">
+                    Failed to fix Master Tracker statuses: {error.message || 'Unknown error'}
+                </Notification>
+            )
+        } finally {
+            setIsFixingProjectStatuses(false)
         }
     }
 
@@ -2015,14 +2122,34 @@ const AdvancedFeatures = () => {
                         </Button>
                     </div>
 
-                            <div className="flex gap-2 mb-4">
-                            <Button 
+                        <div className="flex flex-col gap-2 mb-4">
+                            <div className="flex flex-wrap gap-2">
+                                <Button 
                                     onClick={handleShowTatcoContact}
-                                variant="outline"
+                                    variant="outline"
                                     size="sm"
-                            >
+                                >
                                     Show Tatco Contact
-                            </Button>
+                                </Button>
+                                <Button
+                                    onClick={handleFixMasterTrackerStatuses}
+                                    variant="outline"
+                                    size="sm"
+                                    loading={isFixingProjectStatuses}
+                                    disabled={isFixingProjectStatuses}
+                                >
+                                    {isFixingProjectStatuses ? 'Fixing Master Tracker Statuses...' : 'Fix Master Tracker Statuses'}
+                                </Button>
+                            </div>
+                            {fixedStatusSummary && (
+                                <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    <div>Profitability rows: {fixedStatusSummary.profitabilityCount}</div>
+                                    <div>Projects checked: {fixedStatusSummary.totalProjects}</div>
+                                    <div>Statuses updated: {fixedStatusSummary.updatedCount}</div>
+                                    <div>Skipped (no ProjectNumber): {fixedStatusSummary.skippedNoNumber}</div>
+                                    <div>Skipped (no profitability match): {fixedStatusSummary.skippedNoMatch}</div>
+                                </div>
+                            )}
                         </div>
 
                             {/* Development Tools - Hidden by default */}
