@@ -4,6 +4,9 @@ import axios from 'axios';
 import * as sql from 'mssql';
 import * as nodemailer from 'nodemailer';
 
+// Load .env into process.env when running locally (e.g. emulator)
+try { require('dotenv').config(); } catch { /* dotenv optional */ }
+
 // Initialize Firebase Admin only if not already initialized
 try {
     if (!admin.apps.length) {
@@ -32,6 +35,17 @@ const PROCORE_CONFIG = {
     clientSecret: process.env.PROCORE_CLIENT_SECRET || '-HR68NdpKiELjbKOgz7sTAOFNXc1voHV2fq8Zosy55E',
     redirectUri: process.env.PROCORE_REDIRECT_URI || 'http://localhost:5173',
     companyId: process.env.PROCORE_COMPANY_ID || '598134325590042', // Production Company ID
+};
+
+// QuickBooks Online (Intuit) OAuth 2.0 Configuration
+// Set via Firebase Functions config or env: QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_REDIRECT_URI
+const QUICKBOOKS_CONFIG = {
+    clientId: process.env.QUICKBOOKS_CLIENT_ID || '',
+    clientSecret: process.env.QUICKBOOKS_CLIENT_SECRET || '',
+    redirectUri: process.env.QUICKBOOKS_REDIRECT_URI || 'http://localhost:5173/quickbooks-oauth-callback',
+    authBaseUrl: 'https://appcenter.intuit.com/connect/oauth2',
+    tokenUrl: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
+    scope: 'com.intuit.quickbooks.accounting',
 };
 
 // Helper function to parse time preference (e.g., "1d" = 1 day, "2h" = 2 hours)
@@ -776,6 +790,139 @@ export const procoreSetSystemToken = functions
             }
             throw new functions.https.HttpsError('internal', 'Failed to set system token');
         }
+    });
+
+// ----- QuickBooks Online (Intuit) OAuth 2.0 -----
+// Get QuickBooks authorization URL to start OAuth flow
+export const quickbooksGetAuthUrl = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 60, memory: '256MB' })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        if (!QUICKBOOKS_CONFIG.clientId) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks app is not configured. Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET (and QUICKBOOKS_REDIRECT_URI) for the function.'
+            );
+        }
+        const state = context.auth.uid;
+        const authUrl =
+            `${QUICKBOOKS_CONFIG.authBaseUrl}?` +
+            `client_id=${encodeURIComponent(QUICKBOOKS_CONFIG.clientId)}&` +
+            `response_type=code&` +
+            `scope=${encodeURIComponent(QUICKBOOKS_CONFIG.scope)}&` +
+            `redirect_uri=${encodeURIComponent(QUICKBOOKS_CONFIG.redirectUri)}&` +
+            `state=${encodeURIComponent(state)}`;
+        return { authUrl };
+    });
+
+// Exchange QuickBooks authorization code for tokens; store tokens and realmId (from redirect URL)
+export const quickbooksExchangeToken = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 60, memory: '256MB' })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        const { code, realmId } = data || {};
+        if (!code) {
+            throw new functions.https.HttpsError('invalid-argument', 'Authorization code is required');
+        }
+        if (!QUICKBOOKS_CONFIG.clientId || !QUICKBOOKS_CONFIG.clientSecret) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks app is not configured. Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET.'
+            );
+        }
+        const userId = context.auth.uid;
+
+        const codeKey = `qb_code_${code.substring(0, 24)}`;
+        const codeRef = admin.firestore().collection('quickbooksCodes').doc(codeKey);
+        const codeDoc = await codeRef.get();
+        if (codeDoc.exists) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'This authorization code has already been used. Please start a new authorization flow.'
+            );
+        }
+
+        try {
+            const tokenPayload = {
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: QUICKBOOKS_CONFIG.redirectUri,
+            };
+            const basicAuth = Buffer.from(
+                `${QUICKBOOKS_CONFIG.clientId}:${QUICKBOOKS_CONFIG.clientSecret}`,
+                'utf8'
+            ).toString('base64');
+            const response = await axios.post(
+                QUICKBOOKS_CONFIG.tokenUrl,
+                tokenPayload,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${basicAuth}`,
+                    },
+                }
+            );
+            const tokenData = response.data;
+            const expiresIn = tokenData.expires_in || 3600;
+            const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
+            await codeRef.set({
+                used: true,
+                userId,
+                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            const realmIdToStore = realmId || tokenData.realmId || '';
+            await admin.firestore()
+                .collection('quickbooksTokens')
+                .doc(userId)
+                .set({
+                    accessToken: tokenData.access_token,
+                    refreshToken: tokenData.refresh_token,
+                    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                    realmId: realmIdToStore,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+            return {
+                success: true,
+                message: 'QuickBooks connected successfully.',
+                realmId: realmIdToStore,
+            };
+        } catch (error: any) {
+            const errData = error.response?.data;
+            const msg = errData?.error_description || errData?.message || error.message || 'Failed to exchange token';
+            throw new functions.https.HttpsError('internal', msg);
+        }
+    });
+
+// Simple test - check if QuickBooks token exists for current user
+export const quickbooksCheckToken = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 30, memory: '256MB' })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+        const doc = await admin.firestore()
+            .collection('quickbooksTokens')
+            .doc(context.auth.uid)
+            .get();
+        const d = doc.data();
+        return {
+            hasToken: !!d?.accessToken,
+            realmId: d?.realmId || null,
+        };
     });
 
 // Simple connection test - just verify token works with a minimal API call

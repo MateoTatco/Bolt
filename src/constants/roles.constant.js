@@ -7,6 +7,7 @@ export const USER_ROLES = {
     // Tatco roles
     TATCO_USER: 'tatco_user',
     TATCO_USER_WITH_PROFIT_SHARING: 'tatco_user_profit_sharing',
+    TATCO_ACCOUNTING_COMPARISON: 'tatco_accounting_comparison',
     
     // FD Construction roles
     FD_CONSTRUCTION_USER: 'fd_construction_user',
@@ -36,6 +37,7 @@ export const MODULES = {
     PROFIT_SHARING: 'profitSharing',
     WARRANTY_TRACKER: 'warrantyTracker',
     CREW_TRACKER: 'crewTracker',
+    ACCOUNTING_COMPARISON: 'accountingComparison',
 }
 
 // Role to modules mapping
@@ -52,6 +54,9 @@ export const ROLE_MODULES = {
         MODULES.PROJECT_PROFITABILITY,
         MODULES.PROFIT_SHARING,
         MODULES.WARRANTY_TRACKER,
+    ],
+    [USER_ROLES.TATCO_ACCOUNTING_COMPARISON]: [
+        MODULES.ACCOUNTING_COMPARISON,
     ],
     [USER_ROLES.FD_CONSTRUCTION_USER]: [
         MODULES.CREW_TRACKER,
@@ -92,6 +97,7 @@ export const ROLE_MODULES = {
         MODULES.PROFIT_SHARING,
         MODULES.WARRANTY_TRACKER,
         MODULES.CREW_TRACKER,
+        MODULES.ACCOUNTING_COMPARISON,
     ],
 }
 
@@ -99,6 +105,7 @@ export const ROLE_MODULES = {
 export const ROLE_DISPLAY_NAMES = {
     [USER_ROLES.TATCO_USER]: 'Tatco User',
     [USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING]: 'Tatco User with Profit Sharing',
+    [USER_ROLES.TATCO_ACCOUNTING_COMPARISON]: 'Tatco Accounting (Cost Comparison)',
     [USER_ROLES.FD_CONSTRUCTION_USER]: 'FD Construction User',
     [USER_ROLES.FD_CONSTRUCTION_USER_WITH_PROFIT_SHARING]: 'FD Construction User with Profit Sharing',
     [USER_ROLES.ON_THE_MARK_USER]: 'On the Mark User',
@@ -137,7 +144,11 @@ export const shouldShowWelcomePage = (role) => {
     // If user has any role that should see welcome page, return true
     // But exclude if they also have ADMIN or TATCO roles
     const hasWelcomeRole = roles.some(r => welcomePageRoles.includes(r))
-    const hasTatcoRole = roles.some(r => r === USER_ROLES.TATCO_USER || r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING)
+    const hasTatcoRole = roles.some(r => 
+        r === USER_ROLES.TATCO_USER || 
+        r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING ||
+        r === USER_ROLES.TATCO_ACCOUNTING_COMPARISON
+    )
     const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
     
     // Show welcome page if they have a welcome role and no Tatco/Admin roles
@@ -157,6 +168,7 @@ export const getRoleOptionsByCompany = () => {
             options: [
                 { value: USER_ROLES.TATCO_USER, label: ROLE_DISPLAY_NAMES[USER_ROLES.TATCO_USER] },
                 { value: USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING, label: ROLE_DISPLAY_NAMES[USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING] },
+                { value: USER_ROLES.TATCO_ACCOUNTING_COMPARISON, label: ROLE_DISPLAY_NAMES[USER_ROLES.TATCO_ACCOUNTING_COMPARISON] },
             ]
         },
         {
@@ -205,6 +217,7 @@ export const getAllRoleOptions = () => {
 export const ROLE_TO_COMPANY = {
     [USER_ROLES.TATCO_USER]: 'Tatco',
     [USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING]: 'Tatco',
+    [USER_ROLES.TATCO_ACCOUNTING_COMPARISON]: 'Tatco',
     [USER_ROLES.FD_CONSTRUCTION_USER]: 'FD Construction',
     [USER_ROLES.FD_CONSTRUCTION_USER_WITH_PROFIT_SHARING]: 'FD Construction',
     [USER_ROLES.ON_THE_MARK_USER]: 'On The Mark',
@@ -248,7 +261,8 @@ export const getVisibleNotificationTypes = (role) => {
     // Tatco roles and admin see all notification types
     const hasTatcoRole = roles.some(r => 
         r === USER_ROLES.TATCO_USER || 
-        r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING
+        r === USER_ROLES.TATCO_USER_WITH_PROFIT_SHARING ||
+        r === USER_ROLES.TATCO_ACCOUNTING_COMPARISON
     )
     const hasAdminRole = roles.some(r => r === USER_ROLES.ADMIN)
     

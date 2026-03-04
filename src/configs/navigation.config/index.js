@@ -57,6 +57,17 @@ const baseNavigationConfig = [
         module: MODULES.PROJECT_PROFITABILITY,
     },
     {
+        key: 'accountingComparison',
+        path: '/accounting-comparison',
+        title: 'Accounting Cost Comparison',
+        translateKey: 'nav.accountingComparison',
+        icon: 'accountingComparison',
+        type: NAV_ITEM_TYPE_ITEM,
+        authority: [],
+        subMenu: [],
+        module: MODULES.ACCOUNTING_COMPARISON,
+    },
+    {
         key: 'profitSharing',
         path: '/profit-sharing',
         title: 'Profit Sharing',

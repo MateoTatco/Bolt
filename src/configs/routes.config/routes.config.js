@@ -122,5 +122,23 @@ export const protectedRoutes = [
         component: lazy(() => import('@/views/AdvancedFeatures')),
         authority: [],
     },
+    {
+        key: 'accountingComparison',
+        path: '/accounting-comparison',
+        component: lazy(() => import('@/views/AccountingComparison')),
+        authority: [],
+    },
+    {
+        key: 'quickbooksOAuthCallback',
+        path: '/quickbooks-oauth-callback',
+        component: lazy(() => import('@/views/QuickBooksOAuthCallback')),
+        authority: [],
+    },
+    {
+        key: 'connectQuickBooks',
+        path: '/connect-quickbooks',
+        component: lazy(() => import('@/views/ConnectQuickBooks')),
+        authority: [],
+    },
     ...othersRoute,
 ]

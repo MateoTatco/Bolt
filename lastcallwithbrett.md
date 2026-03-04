@@ -475,3 +475,784 @@ Mateo Roldan Taborda 13 minutos 1 segundo
 Oh, sorry. Yep, I see it on on Outlook. Addco, you're invited to use QuickBooks. Got it. Got everything I need. And then I'll start doing my research and I'll let you know Monday morning how everything looks.
 Mateo Roldan Taborda 13 minutos 16 segundos
 Awesome. Have a wonderful weekend, right?
+Mateo Roldan Taborda
+0 minutos 3 segundos0:03
+Mateo Roldan Taborda 0 minutos 3 segundos
+Just one second.
+Mateo Roldan Taborda 0 minutos 5 segundos
+We should be good to go. So where would you like to begin?
+
+Chase Gibson
+0 minutos 12 segundos0:12
+Chase Gibson 0 minutos 12 segundos
+So you want me to start with kind of what my current project would be?
+
+Mateo Roldan Taborda
+0 minutos 18 segundos0:18
+Mateo Roldan Taborda 0 minutos 18 segundos
+Yes.
+
+Chase Gibson
+0 minutos 19 segundos0:19
+Chase Gibson 0 minutos 19 segundos
+OK, so the the first project that I want to see if we can tackle is a comparison of costs for each project, comparing QuickBooks cost to date and.
+
+Mateo Roldan Taborda
+0 minutos 33 segundos0:33
+Mateo Roldan Taborda 0 minutos 33 segundos
+OK.
+
+Chase Gibson
+0 minutos 36 segundos0:36
+Chase Gibson 0 minutos 36 segundos
+Procore cost to date. So essentially reconciliation between the two systems since they aren't synced or linked together in any way, shape or form. So that's going to be kind of the first step is a comparison of cost between the two projects.
+
+Mateo Roldan Taborda
+0 minutos 39 segundos0:39
+Mateo Roldan Taborda 0 minutos 39 segundos
+Hmm.
+Mateo Roldan Taborda 0 minutos 46 segundos
+Mhm.
+
+Chase Gibson
+0 minutos 54 segundos0:54
+Chase Gibson 0 minutos 54 segundos
+I think a part of that is going to require some level of mapping of each project to the right project in Procore. I mean, we try to make sure name the same, but sometimes there's an extra space or an extra dash or whatever it is where we may need like a mapping list.
+
+Mateo Roldan Taborda
+1 minuto 12 segundos1:12
+Mateo Roldan Taborda 1 minuto 12 segundos
+Mhm.
+
+Chase Gibson
+1 minuto 14 segundos1:14
+Chase Gibson 1 minuto 14 segundos
+This to keep maintained, but that's kind of step one is total cost today in revenue to date in QuickBooks versus Procore.
+
+Mateo Roldan Taborda
+1 minuto 24 segundos1:24
+Mateo Roldan Taborda 1 minuto 24 segundos
+Absolutely. So I'm going to be able to to give you everything like that. It's going to be fairly simple to do since we kind of already do that with Procore, with Project Profitability, the system we already designed here, we already have at least all of the information from Procore through our databases.
+Mateo Roldan Taborda 1 minuto 44 segundos
+The next big step for me over here will be kind of like pulling all that information directly from QuickBooks. So just kind of like a quick question for you. Could you, if you do have a second, could you please walk me through?
+Mateo Roldan Taborda 2 minutos
+Where do you save that information inside QuickBooks?
+
+Chase Gibson
+2 minutos 6 segundos2:06
+Chase Gibson 2 minutos 6 segundos
+Yes. So it will be just a sum, summer summing of multiple accounts to get to the revenue account or revenue or costs for a project. So the the cost come in is either expenses or bills.
+
+Mateo Roldan Taborda
+2 minutos 10 segundos2:10
+Mateo Roldan Taborda 2 minutos 10 segundos
+Um.
+Mateo Roldan Taborda 2 minutos 14 segundos
+Mhm.
+
+Chase Gibson
+2 minutos 25 segundos2:25
+Chase Gibson 2 minutos 25 segundos
+Or journal entries. And then they just see their debit or credit the various GL accounts. Yeah, so it's almost there's direct material, direct costs or direct labor, direct subcontract.
+
+Mateo Roldan Taborda
+2 minutos 27 segundos2:27
+Mateo Roldan Taborda 2 minutos 27 segundos
+Mhm.
+Mateo Roldan Taborda 2 minutos 32 segundos
+The expenses.
+Mateo Roldan Taborda 2 minutos 35 segundos
+Mhm.
+
+Chase Gibson
+2 minutos 41 segundos2:41
+Chase Gibson 2 minutos 41 segundos
+And I could give you that exact list of the names out of QuickBooks, but so it'll be a sum of those by project and then same with revenue, a sum of the revenue, the invoices by project.
+
+Mateo Roldan Taborda
+2 minutos 48 segundos2:48
+Mateo Roldan Taborda 2 minutos 48 segundos
+Huh.
+Mateo Roldan Taborda 2 minutos 55 segundos
+Sounds good, but could you please share your screen and show me like directly on there? So QuickBooks is fairly new to me, so I just wanna make sure that I'm picking up the right information.
+
+Chase Gibson
+2 minutos 59 segundos2:59
+Chase Gibson 2 minutos 59 segundos
+Yeah.
+Chase Gibson 3 minutos 5 segundos
+Yeah.
+Chase Gibson 3 minutos 10 segundos
+So the the.
+Chase Gibson 3 minutos 14 segundos
+The report I use the most is just a raw transaction list by customer. Let me get there.
+
+Mateo Roldan Taborda
+3 minutos 20 segundos3:20
+Mateo Roldan Taborda 3 minutos 20 segundos
+Mhm.
+Mateo Roldan Taborda 3 minutos 28 segundos
+That's directly from the menu pin in accounting, right?
+
+Chase Gibson
+3 minutos 28 segundos3:28
+Chase Gibson 3 minutos 28 segundos
+So.
+Chase Gibson 3 minutos 31 segundos
+No. So you'll go to reports and then I have this as a customer port all accounts. I can make this one shareable.
+Chase Gibson 3 minutos 49 segundos
+It's gonna be take a minute.
+Chase Gibson 3 minutos 55 segundos
+I'll get it. I'll get the report shared with you after the fact. But this is let me go back to the first one I was looking at 'cause it's less data, so it'll be a little bit quicker to navigate.
+
+Mateo Roldan Taborda
+3 minutos 58 segundos3:58
+Mateo Roldan Taborda 3 minutos 58 segundos
+Mhm.
+
+Chase Gibson
+4 minutos 10 segundos4:10
+Chase Gibson 4 minutos 10 segundos
+So if you could pull this data, it's gonna have everything we need. I would say let's grab as much data as we can in case there's other ways we want to use it down the road. So this has like vendor.
+
+Mateo Roldan Taborda
+4 minutos 21 segundos4:21
+Mateo Roldan Taborda 4 minutos 21 segundos
+Mm-hmm.
+
+Chase Gibson
+4 minutos 25 segundos4:25
+Chase Gibson 4 minutos 25 segundos
+A little bit. It's got vendor, the date, the Ledger amount, the customer, so that's key column and then the distribution account. Distribution account is like where our costs where you find the what.
+Chase Gibson 4 minutos 44 segundos
+GL account it went to, so like in this case direct labor.
+
+Mateo Roldan Taborda
+4 minutos 47 segundos4:47
+Mateo Roldan Taborda 4 minutos 47 segundos
+But it's that a place inside here where I can see those totals. Since we're creating the total cost to date for each project and comparing both of them, is there a way I can see the the total cost costs?
+Mateo Roldan Taborda 5 minutos 4 segundos
+Here.
+
+Chase Gibson
+5 minutos 5 segundos5:05
+Chase Gibson 5 minutos 5 segundos
+Not by project. I mean I can what I do. This is a little bit like a pivot table where I can pivot it by customer or filter it by customer and then I just have to do like.
+Chase Gibson 5 minutos 21 segundos
+Contains the customer name.
+
+Mateo Roldan Taborda
+5 minutos 25 segundos5:25
+Mateo Roldan Taborda 5 minutos 25 segundos
+Mm-hmm. And.
+Mateo Roldan Taborda 5 minutos 27 segundos
+Like per project over here, do you use the same information as in procore, meaning the same ID's, the same names?
+
+Chase Gibson
+5 minutos 35 segundos5:35
+Chase Gibson 5 minutos 35 segundos
+Uh, we try to make sure the customer names are the same, but it's not. It's definitely not perfect. Um and.
+Brett Tatum
+5 minutos 41 segundos5:41
+Brett Tatum 5 minutos 41 segundos
+Chase, how does how do the how do the projects get into QuickBooks? Is it coming from Procore?
+
+Mateo Roldan Taborda
+5 minutos 41 segundos5:41
+Mateo Roldan Taborda 5 minutos 41 segundos
+Mhm.
+
+Chase Gibson
+5 minutos 47 segundos5:47
+Chase Gibson 5 minutos 47 segundos
+It's not coming from anywhere, so we manually create the project when we see a pop up as either a like first expense or first invoice.
+
+Mateo Roldan Taborda
+5 minutos 58 segundos5:58
+Mateo Roldan Taborda 5 minutos 58 segundos
+OK, uh.
+BT
+
+Brett Tatum
+5 minutos 58 segundos5:58
+Brett Tatum 5 minutos 58 segundos
+So just it's creating some kind of data integrity here between the systems. Should if we can what we push from master tracker, should we push into QuickBooks as a new project's created?
+
+Chase Gibson
+6 minutos 11 segundos6:11
+Chase Gibson 6 minutos 11 segundos
+Uh.
+Chase Gibson 6 minutos 14 segundos
+Yes.
+Chase Gibson 6 minutos 15 segundos
+As long as we could like not create it in QuickBooks until we're actually gonna do something with it. I mean, I wouldn't want like every single project that comes in the master tracker to get created as a customer.
+BT
+Brett Tatum
+6 minutos 21 segundos6:21
+Brett Tatum 6 minutos 21 segundos
+That might be a problem.
+Brett Tatum 6 minutos 28 segundos
+Because this is gonna be a problem, Mateo's. We have no unique identifier between QuickBooks and Procore that you can tie the the projects together with. Like there's no project number in QuickBooks.
+
+Mateo Roldan Taborda
+6 minutos 35 segundos6:35
+Mateo Roldan Taborda 6 minutos 35 segundos
+Mhm.
+
+Chase Gibson
+6 minutos 38 segundos6:38
+Chase Gibson 6 minutos 38 segundos
+Well, we use, yeah, there's a project number in the name. So if you could like, so here Panama City, if you could gosh back out, if you could zero in on because I always name, try to name them.
+BT
+Brett Tatum
+6 minutos 43 segundos6:43
+Brett Tatum 6 minutos 43 segundos
+Oh, OK, well then that should work.
+
+Chase Gibson
+6 minutos 56 segundos6:56
+Chase Gibson 6 minutos 56 segundos
+The same like 2355.
+
+Mateo Roldan Taborda
+6 minutos 58 segundos6:58
+Mateo Roldan Taborda 6 minutos 58 segundos
+Or as long as we do have that identifier at the very beginning of the project name, we should be good because I I I need something to kind of like cross reference both of them to make sure that I'm touching the exact same project right? So.
+BT
+Brett Tatum
+7 minutos 5 segundos7:05
+Brett Tatum 7 minutos 5 segundos
+OK.
+
+Chase Gibson
+7 minutos 5 segundos7:05
+Chase Gibson 7 minutos 5 segundos
+Mhm.
+Chase Gibson 7 minutos 11 segundos
+Exactly.
+Chase Gibson 7 minutos 14 segundos
+Yeah.
+
+Mateo Roldan Taborda
+7 minutos 17 segundos7:17
+Mateo Roldan Taborda 7 minutos 17 segundos
+Could you one more time because I it didn't quite stick to me. Where could I find all of the projects you currently have saved here?
+
+Chase Gibson
+7 minutos 26 segundos7:26
+Chase Gibson 7 minutos 26 segundos
+So that would be in under sales or no customer hub.
+Chase Gibson 7 minutos 36 segundos
+And then we go to customers. So each project is called a customer in QuickBooks.
+
+Mateo Roldan Taborda
+7 minutos 41 segundos7:41
+Mateo Roldan Taborda 7 minutos 41 segundos
+OK.
+
+Chase Gibson
+7 minutos 45 segundos7:45
+Chase Gibson 7 minutos 45 segundos
+You get here. OK, so the ones here at the top, that's kind of the what they'll all look like going forward. If we Scroll way down, there was kind of a when you're using other systems, they were structured a little differently.
+
+Mateo Roldan Taborda
+7 minutos 53 segundos7:53
+Mateo Roldan Taborda 7 minutos 53 segundos
+Mhm.
+Chase Gibson
+8 minutos 2 segundos8:02
+Chase Gibson 8 minutos 2 segundos
+Uh, but for the most part it should be project number space dash space project name like this.
+
+Mateo Roldan Taborda
+8 minutos 2 segundos8:02
+Mateo Roldan Taborda 8 minutos 2 segundos
+Mhm.
+Mateo Roldan Taborda 8 minutos 10 segundos
+Sounds good. As long as we have that identifier at the very beginning, we should be good. I'll try to match as many as as as many projects as possible using both of them, because Procore and Bolt communicate primarily through ID.
+
+Chase Gibson
+8 minutos 11 segundos8:11
+Chase Gibson 8 minutos 11 segundos
+Yeah.
+Chase Gibson 8 minutos 16 segundos
+And if you and if.
+Chase Gibson 8 minutos 27 segundos
+Mhm.
+
+Mateo Roldan Taborda
+8 minutos 27 segundos8:27
+Mateo Roldan Taborda 8 minutos 27 segundos
+So and moving forward as well, it will be very important that every new customer you create here in QuickBooks also has that idea, at least at the very beginning of the of the name if the actual name of the project is a bit different.
+
+Chase Gibson
+8 minutos 36 segundos8:36
+Chase Gibson 8 minutos 36 segundos
+Yeah, Yep.
+
+Mateo Roldan Taborda
+8 minutos 42 segundos8:42
+Mateo Roldan Taborda 8 minutos 42 segundos
+It doesn't really matter as long as we have the ID. That's the key part that I need to be able to match both of them. Could you click at any project at random? I just want to see something.
+
+Chase Gibson
+8 minutos 45 segundos8:45
+Chase Gibson 8 minutos 45 segundos
+Yeah.
+Chase Gibson 8 minutos 54 segundos
+Yeah, so when I click into this customer, it's only gonna show me.
+Chase Gibson 9 minutos 14 segundos
+So if I go to this customer's page, it should only show me the invoices and the payments. It's not going to show me the costs. So we've got these are like that'd be the revenue invoice to the customer and then payments received.
+
+Mateo Roldan Taborda
+9 minutos 27 segundos9:27
+Mateo Roldan Taborda 9 minutos 27 segundos
+Mhm.
+
+Chase Gibson
+9 minutos 30 segundos9:30
+Chase Gibson 9 minutos 30 segundos
+So we do need to capture all this information and inside of these invoices there's usually 2 lines of one for revenue, one for vendor or customer retainage.
+
+Mateo Roldan Taborda
+9 minutos 38 segundos9:38
+Mateo Roldan Taborda 9 minutos 38 segundos
+Mhm.
+
+Chase Gibson
+9 minutos 48 segundos9:48
+Chase Gibson 9 minutos 48 segundos
+But that first report I was showing you the transaction list captures invoices, customer invoices too. So I'd want to I I think we're gonna I'm gonna need to see like what it look what the API looks like where you are can just go.
+
+Mateo Roldan Taborda
+9 minutos 57 segundos9:57
+Mateo Roldan Taborda 9 minutos 57 segundos
+6.
+
+Chase Gibson
+10 minutos 6 segundos10:06
+Chase Gibson 10 minutos 6 segundos
+Get all the transaction detail and I can show you kind of the fields that we're needing to grab out of that.
+
+Mateo Roldan Taborda
+10 minutos 9 segundos10:09
+Mateo Roldan Taborda 10 minutos 9 segundos
+Mhm.
+Mateo Roldan Taborda 10 minutos 14 segundos
+Sounds good. Yeah. Based on what we previously talked, let me, I actually have something over here, bold and ready. Just one second.
+Mateo Roldan Taborda 10 minutos 29 segundos
+Um.
+Mateo Roldan Taborda 10 minutos 31 segundos
+Let me share my screen.
+Mateo Roldan Taborda 10 minutos 40 segundos
+Great. Um.
+Mateo Roldan Taborda 10 minutos 42 segundos
+I pretty much have everything I need on my end, right? I already have access to the API. I'm just going to having to create an app using that, which is going to be fairly easy.
+Mateo Roldan Taborda 10 minutos 54 segundos
+But based on the scope of all of the requests at the moment, from what I can actually tell you, I'm going to start building a back end service for like pulling all information. But as this is fairly new and we probably.
+Mateo Roldan Taborda 11 minutos 12 segundos
+Don't know where to pull the like the exact information to cost to date for all of the projects exactly from. So I'm going to probably give you a very basic app at the very beginning. I'm.
+Mateo Roldan Taborda 11 minutos 27 segundos
+Just probably with a few KPIs dashboards where you can just probably compare both numbers from Procore and here, so you and here and tell you where to reconciliate information directly, right? Give me about.
+
+Chase Gibson
+11 minutos 41 segundos11:41
+Chase Gibson 11 minutos 41 segundos
+Mhm.
+
+Mateo Roldan Taborda
+11 minutos 46 segundos11:46
+Mateo Roldan Taborda 11 minutos 46 segundos
+A week, a week and a half for the back end services and I'm probably definitely going to need to touch base with you somewhere along this week and next week as well, just to kind of like make sure that I'm touching the right end points for the information for each.
+
+Chase Gibson
+11 minutos 58 segundos11:58
+Chase Gibson 11 minutos 58 segundos
+Yeah.
+
+Mateo Roldan Taborda
+12 minutos 6 segundos12:06
+Mateo Roldan Taborda 12 minutos 6 segundos
+Roject right? Because if we don't have a direct, well, actually I don't need to share my screen, but if I don't have.
+Mateo Roldan Taborda 12 minutos 16 segundos
+A place inside QuickBooks where I can see the total cost to date for retty much the whole project.
+Mateo Roldan Taborda 12 minutos 24 segundos
+Probably going to have to create kinda like a similar service on Azure to kinda like how we do with.
+Mateo Roldan Taborda 12 minutos 34 segundos
+Procore directly, right? So we import all of the information and then we do all the calculations inside the databases, and then we pull that information directly from the databases. So I'll still need to do some research on how we're going to be doing that. But initially, yes, give me a week, a week and a half to kind.
+
+Chase Gibson
+12 minutos 42 segundos12:42
+Chase Gibson 12 minutos 42 segundos
+Yeah.
+
+Mateo Roldan Taborda
+12 minutos 54 segundos12:54
+Mateo Roldan Taborda 12 minutos 54 segundos
+Start pulling information and start building the services within Bolt to get you something that you can see and visualize and then we can pivot according to what you actually need. I do have a pretty good understanding of what's needed at the moment, but.
+
+Chase Gibson
+13 minutos 6 segundos13:06
+Chase Gibson 13 minutos 6 segundos
+OK.
+Mateo Roldan Taborda
+13 minutos 11 segundos13:11
+Mateo Roldan Taborda 13 minutos 11 segundos
+We.
+
+Chase Gibson
+13 minutos 12 segundos13:12
+Chase Gibson 13 minutos 12 segundos
+Yeah. One thing I was gonna add though is looking at the project profitability just from the Procore data, one piece of information you're gonna need from Procore that isn't at least in the like.
+
+Mateo Roldan Taborda
+13 minutos 13 segundos13:13
+Mateo Roldan Taborda 13 minutos 13 segundos
+Will change.
+Mateo Roldan Taborda 13 minutos 20 segundos
+Mhm.
+
+Chase Gibson
+13 minutos 27 segundos13:27
+Chase Gibson 13 minutos 27 segundos
+Profitability tracker that I see you may have the data on the back and just not using it is the difference between like project cost to date and estimated cost at completion. So estimated cost completion is like with all of our.
+
+Mateo Roldan Taborda
+13 minutos 30 segundos13:30
+Mateo Roldan Taborda 13 minutos 30 segundos
+Mhm.
+Mateo Roldan Taborda 13 minutos 39 segundos
+OK.
+
+Chase Gibson
+13 minutos 43 segundos13:43
+Chase Gibson 13 minutos 43 segundos
+Commitments in the the contracts with our subcontractors as if they were fully invoiced against. But what I'm needing is like a live like as of March 3rd, what are all the invoices and bills that have been booked? Not necessarily was it going to be at the end of the project so.
+
+Mateo Roldan Taborda
+13 minutos 57 segundos13:57
+Mateo Roldan Taborda 13 minutos 57 segundos
+As up to date.
+
+Chase Gibson
+14 minutos 3 segundos14:03
+Chase Gibson 14 minutos 3 segundos
+In Procore, you'll need like to sum your direct costs and your invoicing subcontractor invoices.
+
+Mateo Roldan Taborda
+14 minutos 15 segundos14:15
+Mateo Roldan Taborda 14 minutos 15 segundos
+Mhm.
+
+Chase Gibson
+14 minutos 15 segundos14:15
+Chase Gibson 14 minutos 15 segundos
+Together instead of just using the like S my cost of complete column of the budget. I don't know if that's exactly how you're doing it, but.
+
+Mateo Roldan Taborda
+14 minutos 24 segundos14:24
+Mateo Roldan Taborda 14 minutos 24 segundos
+Well, product preferability is just the sum of everything, right? So we just pull that information directly. Yeah, like.
+
+Chase Gibson
+14 minutos 29 segundos14:29
+Chase Gibson 14 minutos 29 segundos
+Uhuh.
+
+Mateo Roldan Taborda
+14 minutos 34 segundos14:34
+Mateo Roldan Taborda 14 minutos 34 segundos
+Well, at least I'm not 100% sure because I didn't create that system that that was before my time. I'm just pulling the information directly from that database, but I believe it's it's gonna have to be something similar. We we're going to need to push all of the information directly from.
+BT
+Brett Tatum
+14 minutos 34 segundos14:34
+Brett Tatum 14 minutos 34 segundos
+Yet.
+
+Mateo Roldan Taborda
+14 minutos 49 segundos14:49
+Mateo Roldan Taborda 14 minutos 49 segundos
+Uh, QuickBooks to a database and then start doing the calculations over there and then pull that information again to Bolt to kinda like for you to be able to compare both of them at the same time. So that's kinda like the plan that I have envisioned at the moment. I'll probably going to try.
+
+Chase Gibson
+14 minutos 58 segundos14:58
+Chase Gibson 14 minutos 58 segundos
+Mhm.
+
+Mateo Roldan Taborda
+15 minutos 5 segundos15:05
+Mateo Roldan Taborda 15 minutos 5 segundos
+To just pull the information directly from QuickBooks without having to store everything on a database. But we'll see. I'll I'll see what's easier to do and more like simple that makes more sense for the whole team, right? So yeah, just I'm going to start digging into that.
+
+Chase Gibson
+15 minutos 15 segundos15:15
+Chase Gibson 15 minutos 15 segundos
+Yeah.
+
+Mateo Roldan Taborda
+15 minutos 25 segundos15:25
+Mateo Roldan Taborda 15 minutos 25 segundos
+Now that you showed me where I can find the information directly on on on on QuickBooks, I do have a better idea where to start and how to do it. So just keep in mind I'm going to be asking you a bunch of questions since this system is a bit new to me. So I'm gonna ask you as many questions as possible down the road, but.
+Mateo Roldan Taborda 15 minutos 45 segundos
+Just let me know and correct me if I go sideways in not sideways, but if I go sidetrack a little bit on into what information you actually need from there. So yeah, I should be able to have to.
+
+Mateo Roldan Taborda 17 minutos 5 segundos
+Sounds good.
+Mateo Roldan Taborda 17 minutos 9 segundos
+Sounds good. So the regular, the, the, the regular updates I give you, I'll just include Chase as well. I'll keep you of course always on the loop. But yeah, I'll yeah, I'll just communicate with the whole team accordingly as I've been doing up to today.
+BT
+Brett Tatum
+17 minutos 10 segundos17:10
+Brett Tatum 17 minutos 10 segundos
+Helpful. So um, book.
+Brett Tatum 17 minutos 17 segundos
+Yep.
+
+Chase Gibson
+17 minutos 23 segundos17:23
+Chase Gibson 17 minutos 23 segundos
+Sounds good.
+BT
+Brett Tatum
+17 minutos 27 segundos17:27
+Brett Tatum 17 minutos 27 segundos
+Chase, we, Mateo and I meet every Monday morning typically. So we didn't this week because we pushed it today. I'm gonna add you to the next few Monday meetings. That way you can can stay in, you know, that'll just that'll be a set time.
+
+Chase Gibson
+17 minutos 27 segundos17:27
+Chase Gibson 17 minutos 27 segundos
+Oh.
+Chase Gibson 17 minutos 35 segundos
+OK.
+
+Mateo Roldan Taborda
+17 minutos 37 segundos17:37
+Mateo Roldan Taborda 17 minutos 37 segundos
+Mhm.
+BT
+Brett Tatum
+17 minutos 43 segundos17:43
+Brett Tatum 17 minutos 43 segundos
+For for us to chat if you guys need to send or chat.
+
+Chase Gibson
+17 minutos 43 segundos17:43
+Chase Gibson 17 minutos 43 segundos
+Yeah.
+
+Mateo Roldan Taborda
+17 minutos 48 segundos17:48
+Mateo Roldan Taborda 17 minutos 48 segundos
+Hmm.
+BT
+Brett Tatum
+17 minutos 49 segundos17:49
+Brett Tatum 17 minutos 49 segundos
+Um, more than that, feel free. So I'll put you on the one for the.
+
+Chase Gibson
+17 minutos 51 segundos17:51
+Chase Gibson 17 minutos 51 segundos
+OK.
+BT
+Brett Tatum
+17 minutos 54 segundos17:54
+Brett Tatum 17 minutos 54 segundos
+9th and now the 16th.
+
+Mateo Roldan Taborda
+17 minutos 54 segundos17:54
+Mateo Roldan Taborda 17 minutos 54 segundos
+And.
+Mateo Roldan Taborda 17 minutos 56 segundos
+At least for the next to two weeks.
+BT
+Brett Tatum
+17 minutos 59 segundos17:59
+Brett Tatum 17 minutos 59 segundos
+Yep, that's what I've got him on. So JC should have got those invites.
+
+Mateo Roldan Taborda
+18 minutos 1 segundo18:01
+Mateo Roldan Taborda 18 minutos 1 segundo
+Awesome.
+
+Chase Gibson
+18 minutos 1 segundo18:01
+Chase Gibson 18 minutos 1 segundo
+Sounds good.
+
+Mateo Roldan Taborda
+18 minutos 3 segundos18:03
+Mateo Roldan Taborda 18 minutos 3 segundos
+Awesome. Yeah, I'll start reviewing. I'll probably start building the back end today. I still need to do just a few more things on the API, just to kind of like be 100% sure that that I'm pulling the right information, but I'll start building the back end today and then I'll keep you guys updated on.
+BT
+Brett Tatum
+18 minutos 15 segundos18:15
+Brett Tatum 18 minutos 15 segundos
+Yep.
+
+Mateo Roldan Taborda
+18 minutos 23 segundos18:23
+Mateo Roldan Taborda 18 minutos 23 segundos
+The process for for everything just to be 100% sure this is going to be a tactical only app right module.
+
+Chase Gibson
+18 minutos 31 segundos18:31
+Chase Gibson 18 minutos 31 segundos
+Uh, so we'll need to pull from Tatco, Oklahoma, which is the quick works I was showing you, but then also Tatco, Florida.
+
+Mateo Roldan Taborda
+18 minutos 41 segundos18:41
+Mateo Roldan Taborda 18 minutos 41 segundos
+Well, yeah, inside Bold, they're the same companies, just because we segregate the other companies into different sections of the app. So yeah, so only Tatco people will have access to to this module, right?
+
+Chase Gibson
+18 minutos 42 segundos18:42
+Chase Gibson 18 minutos 42 segundos
+It has a separate QuickBooks, so we'll.
+BT
+Brett Tatum
+18 minutos 45 segundos18:45
+Brett Tatum 18 minutos 45 segundos
+Mm.
+
+Chase Gibson
+18 minutos 45 segundos18:45
+Chase Gibson 18 minutos 45 segundos
+Well.
+BT
+Brett Tatum
+18 minutos 54 segundos18:54
+Brett Tatum 18 minutos 54 segundos
+Yeah, actually Mateo, only Chase and whoever Chase wants to include in from the accounting team will actually have access. So we'll probably need another permission level on the kind of the admin or the admin level to create.
+
+Mateo Roldan Taborda
+19 minutos 3 segundos19:03
+Mateo Roldan Taborda 19 minutos 3 segundos
+OK.
+Mateo Roldan Taborda 19 minutos 7 segundos
+Mhm.
+BT
+Brett Tatum
+19 minutos 12 segundos19:12
+Brett Tatum 19 minutos 12 segundos
+Because like Simon and Trey don't need access to this. It would be Chase and Arnell and potentially Marjorie and then more to come. So more of an accounting function.
+
+Mateo Roldan Taborda
+19 minutos 22 segundos19:22
+Mateo Roldan Taborda 19 minutos 22 segundos
+Sounds good.
+
+Chase Gibson
+19 minutos 24 segundos19:24
+Chase Gibson 19 minutos 24 segundos
+Yeah, Mateo, there's also there's two QuickBooks, 2 separate QuickBooks, one for Oklahoma, one for Florida. But we can just get everything up and running using Oklahoma QuickBooks. And then I'm assuming down the road it's easy enough to just combine the Florida QuickBooks using the current.
+
+Mateo Roldan Taborda
+19 minutos 39 segundos19:39
+Mateo Roldan Taborda 19 minutos 39 segundos
+Yep.
+
+Chase Gibson
+19 minutos 40 segundos19:40
+Chase Gibson 19 minutos 40 segundos
+Rocess we built out O.
+
+Mateo Roldan Taborda
+19 minutos 43 segundos19:43
+Mateo Roldan Taborda 19 minutos 43 segundos
+Yeah, of course. As long as we build the correct infrastructure for Oklahoma, we can replicate the same thing. It's going to be quicker. We'll still need a lot of customization because there are two different companies and we're pulling information from two different places, right? But it's easier to replicate a already built in system to another company. So.
+
+Chase Gibson
+19 minutos 51 segundos19:51
+Chase Gibson 19 minutos 51 segundos
+Yeah.
+Chase Gibson 20 minutos 2 segundos
+Yeah.
+Chase Gibson 20 minutos 8 segundos
+Sounds good, yeah.
+
+Mateo Roldan Taborda
+20 minutos 11 segundos20:11
+Mateo Roldan Taborda 20 minutos 11 segundos
+And the new admin, not admin, sorry, the new access level, I'm just going to call it.
+Mateo Roldan Taborda 20 minutos 22 segundos
+Finance for for this company.
+Brett Tatum
+20 minutos 24 segundos20:24
+Brett Tatum 20 minutos 24 segundos
+Mateo, we we may need to rethink how our user role management like the roles are set up because I think it's going to get really complicated because like we have Tacco user with profit sharing and then we have just a Tacco user. I think we need to start thinking about our roles as more of a check box.
+
+Mateo Roldan Taborda
+20 minutos 29 segundos20:29
+Mateo Roldan Taborda 20 minutos 29 segundos
+Hmm.
+Mateo Roldan Taborda 20 minutos 32 segundos
+Mhm.
+Mateo Roldan Taborda 20 minutos 37 segundos
+Mhm.
+BT
+Brett Tatum
+20 minutos 44 segundos20:44
+Brett Tatum 20 minutos 44 segundos
+So it's like, OK, this is a TACO user.
+
+Mateo Roldan Taborda
+20 minutos 44 segundos20:44
+Mateo Roldan Taborda 20 minutos 44 segundos
+Mhm.
+BT
+Brett Tatum
+20 minutos 47 segundos20:47
+Brett Tatum 20 minutos 47 segundos
+It's a profit profit sharing user and it's an accounting user as opposed to creating a whole new kind of separate, yeah, so that can be the back end of this, this effort.
+
+Mateo Roldan Taborda
+20 minutos 51 segundos20:51
+Mateo Roldan Taborda 20 minutos 51 segundos
+Sounds good. Yeah.
+Mateo Roldan Taborda 20 minutos 55 segundos
+System for that.
+Mateo Roldan Taborda 20 minutos 58 segundos
+Yeah, sounds good.
+BT
+Brett Tatum
+21 minutos 3 segundos21:03
+Brett Tatum 21 minutos 3 segundos
+And we can work on that permissions set up.
+
+Mateo Roldan Taborda
+21 minutos 4 segundos21:04
+Mateo Roldan Taborda 21 minutos 4 segundos
+Sounds good. Yeah, we should definitely meet on that topic because the access levels are going to affect a bunch of different modules here, right? So yeah, we'll we'll think about it. Thank you for letting me know that though. So I'll I'll start envisioning a better system for us to be able to.
+BT
+Brett Tatum
+21 minutos 14 segundos21:14
+Brett Tatum 21 minutos 14 segundos
+I know. Yeah. No, we'll have to.
+
+Mateo Roldan Taborda
+21 minutos 24 segundos21:24
+Mateo Roldan Taborda 21 minutos 24 segundos
+To segregate everything together inside the Bolt app. But yeah, it's good that we actually talk about that. So yeah, definitely let me get to work. This one is a really exciting new project for the team. So I'm ready. I'm happy to start.
+
+Chase Gibson
+21 minutos 41 segundos21:41
+Chase Gibson 21 minutos 41 segundos
+Sounds good. Thanks, Mateo.
+BT
+Brett Tatum
+21 minutos 42 segundos21:42
+Brett Tatum 21 minutos 42 segundos
+Cool.
+
+Mateo Roldan Taborda
+21 minutos 43 segundos21:43
+Mateo Roldan Taborda 21 minutos 43 segundos
+Thank you. Have a wonderful day guys.
+
+Chase Gibson
+21 minutos 45 segundos21:45
+Chase Gibson 21 minutos 45 segundos
+You too. Bye.
