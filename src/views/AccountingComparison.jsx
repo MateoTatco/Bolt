@@ -4,6 +4,7 @@ import QuickBooksService from '@/services/QuickBooksService'
 
 const AccountingComparison = () => {
     const [qbStatus, setQbStatus] = useState({ loading: true, hasToken: false, realmId: null, error: null })
+    const [txState, setTxState] = useState({ loading: false, rows: [], error: null })
 
     useEffect(() => {
         let cancelled = false
@@ -31,6 +32,38 @@ const AccountingComparison = () => {
         return () => { cancelled = true }
     }, [])
 
+    // After QuickBooks is connected, load a small sample of transactions
+    useEffect(() => {
+        if (qbStatus.loading || !qbStatus.hasToken) {
+            return
+        }
+
+        let cancelled = false
+        const load = async () => {
+            setTxState({ loading: true, rows: [], error: null })
+            try {
+                const data = await QuickBooksService.getSampleTransactions()
+                if (cancelled) return
+                setTxState({
+                    loading: false,
+                    rows: data?.transactions || [],
+                    error: null,
+                })
+            } catch (err) {
+                if (cancelled) return
+                setTxState({
+                    loading: false,
+                    rows: [],
+                    // Firebase callable errors put our backend message in `details`
+                    error: err?.details || err?.message || 'Failed to load QuickBooks transactions.',
+                })
+            }
+        }
+
+        load()
+        return () => { cancelled = true }
+    }, [qbStatus.loading, qbStatus.hasToken])
+
     const handleConnectClick = () => {
         window.location.href = '/connect-quickbooks'
     }
@@ -56,7 +89,7 @@ const AccountingComparison = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="p-4 lg:col-span-2">
+                <Card className="p-4 lg:col-span-2 space-y-4">
                     <h2 className="text-lg font-semibold mb-2">Module Status</h2>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         We&apos;ve connected Bolt to QuickBooks and Procore. The next steps are to pull transaction data from
@@ -66,8 +99,89 @@ const AccountingComparison = () => {
                     <ul className="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
                         <li>QuickBooks OAuth connection established.</li>
                         <li>Project profitability data already coming from Azure SQL (Procore feed).</li>
-                        <li>Upcoming: per-project reconciliation table and variance flags.</li>
+                        <li>Initial QuickBooks transaction sample loaded for reconciliation prototype.</li>
                     </ul>
+
+                    <div className="mt-4">
+                        <h3 className="text-sm font-semibold mb-2">QuickBooks Transactions (sample)</h3>
+                        {txState.loading ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Loading transactions…</p>
+                        ) : txState.error ? (
+                            <p className="text-sm text-red-600 dark:text-red-400">{txState.error}</p>
+                        ) : txState.rows.length === 0 ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                No transactions returned from QuickBooks for this sample query.
+                            </p>
+                        ) : (
+                            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md">
+                                <table className="min-w-full text-xs">
+                                    <thead className="bg-gray-50 dark:bg-gray-800">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                                Doc #
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                                Date
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                                Type
+                                            </th>
+                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                                Customer
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                                Total
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                                Balance
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {txState.rows.slice(0, 10).map((row, idx) => (
+                                            <tr
+                                                key={row.id || idx}
+                                                className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}
+                                            >
+                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200 font-mono">
+                                                    {row.docNumber ?? row.id ?? '-'}
+                                                </td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
+                                                    {row.txnDate || '-'}
+                                                </td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
+                                                    {row.txnType || '-'}
+                                                </td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
+                                                    {row.customerName || '-'}
+                                                </td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-right text-gray-800 dark:text-gray-200">
+                                                    {typeof row.totalAmt === 'number'
+                                                        ? new Intl.NumberFormat('en-US', {
+                                                              style: 'currency',
+                                                              currency: 'USD',
+                                                              minimumFractionDigits: 2,
+                                                              maximumFractionDigits: 2,
+                                                          }).format(row.totalAmt)
+                                                        : '-'}
+                                                </td>
+                                                <td className="px-3 py-2 whitespace-nowrap text-right text-gray-800 dark:text-gray-200">
+                                                    {typeof row.balance === 'number'
+                                                        ? new Intl.NumberFormat('en-US', {
+                                                              style: 'currency',
+                                                              currency: 'USD',
+                                                              minimumFractionDigits: 2,
+                                                              maximumFractionDigits: 2,
+                                                          }).format(row.balance)
+                                                        : '-'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </Card>
 
                 <Card className="p-4">

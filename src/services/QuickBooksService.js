@@ -61,6 +61,16 @@ export const QuickBooksService = {
     },
 
     /**
+     * Fetch a small sample of QuickBooks transactions for reconciliation prototype.
+     * @returns {Promise<{ success: boolean, count: number, transactions: Array }>}
+     */
+    async getSampleTransactions() {
+        const fn = httpsCallable(getFunctionsInstance(), 'quickbooksGetSampleTransactions')
+        const result = await fn()
+        return result.data
+    },
+
+    /**
      * Start the OAuth flow by redirecting the browser to Intuit's authorization page.
      */
     async initiateOAuth() {

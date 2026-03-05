@@ -11,7 +11,7 @@ if (appConfig.enableMock) {
     import('./mock')
 }
 
-// Global OAuth callback handler - redirects to project-profitability if OAuth code is present
+// Global OAuth callback handler - routes OAuth callbacks to the appropriate page
 function OAuthCallbackHandler() {
     const location = useLocation()
     const navigate = useNavigate()
@@ -19,15 +19,31 @@ function OAuthCallbackHandler() {
     useEffect(() => {
         const urlParams = new URLSearchParams(location.search)
         const code = urlParams.get('code')
-        const state = urlParams.get('state')
         const error = urlParams.get('error')
+        const realmId = urlParams.get('realmId')
 
-        // If we have an OAuth callback (code or error) and we're not on project-profitability, redirect there
-        if ((code || error) && !location.pathname.includes('project-profitability')) {
-            const redirectPath = `/project-profitability${location.search}`
-            console.log('OAuth callback detected on root, redirecting to:', redirectPath)
-            navigate(redirectPath, { replace: true })
+        // Only handle when an OAuth response is present
+        if (!code && !error) {
+            return
         }
+
+        // If we're already on a target page, don't re-route
+        if (location.pathname.includes('project-profitability') || location.pathname.includes('quickbooks-oauth-callback')) {
+            return
+        }
+
+        // QuickBooks OAuth responses always include a realmId; route those to the QuickBooks callback page
+        if (realmId) {
+            const redirectPath = `/quickbooks-oauth-callback${location.search}`
+            console.log('OAuth callback detected (QuickBooks), redirecting to:', redirectPath)
+            navigate(redirectPath, { replace: true })
+            return
+        }
+
+        // Default OAuth case (e.g. Procore) goes to Project Profitability
+        const redirectPath = `/project-profitability${location.search}`
+        console.log('OAuth callback detected (default), redirecting to:', redirectPath)
+        navigate(redirectPath, { replace: true })
     }, [location, navigate])
 
     return null

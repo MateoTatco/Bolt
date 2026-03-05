@@ -4,8 +4,11 @@ import axios from 'axios';
 import * as sql from 'mssql';
 import * as nodemailer from 'nodemailer';
 
-// Load .env into process.env when running locally (e.g. emulator)
-try { require('dotenv').config(); } catch { /* dotenv optional */ }
+// Load .env from functions/ directory (emulator cwd is often project root, so explicit path)
+try {
+    const path = require('path');
+    require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+} catch { /* dotenv optional */ }
 
 // Initialize Firebase Admin only if not already initialized
 try {
@@ -46,6 +49,11 @@ const QUICKBOOKS_CONFIG = {
     authBaseUrl: 'https://appcenter.intuit.com/connect/oauth2',
     tokenUrl: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
     scope: 'com.intuit.quickbooks.accounting',
+    // Use sandbox API when using development keys + sandbox company (set QUICKBOOKS_USE_SANDBOX=true in .env)
+    useSandbox: process.env.QUICKBOOKS_USE_SANDBOX === 'true',
+    apiBase: process.env.QUICKBOOKS_USE_SANDBOX === 'true'
+        ? 'https://sandbox-quickbooks.api.intuit.com'
+        : 'https://quickbooks.api.intuit.com',
 };
 
 // Helper function to parse time preference (e.g., "1d" = 1 day, "2h" = 2 hours)
@@ -651,6 +659,7 @@ export const procoreExchangeToken = functions
             // Calculate expiration time
             const expiresIn = tokenData.expires_in || 3600;
             const expiresAt = new Date(Date.now() + expiresIn * 1000);
+
             console.log('Token will expire at:', expiresAt.toISOString());
             
             // Store token in Firestore for user
@@ -660,7 +669,8 @@ export const procoreExchangeToken = functions
                 .set({
                     accessToken: tokenData.access_token,
                     refreshToken: tokenData.refresh_token,
-                    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                    // Store as plain Date; Firestore will convert to Timestamp
+                    expiresAt: expiresAt,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
@@ -851,21 +861,22 @@ export const quickbooksExchangeToken = functions
         }
 
         try {
-            const tokenPayload = {
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: QUICKBOOKS_CONFIG.redirectUri,
-            };
+            // Intuit QuickBooks token endpoint expects URL-encoded form data
+            const params = new URLSearchParams();
+            params.append('grant_type', 'authorization_code');
+            params.append('code', code);
+            params.append('redirect_uri', QUICKBOOKS_CONFIG.redirectUri);
+
             const basicAuth = Buffer.from(
                 `${QUICKBOOKS_CONFIG.clientId}:${QUICKBOOKS_CONFIG.clientSecret}`,
                 'utf8'
             ).toString('base64');
             const response = await axios.post(
                 QUICKBOOKS_CONFIG.tokenUrl,
-                tokenPayload,
+                params.toString(),
                 {
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded',
                         'Authorization': `Basic ${basicAuth}`,
                     },
                 }
@@ -877,7 +888,8 @@ export const quickbooksExchangeToken = functions
             await codeRef.set({
                 used: true,
                 userId,
-                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+                // Use plain Date; Firestore will store as a Timestamp
+                usedAt: new Date(),
             });
 
             const realmIdToStore = realmId || tokenData.realmId || '';
@@ -887,10 +899,11 @@ export const quickbooksExchangeToken = functions
                 .set({
                     accessToken: tokenData.access_token,
                     refreshToken: tokenData.refresh_token,
-                    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+                    // Store as plain Date; Firestore will convert to Timestamp automatically
+                    expiresAt: expiresAt,
                     realmId: realmIdToStore,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
                 });
 
             return {
@@ -923,6 +936,99 @@ export const quickbooksCheckToken = functions
             hasToken: !!d?.accessToken,
             realmId: d?.realmId || null,
         };
+    });
+
+// Fetch a sample of QuickBooks transactions (for reconciliation prototype)
+export const quickbooksGetSampleTransactions = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 60, memory: '512MB' })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const userId = context.auth.uid;
+        const tokenDoc = await admin.firestore()
+            .collection('quickbooksTokens')
+            .doc(userId)
+            .get();
+
+        if (!tokenDoc.exists) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks is not connected. Please connect QuickBooks first.'
+            );
+        }
+
+        const tokenData = tokenDoc.data() as any;
+        const accessToken = tokenData?.accessToken;
+        const realmId = tokenData?.realmId;
+
+        if (!accessToken || !realmId) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks token or realmId is missing. Please reconnect QuickBooks.'
+            );
+        }
+
+        try {
+            // Use sandbox API base when QUICKBOOKS_USE_SANDBOX=true (dev keys + sandbox company)
+            const apiBase = QUICKBOOKS_CONFIG.apiBase;
+            const url = `${apiBase}/v3/company/${realmId}/query?minorversion=65`;
+            console.log('QuickBooks query: apiBase=', apiBase, 'realmId=', realmId, 'useSandbox=', QUICKBOOKS_CONFIG.useSandbox);
+
+            // QuickBooks has no generic "Transaction" entity; use Invoice (supported entity)
+            const query = 'select * from Invoice STARTPOSITION 1 MAXRESULTS 50';
+
+            const response = await axios.post(
+                url,
+                query,
+                {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        Accept: 'application/json',
+                        'Content-Type': 'application/text',
+                    },
+                }
+            );
+
+            const raw = response.data;
+            const invoices = raw?.QueryResponse?.Invoice || [];
+
+            // Map to a lightweight summary for the UI (matches QueryResponse.Invoice shape from API Explorer)
+            const mapped = invoices.map((t: any) => ({
+                id: t.Id,
+                docNumber: t.DocNumber ?? null,
+                txnType: 'Invoice',
+                txnDate: t.TxnDate,
+                customerName: t.CustomerRef?.name || null,
+                customerId: t.CustomerRef?.value || null,
+                totalAmt: t.TotalAmt ?? null,
+                balance: t.Balance ?? null,
+            }));
+
+            return {
+                success: true,
+                count: mapped.length,
+                transactions: mapped,
+            };
+        } catch (error: any) {
+            const data = error.response?.data;
+            const fault = data?.Fault || data?.fault;
+            const errList = fault?.Error ?? fault?.error;
+            const firstErr = Array.isArray(errList) ? errList[0] : errList;
+            const msg =
+                firstErr?.Message ?? firstErr?.message ?? firstErr?.Detail ?? firstErr?.detail ?? error.message ?? 'Failed to fetch QuickBooks transactions';
+            console.error('QuickBooks query error:', {
+                status: error.response?.status,
+                apiBase: QUICKBOOKS_CONFIG.apiBase,
+                fault: fault,
+                firstError: firstErr,
+                msg,
+            });
+            throw new functions.https.HttpsError('internal', msg);
+        }
     });
 
 // Simple connection test - just verify token works with a minimal API call
