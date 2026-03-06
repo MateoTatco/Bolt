@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, FormContainer, FormItem } from '@/components/ui'
+import { Dialog, Button, Input, Select, FormContainer, FormItem, Checkbox } from '@/components/ui'
 import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
 import { HiOutlineX, HiOutlineTrash } from 'react-icons/hi'
+
+// Exact SMS disclosure text required for A2P / Twilio campaign compliance (visible at opt-in).
+const SMS_CONSENT_DISCLOSURE =
+    'By providing your mobile phone number and checking the box below, you agree to receive job assignment notifications and work schedule updates from Tatco via SMS. Message and data rates may apply. Message frequency varies based on your work schedule. Reply HELP for help, STOP to opt out.'
 
 const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], skillSets = [] }) => {
     const [formData, setFormData] = useState({
@@ -15,6 +19,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
         regionId: '',
         skillSetIds: [],
         timeOffRanges: [],
+        smsConsent: false,
     })
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
@@ -32,6 +37,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
                 regionId: employee.regionId || '',
                 skillSetIds: Array.isArray(employee.skillSetIds) ? employee.skillSetIds : [],
                 timeOffRanges: employee.timeOffRanges || [],
+                smsConsent: Boolean(employee.smsConsent),
             })
         } else {
             setFormData({
@@ -45,6 +51,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
                 regionId: '',
                 skillSetIds: [],
                 timeOffRanges: [],
+                smsConsent: false,
             })
         }
         setErrors({})
@@ -116,6 +123,11 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
             newErrors.phone = phoneError
         }
         
+        // If phone is provided, SMS consent is required (A2P compliance)
+        if (formData.phone && formData.phone.replace(/\D/g, '').length >= 10 && !formData.smsConsent) {
+            newErrors.smsConsent = 'SMS consent is required when adding a phone number for job notifications.'
+        }
+        
         const emailError = validateEmail(formData.email)
         if (emailError) {
             newErrors.email = emailError
@@ -168,6 +180,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
                 timeOffRanges: processedTimeOffRanges,
+                smsConsent: Boolean(formData.smsConsent),
             }
 
             await onSave(employeeData)
@@ -248,7 +261,7 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
                     </FormItem>
 
                     <FormItem
-                        label="Phone Number *"
+                        label="Mobile phone (for SMS job & schedule updates) *"
                         invalid={!!errors.phone}
                         errorMessage={errors.phone}
                     >
@@ -258,6 +271,29 @@ const EmployeeFormModal = ({ isOpen, onClose, employee, onSave, regions = [], sk
                             placeholder="(555) 123-4567"
                             maxLength={14}
                         />
+                    </FormItem>
+
+                    <FormItem
+                        label="SMS consent (required for job notifications)"
+                        invalid={!!errors.smsConsent}
+                        errorMessage={errors.smsConsent}
+                    >
+                        <div
+                            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3"
+                            data-sms-consent-disclosure
+                        >
+                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                {SMS_CONSENT_DISCLOSURE}
+                            </p>
+                            <Checkbox
+                                checked={formData.smsConsent}
+                                onChange={(checked) => handleChange('smsConsent', checked)}
+                            >
+                                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                    I agree to receive job assignment and work schedule updates via SMS. Message and data rates may apply. Reply HELP for help, STOP to opt out.
+                                </span>
+                            </Checkbox>
+                        </div>
                     </FormItem>
 
                     <FormItem

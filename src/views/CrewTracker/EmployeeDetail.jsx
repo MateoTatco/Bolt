@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Tooltip } from '@/components/ui'
+import { Card, Button, Input, Select, FormContainer, FormItem, Tag, Tooltip, Checkbox } from '@/components/ui'
 import DatePickerRange from '@/components/ui/DatePicker/DatePickerRange'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
 import { useCrewEmployeeStore } from '@/store/crewEmployeeStore'
@@ -10,6 +10,10 @@ import Notification from '@/components/ui/Notification'
 import * as XLSX from 'xlsx'
 import { collection, getDocs } from 'firebase/firestore'
 import { db } from '@/configs/firebase.config'
+
+// Exact SMS disclosure text for A2P / Twilio campaign compliance (visible at opt-in).
+const SMS_CONSENT_DISCLOSURE =
+    'By providing your mobile phone number and checking the box below, you agree to receive job assignment notifications and work schedule updates from Tatco via SMS. Message and data rates may apply. Message frequency varies based on your work schedule. Reply HELP for help, STOP to opt out.'
 
 const EmployeeDetail = () => {
     const { employeeId } = useParams()
@@ -25,10 +29,15 @@ const EmployeeDetail = () => {
         email: '',
         language: 'en',
         active: true,
+        regionId: '',
+        skillSetIds: [],
         timeOffRanges: [],
+        smsConsent: false,
     })
     const [errors, setErrors] = useState({})
     const [saving, setSaving] = useState(false)
+    const [regions, setRegions] = useState([])
+    const [skillSets, setSkillSets] = useState([])
     const { updateEmployee } = useCrewEmployeeStore()
     const [exportingSchedule, setExportingSchedule] = useState(false)
     const [messageHistory, setMessageHistory] = useState([])
@@ -53,7 +62,10 @@ const EmployeeDetail = () => {
                         email: emp.email || '',
                         language: emp.language || 'en',
                         active: emp.active !== undefined ? emp.active : true,
+                        regionId: emp.regionId || '',
+                        skillSetIds: Array.isArray(emp.skillSetIds) ? emp.skillSetIds : [],
                         timeOffRanges: emp.timeOffRanges || [],
+                        smsConsent: Boolean(emp.smsConsent),
                     })
                 } else {
                     toast.push(
@@ -83,6 +95,23 @@ const EmployeeDetail = () => {
             loadEmployee()
         }
     }, [employeeId, navigate])
+
+    // Load regions and skill sets for display/edit parity with Add Crew Member modal
+    useEffect(() => {
+        const loadMeta = async () => {
+            try {
+                const [rRes, sRes] = await Promise.all([
+                    FirebaseDbService.crewRegions.getAll(),
+                    FirebaseDbService.crewSkillSets.getAll(),
+                ])
+                if (rRes.success) setRegions(rRes.data || [])
+                if (sRes.success) setSkillSets(sRes.data || [])
+            } catch (error) {
+                console.error('Failed to load crew regions/skill sets for employee detail:', error)
+            }
+        }
+        loadMeta()
+    }, [])
 
     // Load and subscribe to crew messages for this employee
     useEffect(() => {
@@ -173,6 +202,8 @@ const EmployeeDetail = () => {
             const digitsOnly = formData.phone.replace(/\D/g, '')
             if (digitsOnly.length < 10 || digitsOnly.length > 11) {
                 newErrors.phone = 'Phone number must be 10-11 digits'
+            } else if (!formData.smsConsent) {
+                newErrors.smsConsent = 'SMS consent is required when adding a phone number for job notifications.'
             }
         }
         
@@ -227,6 +258,7 @@ const EmployeeDetail = () => {
                 phone: normalizedPhone,
                 email: formData.email.trim() || null,
                 timeOffRanges: processedTimeOffRanges,
+                smsConsent: Boolean(formData.smsConsent),
             }
 
             await updateEmployee(employeeId, employeeData)
@@ -254,7 +286,10 @@ const EmployeeDetail = () => {
                 email: employee.email || '',
                 language: employee.language || 'en',
                 active: employee.active !== undefined ? employee.active : true,
+                regionId: employee.regionId || '',
+                skillSetIds: Array.isArray(employee.skillSetIds) ? employee.skillSetIds : [],
                 timeOffRanges: employee.timeOffRanges || [],
+                smsConsent: Boolean(employee.smsConsent),
             })
         }
         setErrors({})
@@ -549,7 +584,7 @@ const EmployeeDetail = () => {
                                 </FormItem>
 
                                 <FormItem
-                                    label="Phone Number *"
+                                    label="Mobile phone (for SMS job & schedule updates) *"
                                     invalid={!!errors.phone}
                                     errorMessage={errors.phone}
                                 >
@@ -557,7 +592,31 @@ const EmployeeDetail = () => {
                                         value={formData.phone}
                                         onChange={(e) => handleChange('phone', e.target.value)}
                                         maxLength={14}
+                                        placeholder="(555) 123-4567"
                                     />
+                                </FormItem>
+
+                                <FormItem
+                                    label="SMS consent (required for job notifications)"
+                                    invalid={!!errors.smsConsent}
+                                    errorMessage={errors.smsConsent}
+                                >
+                                    <div
+                                        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3"
+                                        data-sms-consent-disclosure
+                                    >
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                            {SMS_CONSENT_DISCLOSURE}
+                                        </p>
+                                        <Checkbox
+                                            checked={formData.smsConsent}
+                                            onChange={(checked) => handleChange('smsConsent', checked)}
+                                        >
+                                            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                                I agree to receive job assignment and work schedule updates via SMS. Message and data rates may apply. Reply HELP for help, STOP to opt out.
+                                            </span>
+                                        </Checkbox>
+                                    </div>
                                 </FormItem>
 
                                 <FormItem
@@ -591,6 +650,67 @@ const EmployeeDetail = () => {
                                         ]}
                                         value={formData.active}
                                         onChange={(option) => handleChange('active', option.value)}
+                                    />
+                                </FormItem>
+
+                                <FormItem label="Location / Region">
+                                    <Select
+                                        options={[
+                                            { value: '', label: '— None —' },
+                                            ...(regions || []).map((r) => ({
+                                                value: r.id,
+                                                label: r.name || '',
+                                            })),
+                                        ]}
+                                        value={formData.regionId
+                                            ? {
+                                                value: formData.regionId,
+                                                label:
+                                                    regions.find((r) => r.id === formData.regionId)?.name ||
+                                                    formData.regionId,
+                                            }
+                                            : { value: '', label: '— None —' }}
+                                        onChange={(option) =>
+                                            handleChange('regionId', option?.value || '')
+                                        }
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={{
+                                            menuPortal: (provided) => ({
+                                                ...provided,
+                                                zIndex: 10000,
+                                            }),
+                                        }}
+                                    />
+                                </FormItem>
+
+                                <FormItem label="Skill sets">
+                                    <Select
+                                        isMulti
+                                        options={(skillSets || []).map((s) => ({
+                                            value: s.id,
+                                            label: s.name || '',
+                                        }))}
+                                        value={(formData.skillSetIds || []).map((id) => {
+                                            const s = (skillSets || []).find((x) => x.id === id)
+                                            return s
+                                                ? { value: s.id, label: s.name }
+                                                : { value: id, label: id }
+                                        })}
+                                        onChange={(selected) =>
+                                            handleChange(
+                                                'skillSetIds',
+                                                (selected || []).map((o) => o.value),
+                                            )
+                                        }
+                                        menuPortalTarget={document.body}
+                                        menuPosition="fixed"
+                                        styles={{
+                                            menuPortal: (provided) => ({
+                                                ...provided,
+                                                zIndex: 10000,
+                                            }),
+                                        }}
                                     />
                                 </FormItem>
                             </div>
@@ -744,10 +864,13 @@ const EmployeeDetail = () => {
                                     Language
                                 </label>
                                 <div className="mt-1">
-                                    <Tag className={employee.language === 'es' 
-                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : ''
-                                    }>
+                                    <Tag
+                                        className={
+                                            employee.language === 'es'
+                                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                                : ''
+                                        }
+                                    >
                                         {employee.language === 'es' ? 'Spanish' : 'English'}
                                     </Tag>
                                 </div>
@@ -758,13 +881,77 @@ const EmployeeDetail = () => {
                                     Status
                                 </label>
                                 <div className="mt-1">
-                                    <Tag className={employee.active !== false
-                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                        : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-                                    }>
+                                    <Tag
+                                        className={
+                                            employee.active !== false
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                                        }
+                                    >
                                         {employee.active !== false ? 'Active' : 'Inactive'}
                                     </Tag>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Location / Region
+                                </label>
+                                <p className="mt-1 text-gray-900 dark:text-gray-100">
+                                    {(() => {
+                                        if (!employee.regionId) return '— None —'
+                                        const region = regions.find((r) => r.id === employee.regionId)
+                                        return region?.name || employee.regionId
+                                    })()}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Skill sets
+                                </label>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                    {Array.isArray(employee.skillSetIds) &&
+                                    employee.skillSetIds.length > 0 ? (
+                                        employee.skillSetIds.map((id) => {
+                                            const skill = skillSets.find((s) => s.id === id)
+                                            const label = skill?.name || id
+                                            return (
+                                                <Tag
+                                                    key={id}
+                                                    className="bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-200"
+                                                >
+                                                    {label}
+                                                </Tag>
+                                            )
+                                        })
+                                    ) : (
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                                            No skill sets assigned
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    SMS job & schedule alerts
+                                </label>
+                                <div className="mt-1">
+                                    <Tag
+                                        className={
+                                            employee.smsConsent
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+                                        }
+                                    >
+                                        {employee.smsConsent ? 'Consent on file' : 'No SMS consent'}
+                                    </Tag>
+                                </div>
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    This indicates whether the crew member has agreed to receive job
+                                    assignment and work schedule updates via SMS.
+                                </p>
                             </div>
 
                             <div className="md:col-span-2">
