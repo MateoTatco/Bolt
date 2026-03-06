@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Button, Tag } from '@/components/ui'
+import { Card, Button, Tag, Input } from '@/components/ui'
 import QuickBooksService from '@/services/QuickBooksService'
 
 const AccountingComparison = () => {
     const [qbStatus, setQbStatus] = useState({ loading: true, hasToken: false, realmId: null, error: null })
     const [txState, setTxState] = useState({ loading: false, rows: [], error: null })
+    const [projectNumber, setProjectNumber] = useState('')
+    const [projectSummary, setProjectSummary] = useState({
+        loading: false,
+        data: null,
+        error: null,
+    })
 
     useEffect(() => {
         let cancelled = false
@@ -181,6 +187,76 @@ const AccountingComparison = () => {
                                 </table>
                             </div>
                         )}
+                    </div>
+
+                    <div className="mt-6 border-t border-gray-200 dark:border-gray-800 pt-4">
+                        <h3 className="text-sm font-semibold mb-2">QuickBooks Project Revenue (by project number)</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                            Enter a Tatco project number (the numeric prefix in the QuickBooks customer name, for example
+                            <span className="font-mono"> 2355</span>) to see total invoice revenue for that project in QuickBooks.
+                        </p>
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
+                            <Input
+                                size="sm"
+                                className="md:w-48"
+                                placeholder="Project number"
+                                value={projectNumber}
+                                onChange={(e) => setProjectNumber(e.target.value)}
+                            />
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                disabled={!qbStatus.hasToken || !projectNumber.trim() || projectSummary.loading}
+                                onClick={async () => {
+                                    if (!projectNumber.trim()) return
+                                    setProjectSummary({ loading: true, data: null, error: null })
+                                    try {
+                                        const data = await QuickBooksService.getProjectInvoicesSummary(projectNumber.trim())
+                                        setProjectSummary({ loading: false, data, error: null })
+                                    } catch (err) {
+                                        setProjectSummary({
+                                            loading: false,
+                                            data: null,
+                                            error: err?.details || err?.message || 'Failed to load QuickBooks project summary.',
+                                        })
+                                    }
+                                }}
+                            >
+                                Load QuickBooks revenue
+                            </Button>
+                        </div>
+
+                        {projectSummary.loading ? (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Loading project revenue…</p>
+                        ) : projectSummary.error ? (
+                            <p className="text-sm text-red-600 dark:text-red-400">{projectSummary.error}</p>
+                        ) : projectSummary.data ? (
+                            <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                                <p>
+                                    <span className="font-semibold">Project number:</span>{' '}
+                                    <span className="font-mono">{projectSummary.data.projectNumber}</span>
+                                </p>
+                                <p>
+                                    <span className="font-semibold">Matched QuickBooks customers:</span>{' '}
+                                    {projectSummary.data.quickbooksCustomers?.length || 0}
+                                </p>
+                                <p>
+                                    <span className="font-semibold">Invoice count:</span>{' '}
+                                    {projectSummary.data.invoiceCount}
+                                </p>
+                                <p>
+                                    <span className="font-semibold">Total QuickBooks revenue:</span>{' '}
+                                    {typeof projectSummary.data.totalRevenue === 'number'
+                                        ? new Intl.NumberFormat('en-US', {
+                                              style: 'currency',
+                                              currency: 'USD',
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                          }).format(projectSummary.data.totalRevenue)
+                                        : '-'}
+                                </p>
+                            </div>
+                        ) : null}
                     </div>
                 </Card>
 

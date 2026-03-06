@@ -71,6 +71,27 @@ export const QuickBooksService = {
     },
 
     /**
+     * Fetch QuickBooks invoice summary for a given Tatco project number.
+     * The backend matches customers whose DisplayName starts with this project number
+     * and then sums invoices for those customers.
+     * @param {string} projectNumber
+     * @returns {Promise<{
+     *   success: boolean,
+     *   projectNumber: string,
+     *   hasCustomers: boolean,
+     *   quickbooksCustomers: Array,
+     *   invoiceCount: number,
+     *   totalRevenue: number,
+     *   invoices: Array
+     * }>}
+     */
+    async getProjectInvoicesSummary(projectNumber) {
+        const fn = httpsCallable(getFunctionsInstance(), 'quickbooksGetProjectInvoicesSummary')
+        const result = await fn({ projectNumber })
+        return result.data
+    },
+
+    /**
      * Start the OAuth flow by redirecting the browser to Intuit's authorization page.
      */
     async initiateOAuth() {
