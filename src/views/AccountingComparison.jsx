@@ -113,7 +113,15 @@ const AccountingComparison = () => {
                         {txState.loading ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400">Loading transactions…</p>
                         ) : txState.error ? (
-                            <p className="text-sm text-red-600 dark:text-red-400">{txState.error}</p>
+                            <div className="space-y-2">
+                                <p className="text-sm text-red-600 dark:text-red-400">{txState.error}</p>
+                                {typeof txState.error === 'string' &&
+                                txState.error.toLowerCase().includes('authorization has expired') ? (
+                                    <Button size="sm" variant="outline" onClick={handleConnectClick}>
+                                        Reconnect QuickBooks
+                                    </Button>
+                                ) : null}
+                            </div>
                         ) : txState.rows.length === 0 ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400">
                                 No transactions returned from QuickBooks for this sample query.
@@ -229,7 +237,15 @@ const AccountingComparison = () => {
                         {projectSummary.loading ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400">Loading project revenue…</p>
                         ) : projectSummary.error ? (
-                            <p className="text-sm text-red-600 dark:text-red-400">{projectSummary.error}</p>
+                            <div className="space-y-2">
+                                <p className="text-sm text-red-600 dark:text-red-400">{projectSummary.error}</p>
+                                {typeof projectSummary.error === 'string' &&
+                                projectSummary.error.toLowerCase().includes('authorization has expired') ? (
+                                    <Button size="sm" variant="outline" onClick={handleConnectClick}>
+                                        Reconnect QuickBooks
+                                    </Button>
+                                ) : null}
+                            </div>
                         ) : projectSummary.data ? (
                             <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                                 <p>
