@@ -3,7 +3,10 @@ import * as admin from 'firebase-admin';
 import axios from 'axios';
 
 // QuickBooks Online (Intuit) OAuth 2.0 Configuration
-// Set via Firebase Functions config or env: QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_REDIRECT_URI
+// For local/emulator: use functions/.env (QUICKBOOKS_*).
+// For production: set these as environment variables on the Cloud Function itself.
+const useSandbox = process.env.QUICKBOOKS_USE_SANDBOX === 'true';
+
 const QUICKBOOKS_CONFIG = {
     clientId: process.env.QUICKBOOKS_CLIENT_ID || '',
     clientSecret: process.env.QUICKBOOKS_CLIENT_SECRET || '',
@@ -11,9 +14,9 @@ const QUICKBOOKS_CONFIG = {
     authBaseUrl: 'https://appcenter.intuit.com/connect/oauth2',
     tokenUrl: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
     scope: 'com.intuit.quickbooks.accounting',
-    // Use sandbox API when using development keys + sandbox company (set QUICKBOOKS_USE_SANDBOX=true in .env)
-    useSandbox: process.env.QUICKBOOKS_USE_SANDBOX === 'true',
-    apiBase: process.env.QUICKBOOKS_USE_SANDBOX === 'true'
+    // Use sandbox API when using development keys + sandbox company (set QUICKBOOKS_USE_SANDBOX=true)
+    useSandbox,
+    apiBase: useSandbox
         ? 'https://sandbox-quickbooks.api.intuit.com'
         : 'https://quickbooks.api.intuit.com',
 };
@@ -445,14 +448,12 @@ export const quickbooksGetProjectInvoicesSummary = functions
             // Escape single quotes for SQL-like query
             const escapedProjectNumber = projectNumber.replace(/'/g, "''");
 
-            // 1) Find customers whose DisplayName starts with the project number (Tatco pattern: "1234 - Project Name")
+            // 1) Find customers whose DisplayName starts with the project number (Tatco: "1130003 - OKC Vet Collective").
+            // We use only DisplayName; FullyQualifiedName is not always filterable in the Query API.
             const customerQuery =
-                `select Id, DisplayName, FullyQualifiedName ` +
-                `from Customer ` +
-                `where DisplayName like '${escapedProjectNumber}%' ` +
-                `STARTPOSITION 1 MAXRESULTS 100`;
+                `select Id, DisplayName, FullyQualifiedName from Customer where DisplayName like '${escapedProjectNumber}%' STARTPOSITION 1 MAXRESULTS 100`;
 
-            const customerResponse = await axios.post(
+            const customerResponse = await axios.post<{ QueryResponse?: { Customer?: any[] } }>(
                 url,
                 customerQuery,
                 {
@@ -464,8 +465,7 @@ export const quickbooksGetProjectInvoicesSummary = functions
                 }
             );
 
-            const customerRaw = customerResponse.data;
-            const customers = customerRaw?.QueryResponse?.Customer || [];
+            const customers = customerResponse.data?.QueryResponse?.Customer || [];
 
             if (!customers.length) {
                 return {
@@ -493,32 +493,32 @@ export const quickbooksGetProjectInvoicesSummary = functions
                     invoiceCount: 0,
                     totalRevenue: 0,
                     invoices: [],
-                    message: `Customers matched by DisplayName, but none have valid Ids.`,
+                    message: `Customers matched by name, but none have valid Ids.`,
                 };
             }
 
-            // 2) Fetch invoices for those customers
-            const idList = customerIds.map((id: string) => `'${id}'`).join(',');
-            const invoiceQuery =
-                `select Id, DocNumber, TxnDate, TotalAmt, CustomerRef ` +
-                `from Invoice ` +
-                `where CustomerRef in (${idList}) ` +
-                `STARTPOSITION 1 MAXRESULTS 1000`;
+            // 2) Fetch invoices per customer (CustomerRef in (...) can cause "Error parsing query"; use CustomerRef = 'id' per customer).
+            const allInvoices: any[] = [];
+            for (const cid of customerIds) {
+                const escapedId = String(cid).replace(/'/g, "''");
+                const invoiceQuery =
+                    `select Id, DocNumber, TxnDate, TotalAmt, CustomerRef from Invoice where CustomerRef = '${escapedId}' STARTPOSITION 1 MAXRESULTS 1000`;
+                const invRes = await axios.post<{ QueryResponse?: { Invoice?: any[] } }>(
+                    url,
+                    invoiceQuery,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            Accept: 'application/json',
+                            'Content-Type': 'application/text',
+                        },
+                    }
+                );
+                const list = invRes.data?.QueryResponse?.Invoice || [];
+                allInvoices.push(...list);
+            }
 
-            const invoiceResponse = await axios.post(
-                url,
-                invoiceQuery,
-                {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`,
-                        Accept: 'application/json',
-                        'Content-Type': 'application/text',
-                    },
-                }
-            );
-
-            const invoiceRaw = invoiceResponse.data;
-            const invoices = invoiceRaw?.QueryResponse?.Invoice || [];
+            const invoices = allInvoices;
 
             const mappedInvoices = invoices.map((t: any) => ({
                 id: t.Id,

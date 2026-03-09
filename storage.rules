@@ -36,6 +36,18 @@ service firebase.storage {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
     }
+
+    // Profit Sharing templates and generated documents
+    // Directory structure (as used in the app):
+    // - profitSharing/templates/Profit Sharing Plan Template.docx
+    // - profitSharing/templates/Profit Award Agreement Template.docx
+    // - profitSharing/plans/{planId}/...
+    // - profitSharing/awards/{stakeholderId}/{awardId}/...
+    match /profitSharing/{allPaths=**} {
+      // Require authentication for all profit sharing files
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
   }
 }
 

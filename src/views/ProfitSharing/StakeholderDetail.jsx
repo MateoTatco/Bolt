@@ -2426,7 +2426,14 @@ const StakeholderDetail = () => {
                                                     </Table.Td>
                                                     <Table.Td>
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            {award.documentUrl && (
+                                                            {(
+                                                                award.signedDocumentPdfUrl ||
+                                                                award.signedDocumentDocxUrl ||
+                                                                award.signedDocumentUrl ||
+                                                                award.documentPdfUrl ||
+                                                                award.documentDocxUrl ||
+                                                                award.documentUrl
+                                                            ) && (
                                                                 <Button
                                                                     variant="plain"
                                                                     size="sm"
