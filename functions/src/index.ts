@@ -5055,22 +5055,27 @@ export const azureSqlInvestigateProject = functions
             throw new functions.https.HttpsError('invalid-argument', 'Project number is required');
         }
 
+        const projectNumberStr = String(projectNumber).trim();
+        const projectNumberTrimmed = projectNumberStr.replace(/^0+/, '') || '0'; // no leading zeros
+        const projectNumberPadded = projectNumberStr.padStart(7, '0'); // 7 digits with leading zeros
+
         try {
-            console.log(`Investigating project number: ${projectNumber}`);
+            console.log(`Investigating project number: ${projectNumberStr} (also trying trimmed: ${projectNumberTrimmed}, padded: ${projectNumberPadded})`);
             const azureSqlConfig = getAzureSqlConfig();
             const pool = await sql.connect(azureSqlConfig);
             console.log('✅ Connected to Azure SQL Database');
 
                 try {
-                // Query the most recent archive record(s) for this specific project number
-                // We compute the latest ArchiveDate per projectNumber, not across the whole table.
+                // Query the most recent archive record(s) for this specific project number.
+                // Try exact match and normalized forms (no leading zeros, 7-digit padded) so we find
+                // the project even if Azure stores it differently (e.g. "01130003" vs "1130003").
                 const query = `
                     WITH MostRecentArchive AS (
                         SELECT 
                             ppa.ProjectNumber,
                             MAX(ppa.ArchiveDate) as LatestArchiveDate
                         FROM dbo.ProjectProfitabilityArchive ppa
-                        WHERE ppa.ProjectNumber = @projectNumber
+                        WHERE ppa.ProjectNumber IN (@projectNumber, @projectNumberTrimmed, @projectNumberPadded)
                         GROUP BY ppa.ProjectNumber
                     )
                     SELECT 
@@ -5093,19 +5098,21 @@ export const azureSqlInvestigateProject = functions
                     INNER JOIN MostRecentArchive mra 
                         ON ppa.ProjectNumber = mra.ProjectNumber 
                         AND ppa.ArchiveDate = mra.LatestArchiveDate
-                    WHERE ppa.ProjectNumber = @projectNumber
+                    WHERE ppa.ProjectNumber IN (@projectNumber, @projectNumberTrimmed, @projectNumberPadded)
                     ORDER BY ppa.ProjectName
                 `;
 
                 const request = pool.request();
-                request.input('projectNumber', sql.NVarChar, projectNumber.toString());
-                
-                console.log(`Executing investigation query for project number: ${projectNumber}...`);
+                request.input('projectNumber', sql.NVarChar, projectNumberStr);
+                request.input('projectNumberTrimmed', sql.NVarChar, projectNumberTrimmed);
+                request.input('projectNumberPadded', sql.NVarChar, projectNumberPadded);
+
+                console.log(`Executing investigation query for project number: ${projectNumberStr}...`);
                 const result = await request.query(query);
                 const rows = result.recordset || [];
-                console.log(`✅ Found ${rows.length} record(s) for project number ${projectNumber} on most recent archive date`);
+                console.log(`✅ Found ${rows.length} record(s) for project number ${projectNumberStr} on most recent archive date`);
 
-                // Also check for other records on different archive dates
+                // Also check for other records on different archive dates (same flexible match)
                 const allRecordsQuery = `
                     SELECT 
                         ppa.ProjectName,
@@ -5124,19 +5131,23 @@ export const azureSqlInvestigateProject = functions
                         ppa.ContractEndDate,
                         CAST(ppa.ArchiveDate AS DATE) as ArchiveDateOnly
                     FROM dbo.ProjectProfitabilityArchive ppa
-                    WHERE ppa.ProjectNumber = @projectNumber
+                    WHERE ppa.ProjectNumber IN (@projectNumber, @projectNumberTrimmed, @projectNumberPadded)
                     ORDER BY ppa.ArchiveDate DESC, ppa.ProjectName
                 `;
-                
-                const allRecordsResult = await request.query(allRecordsQuery);
-                const allRows = allRecordsResult.recordset || [];
-                console.log(`✅ Found ${allRows.length} total record(s) across all archive dates for project number ${projectNumber}`);
 
-                // Get the most recent archive date for this project number to compare
+                const allRecordsRequest = pool.request();
+                allRecordsRequest.input('projectNumber', sql.NVarChar, projectNumberStr);
+                allRecordsRequest.input('projectNumberTrimmed', sql.NVarChar, projectNumberTrimmed);
+                allRecordsRequest.input('projectNumberPadded', sql.NVarChar, projectNumberPadded);
+                const allRecordsResult = await allRecordsRequest.query(allRecordsQuery);
+                const allRows = allRecordsResult.recordset || [];
+                console.log(`✅ Found ${allRows.length} total record(s) across all archive dates for project number ${projectNumberStr}`);
+
+                // Get the most recent archive date for this project number to compare (same flexible match)
                 const mostRecentDateQuery = `
                     SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly 
                     FROM dbo.ProjectProfitabilityArchive
-                    WHERE ProjectNumber = @projectNumber
+                    WHERE ProjectNumber IN (@projectNumber, @projectNumberTrimmed, @projectNumberPadded)
                 `;
                 const mostRecentDateResult = await request.query(mostRecentDateQuery);
                 const mostRecentDate = mostRecentDateResult.recordset[0]?.LatestArchiveDateOnly;
@@ -5226,7 +5237,7 @@ export const azureSqlInvestigateProject = functions
 
                 return {
                     success: true,
-                    projectNumber: projectNumber,
+                    projectNumber: projectNumberStr,
                     totalRecords: rows.length,
                     records: formattedResults,
                     otherRecords: otherRecords, // Records from other archive dates

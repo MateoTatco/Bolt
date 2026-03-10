@@ -495,7 +495,9 @@ const AccountingComparison = () => {
                                 disabled={!qbStatus.hasToken || !projectNumber.trim() || projectSummary.loading}
                                 onClick={async () => {
                                     if (!projectNumber.trim()) return
-                                    loadProjectSummary(projectNumber.trim())
+                                    const trimmed = projectNumber.trim()
+                                    loadProjectSummary(trimmed)
+                                    loadAzureSummary(trimmed)
                                 }}
                             >
                                 Load QuickBooks revenue
