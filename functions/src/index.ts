@@ -5061,24 +5061,16 @@ export const azureSqlInvestigateProject = functions
             const pool = await sql.connect(azureSqlConfig);
             console.log('✅ Connected to Azure SQL Database');
 
-            try {
-                // Query only the most recent archive records for this project number
-                // This matches the logic used by Project Profitability page
-                // Shows only current records, not entire history
+                try {
+                // Query the most recent archive record(s) for this specific project number
+                // We compute the latest ArchiveDate per projectNumber, not across the whole table.
                 const query = `
-                    WITH MostRecentArchiveDate AS (
-                        -- Get the most recent ArchiveDate (by date) in the entire table
-                        SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly
-                        FROM dbo.ProjectProfitabilityArchive
-                    ),
-                    MostRecentArchive AS (
-                        -- Get the MAX ArchiveDate per project, but only for projects where MAX falls on the most recent date
+                    WITH MostRecentArchive AS (
                         SELECT 
                             ppa.ProjectNumber,
                             MAX(ppa.ArchiveDate) as LatestArchiveDate
                         FROM dbo.ProjectProfitabilityArchive ppa
-                        CROSS JOIN MostRecentArchiveDate mrad
-                        WHERE CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
+                        WHERE ppa.ProjectNumber = @projectNumber
                         GROUP BY ppa.ProjectNumber
                     )
                     SELECT 
@@ -5101,9 +5093,7 @@ export const azureSqlInvestigateProject = functions
                     INNER JOIN MostRecentArchive mra 
                         ON ppa.ProjectNumber = mra.ProjectNumber 
                         AND ppa.ArchiveDate = mra.LatestArchiveDate
-                    CROSS JOIN MostRecentArchiveDate mrad
                     WHERE ppa.ProjectNumber = @projectNumber
-                        AND CAST(ppa.ArchiveDate AS DATE) = mrad.LatestArchiveDateOnly
                     ORDER BY ppa.ProjectName
                 `;
 
@@ -5142,8 +5132,12 @@ export const azureSqlInvestigateProject = functions
                 const allRows = allRecordsResult.recordset || [];
                 console.log(`✅ Found ${allRows.length} total record(s) across all archive dates for project number ${projectNumber}`);
 
-                // Get the most recent archive date to compare
-                const mostRecentDateQuery = `SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly FROM dbo.ProjectProfitabilityArchive`;
+                // Get the most recent archive date for this project number to compare
+                const mostRecentDateQuery = `
+                    SELECT MAX(CAST(ArchiveDate AS DATE)) as LatestArchiveDateOnly 
+                    FROM dbo.ProjectProfitabilityArchive
+                    WHERE ProjectNumber = @projectNumber
+                `;
                 const mostRecentDateResult = await request.query(mostRecentDateQuery);
                 const mostRecentDate = mostRecentDateResult.recordset[0]?.LatestArchiveDateOnly;
 
