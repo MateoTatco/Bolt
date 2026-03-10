@@ -5,6 +5,7 @@ import Chart from '@/components/shared/Chart'
 import { HiOutlineCurrencyDollar, HiOutlineDownload } from 'react-icons/hi'
 import { getAuth } from 'firebase/auth'
 import { FirebaseDbService } from '@/services/FirebaseDbService'
+import { useNavigate } from 'react-router'
 import { ProcoreService } from '@/services/ProcoreService'
 import { components } from 'react-select'
 import { useSessionUser } from '@/store/authStore'
@@ -268,6 +269,7 @@ const applyProjectFilters = (projects, filters) => {
 }
 
 const ProjectProfitability = () => {
+    const navigate = useNavigate()
     // Check if user is admin
     const user = useSessionUser((state) => state.user)
     const isAdmin = user?.authority?.includes(ADMIN) || false
@@ -373,6 +375,7 @@ const ProjectProfitability = () => {
         'contractEndDate',
         'isActive',
         'archiveDate',
+        'accountingComparison',
     ]
 
     const [columnOrder, setColumnOrder] = useState(() => {
@@ -697,6 +700,29 @@ const ProjectProfitability = () => {
                     <Tooltip title={value}>
                         <span className="block max-w-[300px] truncate font-semibold text-xs">{value || '-'}</span>
                     </Tooltip>
+                )
+            },
+        },
+        {
+            header: 'Accounting Comparison',
+            accessorKey: 'accountingComparison',
+            size: 180,
+            meta: { key: 'accountingComparison' },
+            cell: (props) => {
+                const projectNumber = props.row.original.projectNumber
+                const disabled = !projectNumber
+                return (
+                    <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={disabled}
+                        onClick={() => {
+                            if (!projectNumber) return
+                            navigate(`/accounting-comparison?projectNumber=${encodeURIComponent(projectNumber)}`)
+                        }}
+                    >
+                        Open in Accounting
+                    </Button>
                 )
             },
         },

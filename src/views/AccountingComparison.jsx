@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Card, Button, Tag, Input } from '@/components/ui'
 import QuickBooksService from '@/services/QuickBooksService'
+import { useLocation } from 'react-router'
 
 const AccountingComparison = () => {
     const [qbStatus, setQbStatus] = useState({ loading: true, hasToken: false, realmId: null, error: null })
@@ -11,6 +12,7 @@ const AccountingComparison = () => {
         data: null,
         error: null,
     })
+    const location = useLocation()
 
     useEffect(() => {
         let cancelled = false
@@ -37,6 +39,25 @@ const AccountingComparison = () => {
         check()
         return () => { cancelled = true }
     }, [])
+
+    const loadProjectSummary = useCallback(
+        async (projNumber) => {
+            const trimmed = (projNumber || '').trim()
+            if (!trimmed || projectSummary.loading) return
+            setProjectSummary({ loading: true, data: null, error: null })
+            try {
+                const data = await QuickBooksService.getProjectInvoicesSummary(trimmed)
+                setProjectSummary({ loading: false, data, error: null })
+            } catch (err) {
+                setProjectSummary({
+                    loading: false,
+                    data: null,
+                    error: err?.details || err?.message || 'Failed to load QuickBooks project summary.',
+                })
+            }
+        },
+        [projectSummary.loading]
+    )
 
     // After QuickBooks is connected, load a small sample of transactions
     useEffect(() => {
@@ -69,6 +90,19 @@ const AccountingComparison = () => {
         load()
         return () => { cancelled = true }
     }, [qbStatus.loading, qbStatus.hasToken])
+
+    // If navigated with ?projectNumber=1234, pre-fill and auto-load project summary once QB is connected
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const initialProjectNumber = params.get('projectNumber')
+        if (!initialProjectNumber) return
+
+        setProjectNumber(initialProjectNumber)
+
+        if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
+            loadProjectSummary(initialProjectNumber)
+        }
+    }, [location.search, qbStatus.loading, qbStatus.hasToken, projectSummary.loading, projectSummary.data, loadProjectSummary])
 
     const handleConnectClick = () => {
         window.location.href = '/connect-quickbooks'
@@ -217,17 +251,7 @@ const AccountingComparison = () => {
                                 disabled={!qbStatus.hasToken || !projectNumber.trim() || projectSummary.loading}
                                 onClick={async () => {
                                     if (!projectNumber.trim()) return
-                                    setProjectSummary({ loading: true, data: null, error: null })
-                                    try {
-                                        const data = await QuickBooksService.getProjectInvoicesSummary(projectNumber.trim())
-                                        setProjectSummary({ loading: false, data, error: null })
-                                    } catch (err) {
-                                        setProjectSummary({
-                                            loading: false,
-                                            data: null,
-                                            error: err?.details || err?.message || 'Failed to load QuickBooks project summary.',
-                                        })
-                                    }
+                                    loadProjectSummary(projectNumber.trim())
                                 }}
                             >
                                 Load QuickBooks revenue
