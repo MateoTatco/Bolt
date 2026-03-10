@@ -88,9 +88,15 @@ const AccountingComparison = () => {
             if (!trimmed || azureState.loading) return
             setAzureState({ loading: true, data: null, error: null })
             try {
+                // eslint-disable-next-line no-console
+                console.log('[AccountingComparison] Loading Azure summary for project', trimmed)
                 const result = await ProcoreService.investigateProjectInAzure(trimmed)
+                // eslint-disable-next-line no-console
+                console.log('[AccountingComparison] Azure summary result', result)
                 setAzureState({ loading: false, data: result, error: null })
             } catch (err) {
+                // eslint-disable-next-line no-console
+                console.error('[AccountingComparison] Error loading Azure summary', err)
                 setAzureState({
                     loading: false,
                     data: null,
@@ -277,9 +283,23 @@ const AccountingComparison = () => {
                     <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
                         {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
                     </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        From latest Project Profitability archive snapshot.
-                    </p>
+                    {azureState.loading ? (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Loading Project Profitability snapshot…
+                        </p>
+                    ) : azureState.error ? (
+                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                            {azureState.error}
+                        </p>
+                    ) : azureRecords.length === 0 ? (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            No Project Profitability snapshot found in Azure for this project number.
+                        </p>
+                    ) : (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            From latest Project Profitability archive snapshot.
+                        </p>
+                    )}
                 </Card>
                 <Card className="p-4">
                     <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
