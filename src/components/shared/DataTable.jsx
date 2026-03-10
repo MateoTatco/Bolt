@@ -75,7 +75,8 @@ function DataTable(props) {
         defaultPageSize = 10,
         selectable = false,
         skeletonAvatarProps,
-        pagingData, // kept for backward compatibility but pagination is driven by table state
+        pagingData, // when provided, parent controls pagination (total, pageIndex, pageSize)
+        sort: sortProp, // optional { key, order } from parent for controlled sort (e.g. restored from storage)
         checkboxChecked,
         indeterminateCheckboxChecked,
         instanceId = 'data-table',
@@ -84,7 +85,25 @@ function DataTable(props) {
         ...rest
     } = props
 
-    const [sorting, setSorting] = useState(null)
+    // When pagingData is provided, parent controls pagination
+    const isControlledPagination = Boolean(
+        pagingData &&
+        typeof pagingData.total === 'number' &&
+        typeof pagingData.pageIndex === 'number' &&
+        typeof pagingData.pageSize === 'number'
+    )
+
+    // Sorting: sync from parent when prop has key (restored), update local state when user clicks and notify parent
+    const [sorting, setSorting] = useState(() =>
+        sortProp?.key && sortProp?.order
+            ? [{ id: sortProp.key, desc: sortProp.order === 'desc' }]
+            : null,
+    )
+    useEffect(() => {
+        if (sortProp?.key && sortProp?.order) {
+            setSorting([{ id: sortProp.key, desc: sortProp.order === 'desc' }])
+        }
+    }, [sortProp?.key, sortProp?.order])
 
     const pageSizeOption = useMemo(
         () =>
@@ -94,16 +113,6 @@ function DataTable(props) {
             })),
         [pageSizes],
     )
-
-    useEffect(() => {
-        if (Array.isArray(sorting)) {
-            const sortOrder =
-                sorting.length > 0 ? (sorting[0].desc ? 'desc' : 'asc') : ''
-            const id = sorting.length > 0 ? sorting[0].id : ''
-            onSort?.({ order: sortOrder, key: id })
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sorting])
 
     const handleIndeterminateCheckBoxChange = (checked, rows) => {
         if (!loading) {
@@ -178,24 +187,45 @@ function DataTable(props) {
         getPaginationRowModel: getPaginationRowModel(),
         getSortedRowModel: getSortedRowModel(),
         state: {
-            sorting: sorting,
+            sorting,
+            ...(isControlledPagination && pagingData && {
+                pagination: {
+                    pageIndex: 0,
+                    pageSize: pagingData.pageSize,
+                },
+            }),
         },
         onSortingChange: (sorter) => {
             setSorting(sorter)
+            const order = Array.isArray(sorter) && sorter.length > 0 ? (sorter[0].desc ? 'desc' : 'asc') : ''
+            const key = Array.isArray(sorter) && sorter.length > 0 ? sorter[0].id : ''
+            onSort?.({ order, key })
         },
+        ...(isControlledPagination && {
+            manualPagination: true,
+            pageCount: Math.ceil((pagingData?.total ?? 0) / (pagingData?.pageSize ?? 1)),
+            onPaginationChange: (updater) => {
+                if (!pagingData) return
+                const prev = { pageIndex: pagingData.pageIndex - 1, pageSize: pagingData.pageSize }
+                const next = updater(prev)
+                if (next.pageIndex !== prev.pageIndex) onPaginationChange?.(next.pageIndex + 1)
+                if (next.pageSize !== prev.pageSize) onSelectChange?.(next.pageSize)
+            },
+        }),
     })
+    const total = isControlledPagination ? pagingData.total : data.length
+    const pageIndex = isControlledPagination ? pagingData.pageIndex : table.getState().pagination.pageIndex
+    const pageSize = isControlledPagination ? pagingData.pageSize : table.getState().pagination.pageSize
 
-    // Ensure initial page size respects defaultPageSize
+    // Ensure initial page size respects defaultPageSize (only when not controlled)
     useEffect(() => {
+        if (isControlledPagination) return
         const current = table.getState().pagination.pageSize
         if (current !== defaultPageSize) {
             table.setPageSize(defaultPageSize)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [defaultPageSize])
-
-    const { pageIndex, pageSize } = table.getState().pagination
-    const total = data.length
+    }, [defaultPageSize, isControlledPagination])
 
     const resetSorting = () => {
         table.resetSorting()
@@ -213,7 +243,7 @@ function DataTable(props) {
     const handlePaginationChange = (page) => {
         if (!loading) {
             resetSelected()
-            table.setPageIndex(page - 1)
+            if (!isControlledPagination) table.setPageIndex(page - 1)
             onPaginationChange?.(page)
         }
     }
@@ -221,7 +251,7 @@ function DataTable(props) {
     const handleSelectChange = (value) => {
         if (!loading) {
             const size = Number(value)
-            table.setPageSize(size)
+            if (!isControlledPagination) table.setPageSize(size)
             onSelectChange?.(size)
         }
     }
@@ -353,7 +383,7 @@ function DataTable(props) {
                 <div className="flex items-center justify-between mt-4">
                     <Pagination
                         pageSize={pageSize}
-                        currentPage={pageIndex + 1}
+                        currentPage={isControlledPagination ? pageIndex : pageIndex + 1}
                         total={total}
                         onChange={handlePaginationChange}
                     />

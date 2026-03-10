@@ -94,6 +94,63 @@ const bidTypeOptions = [
     { value: 'Legacy', label: 'Legacy' }
 ]
 
+// LocalStorage keys for Master Tracker persistence
+const STORAGE_KEYS = {
+    pageSize: 'projectsPageSize',
+    sort: 'projectsSort',
+    filters: 'projectsFilters',
+}
+const DEFAULT_PAGE_SIZE = 100
+const VALID_PAGE_SIZES = [10, 25, 50, 100]
+
+// Serialize filters to a storable shape (values only)
+function serializeFilters(filters) {
+    if (!filters) return null
+    const toValues = (v) => {
+        if (v == null) return null
+        if (Array.isArray(v)) return v.length ? v.map((x) => x?.value ?? x).filter(Boolean) : null
+        return v?.value != null ? [v.value] : null
+    }
+    return {
+        search: typeof filters.search === 'string' ? filters.search : '',
+        market: toValues(filters.market),
+        projectStatus: toValues(filters.projectStatus),
+        projectProbability: toValues(filters.projectProbability),
+        projectManager: toValues(filters.projectManager),
+        superintendent: toValues(filters.superintendent),
+        archived: filters.archived === true || filters.archived === false ? filters.archived : null,
+    }
+}
+
+// Map filter key to options array for restoring option objects
+const FILTER_OPTIONS_MAP = {
+    market: marketOptions,
+    projectStatus: projectStatusOptions,
+    projectProbability: projectProbabilityOptions,
+    projectManager: projectManagerOptions,
+    superintendent: superintendentOptions,
+}
+
+function deserializeFilters(stored) {
+    if (!stored || typeof stored !== 'object') return null
+    const toOptions = (values, key) => {
+        if (values == null || !Array.isArray(values) || values.length === 0) return null
+        const opts = FILTER_OPTIONS_MAP[key]
+        if (!opts) return null
+        const arr = values.map((v) => opts.find((o) => String(o.value) === String(v))).filter(Boolean)
+        return arr.length ? arr : null
+    }
+    return {
+        search: typeof stored.search === 'string' ? stored.search : '',
+        market: toOptions(stored.market, 'market'),
+        projectStatus: toOptions(stored.projectStatus, 'projectStatus'),
+        projectProbability: toOptions(stored.projectProbability, 'projectProbability'),
+        projectManager: toOptions(stored.projectManager, 'projectManager'),
+        superintendent: toOptions(stored.superintendent, 'superintendent'),
+        archived: stored.archived === true || stored.archived === false ? stored.archived : null,
+    }
+}
+
 // Custom ValueContainer to show selected value or count badge
 const CustomValueContainer = ({ children, ...props }) => {
     const { getValue, selectProps } = props
@@ -269,7 +326,7 @@ const ProjectsList = () => {
     }
 
     const [pageIndex, setPageIndex] = useState(1)
-    const [pageSize, setPageSize] = useState(100)
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
     const [sort, setSort] = useState({ key: '', order: '' })
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false)
@@ -281,6 +338,21 @@ const ProjectsList = () => {
     const tableScrollRef = useRef(null)
     const topScrollbarRef = useRef(null)
     const filtersCardRef = useRef(null)
+    
+    // Auth: per-user persistence for page size, sort, and filters
+    const [userId, setUserId] = useState(() => {
+        try {
+            const u = getAuth().currentUser
+            return u?.uid ?? null
+        } catch { return null }
+    })
+    useEffect(() => {
+        const auth = getAuth()
+        const unsub = auth.onAuthStateChanged((u) => setUserId(u?.uid ?? null))
+        return unsub
+    }, [])
+    
+    const storageKey = useCallback((baseKey) => (userId ? `${baseKey}_${userId}` : null), [userId])
     
     // Local search state for immediate UI updates
     const [localSearchValue, setLocalSearchValue] = useState('')
@@ -347,6 +419,26 @@ const ProjectsList = () => {
             localStorage.setItem('projectsColumnOrder', JSON.stringify(columnOrder))
         } catch {}
     }, [visibleColumns, columnOrder])
+
+    // Persist page size and sort
+    useEffect(() => {
+        const key = storageKey(STORAGE_KEYS.pageSize)
+        if (!key) return
+        try {
+            localStorage.setItem(key, String(pageSize))
+        } catch {}
+    }, [pageSize, storageKey])
+    useEffect(() => {
+        const key = storageKey(STORAGE_KEYS.sort)
+        if (!key) return
+        try {
+            if (sort?.key && sort?.order) {
+                localStorage.setItem(key, JSON.stringify({ key: sort.key, order: sort.order }))
+            } else {
+                localStorage.removeItem(key)
+            }
+        } catch {}
+    }, [sort, storageKey])
     
     // UI state for collapsible sections
     const [showMoreFilters, setShowMoreFilters] = useState(false)
@@ -463,6 +555,64 @@ const ProjectsList = () => {
     useEffect(() => {
         loadProjects()
     }, [loadProjects])
+
+    // Load per-user persisted preferences (page size, sort, filters) when user is known
+    const allowPersistFilters = useRef(false)
+    useEffect(() => {
+        if (!userId) {
+            allowPersistFilters.current = false
+            return
+        }
+        allowPersistFilters.current = false
+        const key = (base) => `${base}_${userId}`
+        const loaded = { pageSize: false, sort: false, filters: false }
+        try {
+            const rawPageSize = localStorage.getItem(key(STORAGE_KEYS.pageSize))
+            if (rawPageSize != null) {
+                const n = parseInt(rawPageSize, 10)
+                if (VALID_PAGE_SIZES.includes(n)) {
+                    setPageSize(n)
+                    loaded.pageSize = true
+                }
+            }
+            const rawSort = localStorage.getItem(key(STORAGE_KEYS.sort))
+            if (rawSort) {
+                const parsed = JSON.parse(rawSort)
+                if (parsed && typeof parsed.key === 'string' && typeof parsed.order === 'string' && parsed.key && (parsed.order === 'asc' || parsed.order === 'desc')) {
+                    setSort({ key: parsed.key, order: parsed.order })
+                    loaded.sort = true
+                }
+            }
+            const rawFilters = localStorage.getItem(key(STORAGE_KEYS.filters))
+            if (rawFilters) {
+                const parsed = JSON.parse(rawFilters)
+                const restored = deserializeFilters(parsed)
+                if (restored && typeof restored === 'object') {
+                    setFilters(restored)
+                    loaded.filters = true
+                }
+            }
+            if (loaded.filters) {
+                const t = setTimeout(() => { allowPersistFilters.current = true }, 0)
+                return () => clearTimeout(t)
+            } else {
+                allowPersistFilters.current = true
+            }
+        } catch {
+            allowPersistFilters.current = true
+        }
+    }, [userId, setFilters])
+
+    // Persist filters when they change (skip until after initial load has been applied)
+    useEffect(() => {
+        if (!allowPersistFilters.current) return
+        const key = storageKey(STORAGE_KEYS.filters)
+        if (!key) return
+        try {
+            const payload = serializeFilters(filters)
+            if (payload) localStorage.setItem(key, JSON.stringify(payload))
+        } catch {}
+    }, [filters, storageKey])
     
     // Sync local search with filters.search on mount or when filters.search changes externally
     useEffect(() => {
@@ -1726,12 +1876,14 @@ const ProjectsList = () => {
                         data={pageData}
                         loading={loading}
                         pagingData={{ total: pageTotal, pageIndex, pageSize }}
+                        defaultPageSize={pageSize}
                         onPaginationChange={(pi) => setPageIndex(pi)}
                         onSelectChange={(ps) => {
                             setPageIndex(1)
                             setPageSize(ps)
                         }}
                         onSort={({ key, order }) => setSort({ key, order })}
+                        sort={sort}
                         selectable
                         checkboxChecked={(row) => checkboxChecked(row)}
                         indeterminateCheckboxChecked={(rows) => indeterminateCheckboxChecked(rows)}
