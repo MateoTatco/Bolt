@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Card, Button, Tag, Input } from '@/components/ui'
+import Chart from '@/components/shared/Chart'
 import QuickBooksService from '@/services/QuickBooksService'
 import { ProcoreService } from '@/services/ProcoreService'
 import { useLocation } from 'react-router'
@@ -231,7 +232,69 @@ const AccountingComparison = () => {
                 </div>
             </div>
 
-            {/* High-level KPIs for the currently selected project */}
+            {/* Project lookup — primary entry point */}
+            <Card className="p-4">
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Select project</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    Enter a Tatco project number (e.g. <span className="font-mono">1130003</span>) to compare QuickBooks revenue with Project Profitability (Azure SQL). You can also open from Project Profitability via &quot;Open in Accounting&quot;.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                        size="sm"
+                        className="w-full sm:w-48"
+                        placeholder="Project number"
+                        value={projectNumber}
+                        onChange={(e) => setProjectNumber(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && projectNumber.trim() && (loadProjectSummary(projectNumber.trim()), loadAzureSummary(projectNumber.trim()))}
+                    />
+                    <Button
+                        size="sm"
+                        variant="solid"
+                        disabled={!qbStatus.hasToken || !projectNumber.trim() || projectSummary.loading}
+                        onClick={() => {
+                            if (!projectNumber.trim()) return
+                            const trimmed = projectNumber.trim()
+                            loadProjectSummary(trimmed)
+                            loadAzureSummary(trimmed)
+                        }}
+                    >
+                        Load project
+                    </Button>
+                    {projectSummary.loading && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Loading…</span>
+                    )}
+                </div>
+                {projectSummary.error ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <p className="text-sm text-red-600 dark:text-red-400">{projectSummary.error}</p>
+                        {typeof projectSummary.error === 'string' && projectSummary.error.toLowerCase().includes('authorization has expired') ? (
+                            <Button size="sm" variant="outline" onClick={handleConnectClick}>
+                                Reconnect QuickBooks
+                            </Button>
+                        ) : null}
+                    </div>
+                ) : null}
+                {projectSummary.data ? (
+                    <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                        Loaded: <span className="font-mono">{projectSummary.data.projectNumber}</span>
+                        {' · '}{projectSummary.data.quickbooksCustomers?.length || 0} customer(s)
+                        {' · '}{projectSummary.data.invoiceCount} invoices
+                        {' · '}{typeof projectSummary.data.totalRevenue === 'number' ? formatCurrency(projectSummary.data.totalRevenue) : '—'} total revenue
+                    </p>
+                ) : null}
+            </Card>
+
+            {/* QuickBooks KPI strip */}
+            <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    QuickBooks KPIs
+                </h2>
+                {hasProjectSummary ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Based on {invoiceCount} invoice{invoiceCount === 1 ? '' : 's'} in QuickBooks.
+                    </p>
+                ) : null}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
                     <p className="text-xs uppercase tracking-wide opacity-75">QuickBooks Revenue (project)</p>
@@ -274,7 +337,17 @@ const AccountingComparison = () => {
                 </Card>
             </div>
 
-            {/* Azure SQL / Project Profitability KPIs */}
+            {/* Azure SQL / Project Profitability KPI strip */}
+            <div className="flex items-center justify-between gap-2 mt-2">
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Project Profitability KPIs (Azure SQL)
+                </h2>
+                {azureRecords.length > 0 && azureState.data?.mostRecentArchiveDate ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Latest archive: <span className="font-mono">{azureState.data.mostRecentArchiveDate}</span>
+                    </p>
+                ) : null}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="p-4">
                     <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -333,61 +406,160 @@ const AccountingComparison = () => {
                         Select a project and load QuickBooks revenue to see a side-by-side comparison with Project Profitability.
                     </p>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                QBO revenue
-                            </p>
-                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
-                            </p>
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm mb-4">
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    QBO revenue
+                                </p>
+                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                    {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Contract value (Azure)
+                                </p>
+                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Variance
+                                </p>
+                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Variance %
+                                </p>
+                                <p className="mt-1 font-semibold">
+                                    {typeof variancePercent === 'number'
+                                        ? `${variancePercent >= 0 ? '+' : ''}${variancePercent.toFixed(1)}%`
+                                        : '—'}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Contract value (Azure)
-                            </p>
-                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Variance
-                            </p>
-                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Variance %
-                            </p>
-                            <p className="mt-1 font-semibold">
-                                {typeof variancePercent === 'number'
-                                    ? `${variancePercent >= 0 ? '+' : ''}${variancePercent.toFixed(1)}%`
-                                    : '—'}
-                            </p>
-                        </div>
-                    </div>
+
+                        {typeof totalRevenue === 'number' && typeof contractAmount === 'number' ? (
+                            <div className="mt-2">
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                                    Visual comparison
+                                </p>
+                                <div className="relative h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                    {/* Azure contract bar */}
+                                    <div
+                                        className="absolute inset-y-0 left-0 bg-blue-500/70"
+                                        style={{
+                                            width: '100%',
+                                        }}
+                                    />
+                                    {/* QBO marker */}
+                                    <div
+                                        className="absolute -top-1 bottom-0 w-0.5 bg-emerald-400"
+                                        style={{
+                                            left:
+                                                contractAmount !== 0
+                                                    ? `${Math.min(
+                                                          100,
+                                                          Math.max(0, (totalRevenue / contractAmount) * 100)
+                                                      )}%`
+                                                    : '0%',
+                                        }}
+                                    />
+                                </div>
+                                <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                                    <span>0</span>
+                                    <span>Contract value</span>
+                                    <span>QBO revenue marker</span>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {/* Bar chart: QuickBooks vs Project Profitability */}
+                        {(typeof totalRevenue === 'number' || typeof contractAmount === 'number') &&
+                         (totalRevenue > 0 || (contractAmount !== null && contractAmount > 0)) ? (
+                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                    Revenue vs contract (chart)
+                                </p>
+                                <Chart
+                                    type="bar"
+                                    height={220}
+                                    xAxis={['QBO revenue', 'Contract (Azure)', 'Projected profit']}
+                                    series={[
+                                        {
+                                            name: 'Amount',
+                                            data: [
+                                                typeof totalRevenue === 'number' ? totalRevenue : 0,
+                                                typeof contractAmount === 'number' ? contractAmount : 0,
+                                                typeof projectedProfit === 'number' ? projectedProfit : 0,
+                                            ],
+                                        },
+                                    ]}
+                                    customOptions={{
+                                        plotOptions: {
+                                            bar: {
+                                                columnWidth: '50%',
+                                                distributed: true,
+                                            },
+                                        },
+                                        colors: ['#10b981', '#3b82f6', '#8b5cf6'],
+                                        legend: { show: false },
+                                        tooltip: {
+                                            y: {
+                                                formatter: (val) =>
+                                                    new Intl.NumberFormat('en-US', {
+                                                        style: 'currency',
+                                                        currency: 'USD',
+                                                        minimumFractionDigits: 0,
+                                                        maximumFractionDigits: 0,
+                                                    }).format(val),
+                                            },
+                                        },
+                                        dataLabels: {
+                                            enabled: true,
+                                            formatter: (val) =>
+                                                val >= 1e6
+                                                    ? `$${(val / 1e6).toFixed(2)}M`
+                                                    : val >= 1e3
+                                                      ? `$${(val / 1e3).toFixed(1)}K`
+                                                      : `$${Math.round(val)}`,
+                                        },
+                                    }}
+                                />
+                            </div>
+                        ) : null}
+                    </>
                 )}
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="p-4 lg:col-span-2 space-y-4">
-                    <h2 className="text-lg font-semibold mb-2">Module Status</h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                        We&apos;ve connected Bolt to QuickBooks and Procore. The next steps are to pull transaction data from
-                        QuickBooks, align it with Tatco project numbers, and surface side-by-side cost and revenue
-                        comparisons here.
+                    <div className="flex items-center justify-between gap-2">
+                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Module status & tools</h2>
+                        <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            Read-only · No sync to QBO or Procore
+                        </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                        This module is live for Tatco accounting: project-level revenue from QuickBooks is compared against contract value and projected profit from Project Profitability (Azure SQL). All data is read-only; nothing is pushed to QuickBooks or Procore.
                     </p>
-                    <ul className="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
-                        <li>QuickBooks OAuth connection established.</li>
-                        <li>Project profitability data already coming from Azure SQL (Procore feed).</li>
-                        <li>Initial QuickBooks transaction sample loaded for reconciliation prototype.</li>
+                    <ul className="list-disc list-inside text-xs text-gray-700 dark:text-gray-300 space-y-1">
+                        <li><strong>QuickBooks:</strong> OAuth connected per Bolt user; project revenue by customer name prefix; sample invoices for sanity checks.</li>
+                        <li><strong>Project Profitability (Azure SQL):</strong> Contract value, est. cost at completion, projected profit from latest archive per project.</li>
+                        <li><strong>Comparison:</strong> Variance (QBO vs contract), bar chart, and progress bar shown when a project is loaded.</li>
                     </ul>
 
-                    <div className="mt-4">
-                        <h3 className="text-sm font-semibold mb-2">QuickBooks Transactions (sample)</h3>
+                    <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
+                        <h3 className="text-sm font-semibold mb-1">QuickBooks sample transactions</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                            A rotating sample from QuickBooks, useful for spot-checking that the connection and basic invoice
+                            fields look correct.
+                        </p>
                         {txState.loading ? (
                             <p className="text-sm text-gray-500 dark:text-gray-400">Loading transactions…</p>
                         ) : txState.error ? (
@@ -473,76 +645,6 @@ const AccountingComparison = () => {
                                 </table>
                             </div>
                         )}
-                    </div>
-
-                    <div className="mt-6 border-t border-gray-200 dark:border-gray-800 pt-4">
-                        <h3 className="text-sm font-semibold mb-2">QuickBooks Project Revenue (by project number)</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                            Enter a Tatco project number (the numeric prefix in the QuickBooks customer name, for example
-                            <span className="font-mono"> 2355</span>) to see total invoice revenue for that project in QuickBooks.
-                        </p>
-                        <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
-                            <Input
-                                size="sm"
-                                className="md:w-48"
-                                placeholder="Project number"
-                                value={projectNumber}
-                                onChange={(e) => setProjectNumber(e.target.value)}
-                            />
-                            <Button
-                                size="sm"
-                                variant="solid"
-                                disabled={!qbStatus.hasToken || !projectNumber.trim() || projectSummary.loading}
-                                onClick={async () => {
-                                    if (!projectNumber.trim()) return
-                                    const trimmed = projectNumber.trim()
-                                    loadProjectSummary(trimmed)
-                                    loadAzureSummary(trimmed)
-                                }}
-                            >
-                                Load QuickBooks revenue
-                            </Button>
-                        </div>
-
-                        {projectSummary.loading ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Loading project revenue…</p>
-                        ) : projectSummary.error ? (
-                            <div className="space-y-2">
-                                <p className="text-sm text-red-600 dark:text-red-400">{projectSummary.error}</p>
-                                {typeof projectSummary.error === 'string' &&
-                                projectSummary.error.toLowerCase().includes('authorization has expired') ? (
-                                    <Button size="sm" variant="outline" onClick={handleConnectClick}>
-                                        Reconnect QuickBooks
-                                    </Button>
-                                ) : null}
-                            </div>
-                        ) : projectSummary.data ? (
-                            <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                                <p>
-                                    <span className="font-semibold">Project number:</span>{' '}
-                                    <span className="font-mono">{projectSummary.data.projectNumber}</span>
-                                </p>
-                                <p>
-                                    <span className="font-semibold">Matched QuickBooks customers:</span>{' '}
-                                    {projectSummary.data.quickbooksCustomers?.length || 0}
-                                </p>
-                                <p>
-                                    <span className="font-semibold">Invoice count:</span>{' '}
-                                    {projectSummary.data.invoiceCount}
-                                </p>
-                                <p>
-                                    <span className="font-semibold">Total QuickBooks revenue:</span>{' '}
-                                    {typeof projectSummary.data.totalRevenue === 'number'
-                                        ? new Intl.NumberFormat('en-US', {
-                                              style: 'currency',
-                                              currency: 'USD',
-                                              minimumFractionDigits: 2,
-                                              maximumFractionDigits: 2,
-                                          }).format(projectSummary.data.totalRevenue)
-                                        : '-'}
-                                </p>
-                            </div>
-                        ) : null}
                     </div>
                 </Card>
 
