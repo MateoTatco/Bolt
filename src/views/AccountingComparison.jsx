@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Card, Button, Tag, Input } from '@/components/ui'
 import QuickBooksService from '@/services/QuickBooksService'
+import { ProcoreService } from '@/services/ProcoreService'
 import { useLocation } from 'react-router'
 
 const AccountingComparison = () => {
@@ -12,7 +13,29 @@ const AccountingComparison = () => {
         data: null,
         error: null,
     })
+    const [azureState, setAzureState] = useState({
+        loading: false,
+        data: null,
+        error: null,
+    })
     const location = useLocation()
+
+    const formatCurrency = (value) => {
+        if (typeof value !== 'number') return '-'
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(value)
+    }
+
+    const formatDate = (value) => {
+        if (!value) return '-'
+        const d = new Date(value)
+        if (isNaN(d.getTime())) return value
+        return d.toISOString().slice(0, 10)
+    }
 
     useEffect(() => {
         let cancelled = false
@@ -59,6 +82,25 @@ const AccountingComparison = () => {
         [projectSummary.loading]
     )
 
+    const loadAzureSummary = useCallback(
+        async (projNumber) => {
+            const trimmed = (projNumber || '').trim()
+            if (!trimmed || azureState.loading) return
+            setAzureState({ loading: true, data: null, error: null })
+            try {
+                const result = await ProcoreService.investigateProjectInAzure(trimmed)
+                setAzureState({ loading: false, data: result, error: null })
+            } catch (err) {
+                setAzureState({
+                    loading: false,
+                    data: null,
+                    error: err?.details || err?.message || 'Failed to load Project Profitability summary.',
+                })
+            }
+        },
+        [azureState.loading]
+    )
+
     // After QuickBooks is connected, load a small sample of transactions
     useEffect(() => {
         if (qbStatus.loading || !qbStatus.hasToken) {
@@ -95,18 +137,65 @@ const AccountingComparison = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search)
         const initialProjectNumber = params.get('projectNumber')
-        if (!initialProjectNumber) return
-
-        setProjectNumber(initialProjectNumber)
-
-        if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
-            loadProjectSummary(initialProjectNumber)
+        if (initialProjectNumber) {
+            setProjectNumber(initialProjectNumber)
+            if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
+                loadProjectSummary(initialProjectNumber)
+            }
+            if (!azureState.loading && !azureState.data && !azureState.error) {
+                loadAzureSummary(initialProjectNumber)
+            }
         }
-    }, [location.search, qbStatus.loading, qbStatus.hasToken, projectSummary.loading, projectSummary.data, loadProjectSummary])
+    }, [
+        location.search,
+        qbStatus.loading,
+        qbStatus.hasToken,
+        projectSummary.loading,
+        projectSummary.data,
+        azureState.loading,
+        azureState.data,
+        azureState.error,
+        loadProjectSummary,
+        loadAzureSummary,
+    ])
 
     const handleConnectClick = () => {
         window.location.href = '/connect-quickbooks'
     }
+
+    const params = new URLSearchParams(location.search)
+    const projectNameFromUrl = params.get('projectName')
+
+    // Derive simple KPIs from the loaded project summary
+    const hasProjectSummary = !!projectSummary.data
+    const totalRevenue = hasProjectSummary ? projectSummary.data.totalRevenue : null
+    const invoiceCount = hasProjectSummary ? projectSummary.data.invoiceCount : 0
+    const firstCustomer = hasProjectSummary && projectSummary.data.quickbooksCustomers?.length
+        ? projectSummary.data.quickbooksCustomers[0]
+        : null
+    const invoices = hasProjectSummary ? projectSummary.data.invoices || [] : []
+    const latestInvoice = invoices.reduce((latest, inv) => {
+        if (!inv?.txnDate) return latest
+        if (!latest) return inv
+        return new Date(inv.txnDate) > new Date(latest.txnDate) ? inv : latest
+    }, null)
+
+    // Azure / Procore (Project Profitability) summary
+    const azureRecords = azureState.data?.records || []
+    const azurePrimary = azureRecords[0] || null
+    const contractAmount = azurePrimary?.contractAmount ?? null
+    const estCostAtCompletion = azurePrimary?.estCostAtCompletion ?? null
+    const projectedProfit = azurePrimary?.projectedProfit ?? null
+
+    const revenueVsContract =
+        typeof totalRevenue === 'number' && typeof contractAmount === 'number'
+            ? totalRevenue - contractAmount
+            : null
+
+    const variancePercent =
+        typeof revenueVsContract === 'number' && typeof contractAmount === 'number' && contractAmount !== 0
+            ? (revenueVsContract / contractAmount) * 100
+            : null
 
     return (
         <div className="space-y-6">
@@ -114,9 +203,17 @@ const AccountingComparison = () => {
                 <div>
                     <h1 className="text-2xl font-semibold">Accounting Cost Comparison</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Compare Tatco project costs between Procore (Azure SQL) and QuickBooks. This module is currently in
-                        early development for the Tatco accounting team.
+                        Compare Tatco project costs and revenue between Procore (Azure SQL) and QuickBooks.
                     </p>
+                    {projectNumber && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Project:{' '}
+                            <span className="font-mono">{projectNumber}</span>
+                            {projectNameFromUrl ? (
+                                <span className="ml-1">– {projectNameFromUrl}</span>
+                            ) : null}
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <Tag className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
@@ -127,6 +224,133 @@ const AccountingComparison = () => {
                     </Tag>
                 </div>
             </div>
+
+            {/* High-level KPIs for the currently selected project */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
+                    <p className="text-xs uppercase tracking-wide opacity-75">QuickBooks Revenue (project)</p>
+                    <p className="mt-2 text-2xl font-semibold">
+                        {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
+                    </p>
+                    <p className="mt-1 text-xs opacity-75">
+                        {hasProjectSummary ? `${invoiceCount} invoices` : 'Load a project to see totals.'}
+                    </p>
+                    {typeof revenueVsContract === 'number' && (
+                        <p className="mt-1 text-xs opacity-75">
+                            vs contract: {formatCurrency(revenueVsContract)}{' '}
+                            {revenueVsContract >= 0 ? 'above' : 'below'}
+                        </p>
+                    )}
+                </Card>
+                <Card className="p-4 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-200 dark:border-emerald-800">
+                    <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                        Primary QuickBooks customer
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {firstCustomer ? firstCustomer.displayName || firstCustomer.fullyQualifiedName || '—' : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                        {firstCustomer ? 'Matched by project number prefix.' : 'No customers matched yet.'}
+                    </p>
+                </Card>
+                <Card className="p-4 bg-gradient-to-r from-blue-500/10 to-blue-500/5 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                        Latest QuickBooks invoice
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {latestInvoice ? formatDate(latestInvoice.txnDate) : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                        {latestInvoice
+                            ? `${formatCurrency(latestInvoice.totalAmt)} • ${latestInvoice.customerName || ''}`
+                            : 'Load a project to see recent billing.'}
+                    </p>
+                </Card>
+            </div>
+
+            {/* Azure SQL / Project Profitability KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="p-4">
+                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Contract value (Azure SQL)
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                        {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        From latest Project Profitability archive snapshot.
+                    </p>
+                </Card>
+                <Card className="p-4">
+                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Est. cost at completion (Azure SQL)
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                        {estCostAtCompletion !== null ? formatCurrency(estCostAtCompletion) : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Matches Project Profitability estimates.
+                    </p>
+                </Card>
+                <Card className="p-4">
+                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Projected profit (Azure SQL)
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                        {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Used as Procore/Bolt baseline for comparison.
+                    </p>
+                </Card>
+            </div>
+
+            {/* High-level comparison summary */}
+            <Card className="p-4">
+                <h2 className="text-sm font-semibold mb-3">QuickBooks vs Project Profitability (high-level)</h2>
+                {(!hasProjectSummary && contractAmount === null) ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Select a project and load QuickBooks revenue to see a side-by-side comparison with Project Profitability.
+                    </p>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                QBO revenue
+                            </p>
+                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Contract value (Azure)
+                            </p>
+                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Variance
+                            </p>
+                            <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
+                                {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Variance %
+                            </p>
+                            <p className="mt-1 font-semibold">
+                                {typeof variancePercent === 'number'
+                                    ? `${variancePercent >= 0 ? '+' : ''}${variancePercent.toFixed(1)}%`
+                                    : '—'}
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="p-4 lg:col-span-2 space-y-4">

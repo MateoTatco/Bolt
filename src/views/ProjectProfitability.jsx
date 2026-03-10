@@ -706,10 +706,11 @@ const ProjectProfitability = () => {
         {
             header: 'Accounting Comparison',
             accessorKey: 'accountingComparison',
-            size: 180,
+            size: 190,
             meta: { key: 'accountingComparison' },
             cell: (props) => {
                 const projectNumber = props.row.original.projectNumber
+                const projectName = props.row.original.projectName
                 const disabled = !projectNumber
                 return (
                     <Button
@@ -718,7 +719,12 @@ const ProjectProfitability = () => {
                         disabled={disabled}
                         onClick={() => {
                             if (!projectNumber) return
-                            navigate(`/accounting-comparison?projectNumber=${encodeURIComponent(projectNumber)}`)
+                            const params = new URLSearchParams()
+                            params.set('projectNumber', String(projectNumber))
+                            if (projectName) {
+                                params.set('projectName', projectName)
+                            }
+                            navigate(`/accounting-comparison?${params.toString()}`)
                         }}
                     >
                         Open in Accounting
