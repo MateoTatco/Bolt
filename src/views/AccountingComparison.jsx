@@ -193,6 +193,15 @@ const AccountingComparison = () => {
     const contractAmount = azurePrimary?.contractAmount ?? null
     const estCostAtCompletion = azurePrimary?.estCostAtCompletion ?? null
     const projectedProfit = azurePrimary?.projectedProfit ?? null
+    const jobCostToDate = azurePrimary?.jobCostToDate ?? null
+    const remainingCost = azurePrimary?.remainingCost ?? null
+    const projectedProfitPercent = azurePrimary?.projectedProfitPercent ?? null
+    const totalInvoicedAzure = azurePrimary?.totalInvoiced ?? null
+    const balanceLeftOnContract = azurePrimary?.balanceLeftOnContract ?? null
+    const percentCompleteCost = azurePrimary?.percentCompleteCost ?? null
+    const percentCompleteRevenue = azurePrimary?.percentCompleteRevenue ?? null
+    const customerRetainage = azurePrimary?.customerRetainage ?? null
+    const vendorRetainage = azurePrimary?.vendorRetainage ?? null
 
     const revenueVsContract =
         typeof totalRevenue === 'number' && typeof contractAmount === 'number'
@@ -536,6 +545,120 @@ const AccountingComparison = () => {
                     </>
                 )}
             </Card>
+
+            {/* Project Profitability details (Azure SQL) */}
+            {azurePrimary && (
+                <Card className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            Project Profitability details (Azure SQL)
+                        </h2>
+                        {azureState.data?.mostRecentArchiveDate && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                Latest archive:{' '}
+                                <span className="font-mono">{azureState.data.mostRecentArchiveDate}</span>
+                            </p>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Contract & revenue
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Contract value: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Total invoiced: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof totalInvoicedAzure === 'number' ? formatCurrency(totalInvoicedAzure) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Balance left on contract: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof balanceLeftOnContract === 'number'
+                                        ? formatCurrency(balanceLeftOnContract)
+                                        : '—'}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Cost & profit
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Job cost to date: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Remaining cost: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof remainingCost === 'number' ? formatCurrency(remainingCost) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Projected profit: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
+                                </span>
+                                {typeof projectedProfitPercent === 'number' && (
+                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                        ({projectedProfitPercent.toFixed(1)}%)
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Percent complete
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Based on revenue: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof percentCompleteRevenue === 'number'
+                                        ? `${percentCompleteRevenue.toFixed(1)}%`
+                                        : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Based on cost: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof percentCompleteCost === 'number'
+                                        ? `${percentCompleteCost.toFixed(1)}%`
+                                        : '—'}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Retainage
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Customer retainage: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof customerRetainage === 'number'
+                                        ? formatCurrency(customerRetainage)
+                                        : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Vendor retainage: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof vendorRetainage === 'number'
+                                        ? formatCurrency(vendorRetainage)
+                                        : '—'}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="p-4 lg:col-span-2 space-y-4">

@@ -732,6 +732,18 @@ const AdvancedFeatures = () => {
         }
     }
 
+    // Normalize project numbers from different systems to a consistent comparable form.
+    // This increases matches between Azure (Project Profitability) and Master Tracker
+    // when formatting differs (e.g. spaces, dashes, leading zeros, numeric vs string).
+    const normalizeProjectNumber = (value) => {
+        if (value === null || value === undefined) return null
+        const str = String(value).trim()
+        if (!str) return null
+        // Keep digits only; this is conservative and works with standard Tatco project numbers
+        const digitsOnly = str.replace(/\D/g, '')
+        return digitsOnly || null
+    }
+
     const handleFixMasterTrackerStatuses = async () => {
         if (isFixingProjectStatuses) return
 
@@ -761,10 +773,10 @@ const AdvancedFeatures = () => {
             profitabilityProjects.forEach((proj) => {
                 const number = proj?.projectNumber
                 const status = proj?.projectStatus
-                if (!number || !status) return
-                const key = String(number).trim()
-                const value = String(status).trim()
+                const key = normalizeProjectNumber(number)
+                const value = status ? String(status).trim() : ''
                 if (!key || !value) return
+                // First-seen status wins; this is sufficient for our use case
                 if (!statusByProjectNumber.has(key)) {
                     statusByProjectNumber.set(key, value)
                 }
@@ -776,6 +788,16 @@ const AdvancedFeatures = () => {
             let skippedNoMatch = 0
             let skippedNoNumber = 0
 
+            // Debug info specifically for "Pre-Construction" discrepancies
+            const preconDebug = {
+                totalPreconInMaster: 0,
+                withAzureMatchSameStatus: 0,
+                withAzureMatchDifferentStatus: 0,
+                withoutAzureMatch: 0,
+                samplesWithoutMatch: [],
+                samplesWithDifferentStatus: [],
+            }
+
             for (const project of allProjects) {
                 checkedCount += 1
                 const rawNumber = project?.ProjectNumber
@@ -784,21 +806,47 @@ const AdvancedFeatures = () => {
                     continue
                 }
 
-                const key = String(rawNumber).trim()
+                const key = normalizeProjectNumber(rawNumber)
                 if (!key) {
                     skippedNoNumber += 1
                     continue
                 }
 
+                const currentStatus = project?.ProjectStatus || ''
+                const isPreConstruction = String(currentStatus).trim() === 'Pre-Construction'
+                if (isPreConstruction) {
+                    preconDebug.totalPreconInMaster += 1
+                }
+
                 const canonicalStatus = statusByProjectNumber.get(key)
                 if (!canonicalStatus) {
                     skippedNoMatch += 1
+                    if (isPreConstruction && preconDebug.samplesWithoutMatch.length < 25) {
+                        preconDebug.withoutAzureMatch += 1
+                        preconDebug.samplesWithoutMatch.push({
+                            projectId: project.id,
+                            projectNumber: key,
+                            masterStatus: currentStatus,
+                        })
+                    }
                     continue
                 }
 
-                const currentStatus = project?.ProjectStatus || ''
                 if (currentStatus === canonicalStatus) {
+                    if (isPreConstruction) {
+                        preconDebug.withAzureMatchSameStatus += 1
+                    }
                     continue
+                }
+
+                if (isPreConstruction && preconDebug.samplesWithDifferentStatus.length < 25) {
+                    preconDebug.withAzureMatchDifferentStatus += 1
+                    preconDebug.samplesWithDifferentStatus.push({
+                        projectId: project.id,
+                        projectNumber: key,
+                        masterStatus: currentStatus,
+                        azureStatus: canonicalStatus,
+                    })
                 }
 
                 try {
@@ -809,6 +857,23 @@ const AdvancedFeatures = () => {
                 } catch (updateError) {
                     console.error(`Failed to update status for project ${project.id} (${key}):`, updateError)
                 }
+            }
+
+            // Log a concise debug summary to help reconcile Master Tracker vs Project Profitability
+            try {
+                console.group('Fix Master Tracker Statuses - Pre-Construction debug')
+                console.log('Pre-Construction summary:', {
+                    totalPreconInMaster: preconDebug.totalPreconInMaster,
+                    withAzureMatchSameStatus: preconDebug.withAzureMatchSameStatus,
+                    withAzureMatchDifferentStatus: preconDebug.withAzureMatchDifferentStatus,
+                    withoutAzureMatch: preconDebug.withoutAzureMatch,
+                })
+                console.log('Sample projects with Pre-Construction but NO Azure match (up to 25):', preconDebug.samplesWithoutMatch)
+                console.log('Sample projects with Pre-Construction but DIFFERENT Azure status (up to 25):', preconDebug.samplesWithDifferentStatus)
+                console.groupEnd()
+            } catch (logError) {
+                // Logging is best-effort only
+                console.debug('Failed to log Pre-Construction debug info:', logError)
             }
 
             const summary = {
