@@ -2170,68 +2170,316 @@ const AdvancedFeatures = () => {
                 {/* Tab 4: Developer Tools */}
                 <Tabs.TabContent value="developer" className="space-y-4">
                     <div className="flex flex-col gap-4">
-                <Card className="p-4">
+                        <Card className="p-4">
                             <div className="flex items-center justify-between mb-4">
-                        <div>
+                                <div>
                                     <h3 className="text-lg font-semibold mb-1">Developer Tools</h3>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
                                         Tools for debugging and development purposes
-                            </p>
-                        </div>
-                        <Button 
+                                    </p>
+                                </div>
+                                <Button
                                     onClick={() => setShowDevTools(!showDevTools)}
                                     variant="twoTone"
-                            size="sm" 
-                        >
+                                    size="sm"
+                                >
                                     {showDevTools ? 'Hide Dev Tools' : 'Show Dev Tools'}
-                        </Button>
-                    </div>
-
-                        <div className="flex flex-col gap-2 mb-4">
-                            <div className="flex flex-wrap gap-2">
-                                <Button 
-                                    onClick={handleShowTatcoContact}
-                                    variant="outline"
-                                    size="sm"
-                                >
-                                    Show Tatco Contact
-                                </Button>
-                                <Button
-                                    onClick={handleFixMasterTrackerStatuses}
-                                    variant="outline"
-                                    size="sm"
-                                    loading={isFixingProjectStatuses}
-                                    disabled={isFixingProjectStatuses}
-                                >
-                                    {isFixingProjectStatuses ? 'Fixing Master Tracker Statuses...' : 'Fix Master Tracker Statuses'}
                                 </Button>
                             </div>
-                            {fixedStatusSummary && (
-                                <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    <div>Profitability rows: {fixedStatusSummary.profitabilityCount}</div>
-                                    <div>Projects checked: {fixedStatusSummary.totalProjects}</div>
-                                    <div>Statuses updated: {fixedStatusSummary.updatedCount}</div>
-                                    <div>Skipped (no ProjectNumber): {fixedStatusSummary.skippedNoNumber}</div>
-                                    <div>Skipped (no profitability match): {fixedStatusSummary.skippedNoMatch}</div>
+
+                            <div className="flex flex-col gap-2 mb-4">
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        onClick={handleShowTatcoContact}
+                                        variant="outline"
+                                        size="sm"
+                                    >
+                                        Show Tatco Contact
+                                    </Button>
+                                    <Button
+                                        onClick={handleFixMasterTrackerStatuses}
+                                        variant="outline"
+                                        size="sm"
+                                        loading={isFixingProjectStatuses}
+                                        disabled={isFixingProjectStatuses}
+                                    >
+                                        {isFixingProjectStatuses
+                                            ? 'Fixing Master Tracker Statuses...'
+                                            : 'Fix Master Tracker Statuses'}
+                                    </Button>
+                                </div>
+                                {fixedStatusSummary && (
+                                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                                        <div>Profitability rows: {fixedStatusSummary.profitabilityCount}</div>
+                                        <div>Projects checked: {fixedStatusSummary.totalProjects}</div>
+                                        <div>Statuses updated: {fixedStatusSummary.updatedCount}</div>
+                                        <div>Skipped (no ProjectNumber): {fixedStatusSummary.skippedNoNumber}</div>
+                                        <div>Skipped (no profitability match): {fixedStatusSummary.skippedNoMatch}</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {showDevTools && (
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-6">
+                                    <div>
+                                        <h4 className="text-md font-semibold mb-3">Column Debug Info</h4>
+                                        <div className="space-y-2 text-sm">
+                                            <p>
+                                                <strong>Current Type:</strong>{' '}
+                                                {localStorage.getItem('crmCurrentType') || 'lead'}
+                                            </p>
+                                            <p>
+                                                <strong>Column Order (Lead):</strong>{' '}
+                                                {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}
+                                            </p>
+                                            <p>
+                                                <strong>Visible Columns (Lead):</strong>{' '}
+                                                {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}
+                                            </p>
+                                            <p>
+                                                <strong>Column Order (Client):</strong>{' '}
+                                                {localStorage.getItem('crmColumnOrder_client') || 'Not set'}
+                                            </p>
+                                            <p>
+                                                <strong>Visible Columns (Client):</strong>{' '}
+                                                {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Profit sharing repair tools */}
+                                    <div className="space-y-3 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
+                                        <h4 className="text-md font-semibold">Profit Sharing Utilities</h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                                            One-time tools to repair historical profit sharing award documents.
+                                            Restricted to admins via this dashboard.
+                                        </p>
+                                        <div className="flex flex-col gap-3">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={async () => {
+                                                    try {
+                                                        const functions = getFunctions()
+                                                        const fn = httpsCallable(
+                                                            functions,
+                                                            'bulkRestoreAwardDocuments'
+                                                        )
+                                                        const result = await fn()
+                                                        const data = result?.data || {}
+                                                        toast.push(
+                                                            <Notification
+                                                                type="success"
+                                                                duration={6000}
+                                                                title="Restore Complete"
+                                                            >
+                                                                Restored links for {data.totalAwardsUpdated || 0} awards
+                                                                (checked {data.totalAwardsChecked || 0}).
+                                                            </Notification>
+                                                        )
+                                                    } catch (error) {
+                                                        console.error(
+                                                            '[AdvancedFeatures] bulkRestoreAwardDocuments failed',
+                                                            error
+                                                        )
+                                                        toast.push(
+                                                            <Notification
+                                                                type="danger"
+                                                                duration={6000}
+                                                                title="Restore Failed"
+                                                            >
+                                                                {error?.message ||
+                                                                    'Failed to run bulk restore. See console for details.'}
+                                                            </Notification>
+                                                        )
+                                                    }
+                                                }}
+                                            >
+                                                Restore Missing Award Documents
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={async () => {
+                                                    try {
+                                                        const stakeholdersResult =
+                                                            await FirebaseDbService.stakeholders.getAll()
+                                                        if (!stakeholdersResult.success) {
+                                                            throw new Error(
+                                                                stakeholdersResult.error ||
+                                                                    'Failed to load stakeholders'
+                                                            )
+                                                        }
+                                                        const stakeholders = stakeholdersResult.data || []
+
+                                                        const plansRef = collection(db, 'profitSharingPlans')
+                                                        const plansSnapshot = await getDocs(plansRef)
+                                                        const plansById = new Map()
+                                                        plansSnapshot.docs.forEach((docSnap) => {
+                                                            plansById.set(docSnap.id, {
+                                                                id: docSnap.id,
+                                                                ...docSnap.data(),
+                                                            })
+                                                        })
+
+                                                        const companiesResult =
+                                                            await FirebaseDbService.companies.getAll()
+                                                        const companiesById = new Map()
+                                                        if (companiesResult.success) {
+                                                            ;(companiesResult.data || []).forEach((company) => {
+                                                                companiesById.set(company.id, company)
+                                                            })
+                                                        }
+
+                                                        let totalAwardsChecked = 0
+                                                        let totalAwardsRegenerated = 0
+
+                                                        for (const stakeholder of stakeholders) {
+                                                            const stakeholderId = stakeholder.id
+                                                            const awards = Array.isArray(
+                                                                stakeholder.profitAwards
+                                                            )
+                                                                ? stakeholder.profitAwards
+                                                                : []
+                                                            if (!awards.length) continue
+
+                                                            const updatedAwards = [...awards]
+                                                            let stakeholderUpdated = false
+
+                                                            for (let i = 0; i < awards.length; i++) {
+                                                                const award = awards[i]
+                                                                if (!award || !award.id) continue
+
+                                                                totalAwardsChecked += 1
+
+                                                                const hasDocFields =
+                                                                    award.documentUrl ||
+                                                                    award.documentPdfUrl ||
+                                                                    award.documentDocxUrl ||
+                                                                    award.signedDocumentUrl ||
+                                                                    award.signedDocumentPdfUrl ||
+                                                                    award.signedDocumentDocxUrl
+                                                                if (hasDocFields) {
+                                                                    continue
+                                                                }
+
+                                                                const status = (award.status || '')
+                                                                    .toString()
+                                                                    .toLowerCase()
+                                                                if (
+                                                                    status &&
+                                                                    !['issued', 'finalized', 'accepted'].includes(
+                                                                        status
+                                                                    )
+                                                                ) {
+                                                                    continue
+                                                                }
+
+                                                                if (!award.planId) {
+                                                                    continue
+                                                                }
+
+                                                                const planData = plansById.get(award.planId)
+                                                                if (!planData || !planData.companyId) {
+                                                                    continue
+                                                                }
+
+                                                                const companyData = companiesById.get(
+                                                                    planData.companyId
+                                                                )
+                                                                if (!companyData) {
+                                                                    continue
+                                                                }
+
+                                                                try {
+                                                                    const documentResult =
+                                                                        await generateAwardDocument(
+                                                                            award,
+                                                                            planData,
+                                                                            stakeholder,
+                                                                            companyData,
+                                                                            stakeholderId,
+                                                                            award.id
+                                                                        )
+
+                                                                    const regeneratedAward = {
+                                                                        ...award,
+                                                                        documentUrl:
+                                                                            documentResult.url || null,
+                                                                        documentStoragePath:
+                                                                            documentResult.path || null,
+                                                                        documentDocxUrl:
+                                                                            documentResult.docxUrl || null,
+                                                                        documentDocxPath:
+                                                                            documentResult.docxPath || null,
+                                                                        documentPdfUrl:
+                                                                            documentResult.pdfUrl || null,
+                                                                        documentPdfPath:
+                                                                            documentResult.pdfPath || null,
+                                                                        documentFileName: documentResult.pdfUrl
+                                                                            ? `award-${award.id}.pdf`
+                                                                            : award.documentFileName || null,
+                                                                    }
+
+                                                                    updatedAwards[i] = regeneratedAward
+                                                                    stakeholderUpdated = true
+                                                                    totalAwardsRegenerated += 1
+                                                                } catch (e) {
+                                                                    console.error(
+                                                                        '[AdvancedFeatures] bulk regenerate failed for award',
+                                                                        { stakeholderId, awardId: award.id },
+                                                                        e
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            if (stakeholderUpdated) {
+                                                                await FirebaseDbService.stakeholders.update(
+                                                                    stakeholderId,
+                                                                    {
+                                                                        ...stakeholder,
+                                                                        profitAwards: updatedAwards,
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+
+                                                        toast.push(
+                                                            <Notification
+                                                                type="success"
+                                                                duration={8000}
+                                                                title="Bulk Regeneration Complete"
+                                                            >
+                                                                Regenerated documents for {totalAwardsRegenerated} awards
+                                                                (checked {totalAwardsChecked}).
+                                                            </Notification>
+                                                        )
+                                                    } catch (error) {
+                                                        console.error(
+                                                            '[AdvancedFeatures] bulk regeneration failed',
+                                                            error
+                                                        )
+                                                        toast.push(
+                                                            <Notification
+                                                                type="danger"
+                                                                duration={8000}
+                                                                title="Bulk Regeneration Failed"
+                                                            >
+                                                                {error?.message ||
+                                                                    'Failed to run bulk regeneration. See console for details.'}
+                                                            </Notification>
+                                                        )
+                                                    }
+                                                }}
+                                            >
+                                                Bulk Regenerate Award Documents
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
-                        </div>
-
-                            {/* Development Tools - Hidden by default */}
-                            {showDevTools && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                    <h4 className="text-md font-semibold mb-4">Column Debug Info</h4>
-                    <div className="space-y-2">
-                                        <p><strong>Current Type:</strong> {localStorage.getItem('crmCurrentType') || 'lead'}</p>
-                                        <p><strong>Column Order (Lead):</strong> {localStorage.getItem('crmColumnOrder_lead') || 'Not set'}</p>
-                                        <p><strong>Visible Columns (Lead):</strong> {localStorage.getItem('crmVisibleColumns_lead') || 'Not set'}</p>
-                                        <p><strong>Column Order (Client):</strong> {localStorage.getItem('crmColumnOrder_client') || 'Not set'}</p>
-                                        <p><strong>Visible Columns (Client):</strong> {localStorage.getItem('crmVisibleColumns_client') || 'Not set'}</p>
-                        </div>
+                        </Card>
                     </div>
-                            )}
-                </Card>
-            </div>
                 </Tabs.TabContent>
             </Tabs>
 

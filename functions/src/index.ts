@@ -6147,6 +6147,201 @@ If you have any questions, please contact your administrator.
     }
 });
 
+/**
+ * Bulk restore missing award documents for profit sharing stakeholders.
+ *
+ * Strategy:
+ * - Scan all stakeholders and their profitAwards
+ * - For any award that has no document* / signedDocument* fields,
+ *   look for files in Storage at profitSharing/awards/{stakeholderId}/{awardId}/
+ * - If files are found, pick the best candidate (prefer PDF, then DOCX),
+ *   generate a signed URL, and write documentUrl/documentPdfUrl/documentDocxUrl
+ *   back onto that award object.
+ *
+ * This is intended as a one-time admin repair job after document
+ * metadata was lost but files remained in Storage.
+ */
+export const bulkRestoreAwardDocuments = functions
+    .region('us-central1')
+    .https.onCall(async (_data, context) => {
+        // Basic auth guard: require authenticated user
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'Authentication required to run bulk restore.',
+            );
+        }
+
+        const db = admin.firestore();
+        const bucket = admin.storage().bucket();
+
+        const stakeholdersSnap = await db.collection('stakeholders').get();
+        console.log('[bulkRestoreAwardDocuments] Total stakeholders:', stakeholdersSnap.size);
+
+        let totalAwardsChecked = 0;
+        let totalAwardsUpdated = 0;
+        let totalAwardsSkippedWithDocs = 0;
+        let totalAwardsWithoutFiles = 0;
+
+        for (const stakeholderDoc of stakeholdersSnap.docs) {
+            const stakeholderId = stakeholderDoc.id;
+            const data: any = stakeholderDoc.data() || {};
+            const awards: any[] = Array.isArray(data.profitAwards) ? data.profitAwards : [];
+
+            if (awards.length === 0) continue;
+
+            let stakeholderUpdated = false;
+            const updatedAwards: any[] = [...awards];
+
+            for (let i = 0; i < awards.length; i++) {
+                const award = awards[i] || {};
+                const awardId = award.id;
+
+                if (!awardId) continue;
+
+                totalAwardsChecked += 1;
+
+                const hasAnyDocField =
+                    !!award.documentUrl ||
+                    !!award.documentPdfUrl ||
+                    !!award.documentDocxUrl ||
+                    !!award.signedDocumentUrl ||
+                    !!award.signedDocumentPdfUrl ||
+                    !!award.signedDocumentDocxUrl;
+
+                if (hasAnyDocField) {
+                    totalAwardsSkippedWithDocs += 1;
+                    continue;
+                }
+
+                // Only try to restore for issued / finalized / accepted awards
+                const status = (award.status || '').toString().toLowerCase();
+                if (status && !['issued', 'finalized', 'accepted'].includes(status)) {
+                    continue;
+                }
+
+                const prefix = `profitSharing/awards/${stakeholderId}/${awardId}/`;
+                try {
+                    const [files] = await bucket.getFiles({ prefix });
+
+                    if (!files || files.length === 0) {
+                        totalAwardsWithoutFiles += 1;
+                        continue;
+                    }
+
+                    // Choose best candidate: prefer PDFs, then DOCX
+                    let pdfFile = files.find((f) =>
+                        f.name.toLowerCase().endsWith('.pdf'),
+                    );
+                    let docxFile = files.find((f) =>
+                        f.name.toLowerCase().endsWith('.docx'),
+                    );
+
+                    // If multiple PDFs, pick the most recently updated
+                    if (!pdfFile) {
+                        // no-op, try DOCX below
+                    }
+
+                    let chosenFile = pdfFile || docxFile || files[0];
+                    if (!chosenFile) {
+                        totalAwardsWithoutFiles += 1;
+                        continue;
+                    }
+
+                    const isPdf = chosenFile.name.toLowerCase().endsWith('.pdf');
+                    const isDocx = chosenFile.name.toLowerCase().endsWith('.docx');
+
+                    // Generate a long-lived signed URL
+                    let downloadUrl: string;
+                    try {
+                        const [signedUrl] = await chosenFile.getSignedUrl({
+                            action: 'read',
+                            expires: '03-09-2491', // far future
+                        });
+                        downloadUrl = signedUrl;
+                    } catch (e: any) {
+                        console.error(
+                            '[bulkRestoreAwardDocuments] Failed to get signed URL for',
+                            chosenFile.name,
+                            'error:',
+                            e?.message || e,
+                        );
+                        continue;
+                    }
+
+                    const storagePath = chosenFile.name;
+
+                    const restoredAward = { ...award };
+                    if (isPdf) {
+                        restoredAward.documentUrl = downloadUrl;
+                        restoredAward.documentPdfUrl = downloadUrl;
+                        restoredAward.documentStoragePath = storagePath;
+                        restoredAward.documentFileName =
+                            award.documentFileName || chosenFile.name.split('/').pop() || 'award-document.pdf';
+                    } else if (isDocx) {
+                        restoredAward.documentDocxUrl = downloadUrl;
+                        restoredAward.documentDocxPath = storagePath;
+                        restoredAward.documentStoragePath =
+                            storagePath;
+                        restoredAward.documentFileName =
+                            award.documentFileName || chosenFile.name.split('/').pop() || 'award-document.docx';
+                    } else {
+                        // Fallback: unknown extension, still store as documentUrl
+                        restoredAward.documentUrl = downloadUrl;
+                        restoredAward.documentStoragePath = storagePath;
+                        restoredAward.documentFileName =
+                            award.documentFileName || chosenFile.name.split('/').pop() || 'award-document';
+                    }
+
+                    updatedAwards[i] = restoredAward;
+                    stakeholderUpdated = true;
+                    totalAwardsUpdated += 1;
+                } catch (e: any) {
+                    console.error(
+                        '[bulkRestoreAwardDocuments] Error while processing award',
+                        { stakeholderId, awardId, prefix },
+                        e?.message || e,
+                    );
+                    continue;
+                }
+            }
+
+            if (stakeholderUpdated) {
+                try {
+                    await db.collection('stakeholders').doc(stakeholderId).update({
+                        profitAwards: updatedAwards,
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                    console.log(
+                        '[bulkRestoreAwardDocuments] Updated stakeholder',
+                        stakeholderId,
+                    );
+                } catch (e: any) {
+                    console.error(
+                        '[bulkRestoreAwardDocuments] Failed to update stakeholder',
+                        stakeholderId,
+                        e?.message || e,
+                    );
+                }
+            }
+        }
+
+        const summary = {
+            stakeholders: stakeholdersSnap.size,
+            totalAwardsChecked,
+            totalAwardsUpdated,
+            totalAwardsSkippedWithDocs,
+            totalAwardsWithoutFiles,
+        };
+
+        console.log('[bulkRestoreAwardDocuments] Summary:', summary);
+
+        return {
+            success: true,
+            ...summary,
+        };
+    });
+
 // Custom Password Reset Function
 // Validates custom reset token and resets user password
 export const resetPasswordWithToken = functions.runWith({ secrets: [] }).https.onCall(async (data, context) => {

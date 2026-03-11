@@ -13,6 +13,8 @@ import { createNotification } from '@/utils/notificationHelper'
 import { NOTIFICATION_TYPES } from '@/constants/notification.constant'
 import { components } from 'react-select'
 import React from 'react'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { generateAwardDocument } from '@/services/DocumentGenerationService'
 import * as XLSX from 'xlsx'
 
 const DEFAULT_COMPANY_NAME = 'Tatco OKC'
@@ -192,6 +194,237 @@ const roleOptions = [
     { value: 'supervisor', label: 'Supervisor - Can view direct reports' },
     { value: 'user', label: 'User - View only access' },
 ]
+
+const BulkRestoreButton = () => {
+    const [running, setRunning] = useState(false)
+    const [lastSummary, setLastSummary] = useState(null)
+
+    const handleRun = async () => {
+        if (running) return
+        if (!window.confirm('Run bulk restore of award documents now? This will scan all stakeholders once.')) {
+            return
+        }
+        setRunning(true)
+        setLastSummary(null)
+        try {
+            const functions = getFunctions()
+            const fn = httpsCallable(functions, 'bulkRestoreAwardDocuments')
+            const result = await fn()
+            const data = result?.data || {}
+            setLastSummary(data)
+            toast.push(
+                <Notification type="success" duration={6000} title="Bulk Restore Complete">
+                    Restored documents for {data.totalAwardsUpdated || 0} awards. Checked {data.totalAwardsChecked || 0} awards.
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Error running bulkRestoreAwardDocuments:', error)
+            toast.push(
+                <Notification type="danger" duration={5000} title="Bulk Restore Failed">
+                    {error?.message || 'Failed to run bulk restore. See console for details.'}
+                </Notification>
+            )
+        } finally {
+            setRunning(false)
+        }
+    }
+
+    return (
+        <div className="flex flex-col items-end gap-2">
+            <Button
+                variant="solid"
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={handleRun}
+                loading={running}
+                disabled={running}
+            >
+                {running ? 'Restoring…' : 'Run Bulk Restore'}
+            </Button>
+            {lastSummary && (
+                <div className="text-xs text-amber-900 dark:text-amber-200 text-right">
+                    Last run: updated {lastSummary.totalAwardsUpdated || 0} of {lastSummary.totalAwardsChecked || 0} awards.
+                </div>
+            )}
+        </div>
+    )
+}
+
+const BulkRegenerateButton = () => {
+    const [running, setRunning] = useState(false)
+    const [lastSummary, setLastSummary] = useState(null)
+
+    const handleRun = async () => {
+        if (running) return
+        if (!window.confirm('Run bulk regeneration of missing award documents now? This may take several minutes.')) {
+            return
+        }
+        setRunning(true)
+        setLastSummary(null)
+        try {
+            // Load all stakeholders
+            const stakeholdersResult = await FirebaseDbService.stakeholders.getAll()
+            if (!stakeholdersResult.success) {
+                throw new Error(stakeholdersResult.error || 'Failed to load stakeholders')
+            }
+            const stakeholders = stakeholdersResult.data || []
+
+            // Load all plans
+            const plansRef = collection(db, 'profitSharingPlans')
+            const plansSnapshot = await getDocs(plansRef)
+            const plansById = new Map()
+            plansSnapshot.docs.forEach((docSnap) => {
+                plansById.set(docSnap.id, { id: docSnap.id, ...docSnap.data() })
+            })
+
+            // Load all companies
+            const companiesResult = await FirebaseDbService.companies.getAll()
+            const companiesById = new Map()
+            if (companiesResult.success) {
+                ;(companiesResult.data || []).forEach((company) => {
+                    companiesById.set(company.id, company)
+                })
+            }
+
+            let totalAwardsChecked = 0
+            let totalAwardsRegenerated = 0
+
+            for (const stakeholder of stakeholders) {
+                const stakeholderId = stakeholder.id
+                const awards = Array.isArray(stakeholder.profitAwards) ? stakeholder.profitAwards : []
+                if (!awards.length) continue
+
+                const updatedAwards = [...awards]
+                let stakeholderUpdated = false
+
+                for (let i = 0; i < awards.length; i++) {
+                    const award = awards[i]
+                    if (!award || !award.id) continue
+
+                    totalAwardsChecked += 1
+
+                    const hasDocFields =
+                        award.documentUrl ||
+                        award.documentPdfUrl ||
+                        award.documentDocxUrl ||
+                        award.signedDocumentUrl ||
+                        award.signedDocumentPdfUrl ||
+                        award.signedDocumentDocxUrl
+                    if (hasDocFields) {
+                        continue
+                    }
+
+                    const status = (award.status || '').toString().toLowerCase()
+                    if (status && !['issued', 'finalized', 'accepted'].includes(status)) {
+                        continue
+                    }
+
+                    if (!award.planId) {
+                        continue
+                    }
+
+                    const planData = plansById.get(award.planId)
+                    if (!planData || !planData.companyId) {
+                        continue
+                    }
+
+                    const companyData = companiesById.get(planData.companyId)
+                    if (!companyData) {
+                        continue
+                    }
+
+                    try {
+                        const documentResult = await generateAwardDocument(
+                            award,
+                            planData,
+                            stakeholder,
+                            companyData,
+                            stakeholderId,
+                            award.id
+                        )
+
+                        const regeneratedAward = {
+                            ...award,
+                            documentUrl: documentResult.url || null,
+                            documentStoragePath: documentResult.path || null,
+                            documentDocxUrl: documentResult.docxUrl || null,
+                            documentDocxPath: documentResult.docxPath || null,
+                            documentPdfUrl: documentResult.pdfUrl || null,
+                            documentPdfPath: documentResult.pdfPath || null,
+                            documentFileName: documentResult.pdfUrl
+                                ? `award-${award.id}.pdf`
+                                : award.documentFileName || null,
+                        }
+
+                        updatedAwards[i] = regeneratedAward
+                        stakeholderUpdated = true
+                        totalAwardsRegenerated += 1
+                    } catch (e) {
+                        console.error(
+                            '[BulkRegenerate] Failed to regenerate document for award',
+                            { stakeholderId, awardId: award.id, error: e?.message || e }
+                        )
+                    }
+                }
+
+                if (stakeholderUpdated) {
+                    try {
+                        await FirebaseDbService.stakeholders.update(stakeholderId, {
+                            ...stakeholder,
+                            profitAwards: updatedAwards,
+                        })
+                    } catch (e) {
+                        console.error(
+                            '[BulkRegenerate] Failed to save updated stakeholder',
+                            stakeholderId,
+                            e?.message || e
+                        )
+                    }
+                }
+            }
+
+            const summary = {
+                totalAwardsChecked,
+                totalAwardsRegenerated,
+            }
+            setLastSummary(summary)
+
+            toast.push(
+                <Notification type="success" duration={8000} title="Bulk Regeneration Complete">
+                    Regenerated documents for {totalAwardsRegenerated} awards (checked {totalAwardsChecked}).
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Error running bulk regeneration:', error)
+            toast.push(
+                <Notification type="danger" duration={6000} title="Bulk Regeneration Failed">
+                    {error?.message || 'Failed to run bulk regeneration. See console for details.'}
+                </Notification>
+            )
+        } finally {
+            setRunning(false)
+        }
+    }
+
+    return (
+        <div className="flex flex-col items-end gap-2">
+            <Button
+                variant="solid"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={handleRun}
+                loading={running}
+                disabled={running}
+            >
+                {running ? 'Regenerating…' : 'Bulk Regenerate Documents'}
+            </Button>
+            {lastSummary && (
+                <div className="text-xs text-blue-900 dark:text-blue-200 text-right">
+                    Last run: regenerated {lastSummary.totalAwardsRegenerated || 0} of{' '}
+                    {lastSummary.totalAwardsChecked || 0} awards.
+                </div>
+            )}
+        </div>
+    )
+}
 
 const SettingsTab = () => {
     const navigate = useNavigate()
@@ -1596,6 +1829,8 @@ const SettingsTab = () => {
                     </div>
                 </Card>
             )}
+
+            {/* (Profit sharing bulk tools moved to Advanced Features → Developer tab) */}
 
             <Card className="p-6">
                 <div className="mb-4">
