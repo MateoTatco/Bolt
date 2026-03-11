@@ -213,6 +213,105 @@ const AccountingComparison = () => {
             ? (revenueVsContract / contractAmount) * 100
             : null
 
+    // Reconciliation-focused metrics
+    const revenueVsJobCost =
+        typeof totalRevenue === 'number' && typeof jobCostToDate === 'number'
+            ? totalRevenue - jobCostToDate
+            : null
+
+    const marginPercentActual =
+        typeof revenueVsJobCost === 'number' && typeof totalRevenue === 'number' && totalRevenue !== 0
+            ? (revenueVsJobCost / totalRevenue) * 100
+            : null
+
+    const varianceVsProjectedProfit =
+        typeof revenueVsJobCost === 'number' && typeof projectedProfit === 'number'
+            ? revenueVsJobCost - projectedProfit
+            : null
+
+    const handleDownloadReconciliationCsv = useCallback(() => {
+        if (!projectNumber || !hasProjectSummary || !azurePrimary) return
+
+        const rows = []
+        rows.push(['Project number', projectNumber])
+        if (projectNameFromUrl) {
+            rows.push(['Project name', projectNameFromUrl])
+        }
+        rows.push([])
+        rows.push(['Metric', 'QuickBooks', 'Project Profitability (Azure)', 'Variance'])
+
+        const currencyOrDash = (val) =>
+            typeof val === 'number' ? formatCurrency(val) : '-'
+        const percentOrDash = (val) =>
+            typeof val === 'number' ? `${val.toFixed(1)}%` : '-'
+
+        rows.push([
+            'Revenue vs contract',
+            currencyOrDash(totalRevenue),
+            currencyOrDash(contractAmount),
+            currencyOrDash(revenueVsContract),
+        ])
+
+        rows.push([
+            'Revenue vs job cost (margin $)',
+            currencyOrDash(totalRevenue),
+            currencyOrDash(jobCostToDate),
+            currencyOrDash(revenueVsJobCost),
+        ])
+
+        rows.push([
+            'Margin % (actual vs QBO revenue)',
+            percentOrDash(marginPercentActual),
+            '',
+            '',
+        ])
+
+        rows.push([
+            'Projected profit (Azure)',
+            '',
+            currencyOrDash(projectedProfit),
+            currencyOrDash(varianceVsProjectedProfit),
+        ])
+
+        const csv = rows
+            .map((row) =>
+                row
+                    .map((cell) => {
+                        const value = cell == null ? '' : String(cell)
+                        if (value.includes(',') || value.includes('"')) {
+                            return `"${value.replace(/"/g, '""')}"`
+                        }
+                        return value
+                    })
+                    .join(',')
+            )
+            .join('\n')
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        const safeProject = (projectNumber || 'project').toString()
+        link.href = url
+        link.setAttribute('download', `tatco-accounting-comparison-${safeProject}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+    }, [
+        projectNumber,
+        projectNameFromUrl,
+        hasProjectSummary,
+        azurePrimary,
+        totalRevenue,
+        contractAmount,
+        revenueVsContract,
+        jobCostToDate,
+        revenueVsJobCost,
+        marginPercentActual,
+        projectedProfit,
+        varianceVsProjectedProfit,
+    ])
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -409,7 +508,19 @@ const AccountingComparison = () => {
 
             {/* High-level comparison summary */}
             <Card className="p-4">
-                <h2 className="text-sm font-semibold mb-3">QuickBooks vs Project Profitability (high-level)</h2>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                    <h2 className="text-sm font-semibold">QuickBooks vs Project Profitability (high-level)</h2>
+                    {hasProjectSummary && azurePrimary && (
+                        <Button
+                            size="xs"
+                            variant="outline"
+                            className="text-[11px]"
+                            onClick={handleDownloadReconciliationCsv}
+                        >
+                            Export reconciliation CSV
+                        </Button>
+                    )}
+                </div>
                 {(!hasProjectSummary && contractAmount === null) ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                         Select a project and load QuickBooks revenue to see a side-by-side comparison with Project Profitability.
@@ -542,6 +653,99 @@ const AccountingComparison = () => {
                                 />
                             </div>
                         ) : null}
+
+                        {/* Reconciliation metrics table */}
+                        {(hasProjectSummary && azurePrimary) && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                                    Reconciliation metrics
+                                </p>
+                                <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+                                    <table className="min-w-full text-xs">
+                                        <thead className="bg-gray-50 dark:bg-gray-800">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                                    Metric
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                                    QuickBooks
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                                    Project Profitability
+                                                </th>
+                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                                    Variance
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr className="bg-white dark:bg-gray-900">
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    Revenue vs contract
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
+                                                </td>
+                                            </tr>
+                                            <tr className="bg-gray-50 dark:bg-gray-800">
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    Revenue vs job cost (margin $)
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}
+                                                </td>
+                                            </tr>
+                                            <tr className="bg-white dark:bg-gray-900">
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    Margin % (actual vs QBO revenue)
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof marginPercentActual === 'number'
+                                                        ? `${marginPercentActual.toFixed(1)}%`
+                                                        : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    —
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    —
+                                                </td>
+                                            </tr>
+                                            <tr className="bg-gray-50 dark:bg-gray-800">
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    Projected profit (Azure) vs actual margin
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof revenueVsJobCost === 'number'
+                                                        ? formatCurrency(revenueVsJobCost)
+                                                        : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {typeof varianceVsProjectedProfit === 'number'
+                                                        ? formatCurrency(varianceVsProjectedProfit)
+                                                        : '—'}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
             </Card>
