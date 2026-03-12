@@ -19,6 +19,11 @@ const AccountingComparison = () => {
         data: null,
         error: null,
     })
+    const [qbVendorsState, setQbVendorsState] = useState({
+        loading: false,
+        data: null,
+        error: null,
+    })
     const location = useLocation()
 
     const formatCurrency = (value) => {
@@ -108,6 +113,25 @@ const AccountingComparison = () => {
         [azureState.loading]
     )
 
+    const loadQuickBooksVendorCosts = useCallback(
+        async (projNumber) => {
+            const trimmed = (projNumber || '').trim()
+            if (!trimmed || qbVendorsState.loading) return
+            setQbVendorsState({ loading: true, data: null, error: null })
+            try {
+                const data = await QuickBooksService.getProjectVendorCostsSummary(trimmed)
+                setQbVendorsState({ loading: false, data, error: null })
+            } catch (err) {
+                setQbVendorsState({
+                    loading: false,
+                    data: null,
+                    error: err?.details || err?.message || 'Failed to load QuickBooks vendor costs.',
+                })
+            }
+        },
+        [qbVendorsState.loading]
+    )
+
     // After QuickBooks is connected, load a small sample of transactions
     useEffect(() => {
         if (qbStatus.loading || !qbStatus.hasToken) {
@@ -144,15 +168,18 @@ const AccountingComparison = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search)
         const initialProjectNumber = params.get('projectNumber')
-        if (initialProjectNumber) {
-            setProjectNumber(initialProjectNumber)
-            if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
-                loadProjectSummary(initialProjectNumber)
+            if (initialProjectNumber) {
+                setProjectNumber(initialProjectNumber)
+                if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
+                    loadProjectSummary(initialProjectNumber)
+                }
+                if (!azureState.loading && !azureState.data && !azureState.error) {
+                    loadAzureSummary(initialProjectNumber)
+                }
+                if (!qbVendorsState.loading && !qbVendorsState.data && !qbVendorsState.error) {
+                    loadQuickBooksVendorCosts(initialProjectNumber)
+                }
             }
-            if (!azureState.loading && !azureState.data && !azureState.error) {
-                loadAzureSummary(initialProjectNumber)
-            }
-        }
     }, [
         location.search,
         qbStatus.loading,
@@ -164,6 +191,10 @@ const AccountingComparison = () => {
         azureState.error,
         loadProjectSummary,
         loadAzureSummary,
+        qbVendorsState.loading,
+        qbVendorsState.data,
+        qbVendorsState.error,
+        loadQuickBooksVendorCosts,
     ])
 
     const handleConnectClick = () => {

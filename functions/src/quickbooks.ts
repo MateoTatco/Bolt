@@ -565,4 +565,275 @@ export const quickbooksGetProjectInvoicesSummary = functions
         }
     });
 
+// Fetch QuickBooks cost-by-vendor summary for a specific project/customer prefix
+export const quickbooksGetProjectVendorCostsSummary = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 60, memory: '512MB' })
+    .https
+    .onCall(async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+        }
+
+        const projectNumber = (data?.projectNumber || '').toString().trim();
+        if (!projectNumber) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'projectNumber is required.'
+            );
+        }
+
+        const userId = context.auth.uid;
+        const tokenDoc = await admin.firestore()
+            .collection('quickbooksTokens')
+            .doc(userId)
+            .get();
+
+        if (!tokenDoc.exists) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks is not connected. Please connect QuickBooks first.'
+            );
+        }
+
+        const tokenData = tokenDoc.data() as QuickBooksTokenData | undefined;
+        let accessToken = tokenData?.accessToken;
+        let refreshToken = tokenData?.refreshToken;
+        const realmId = tokenData?.realmId;
+
+        // Normalize expiresAt to a Date for comparison
+        let expiresAt: Date | null = null;
+        const rawExpires = tokenData?.expiresAt as any;
+        if (rawExpires) {
+            if (typeof rawExpires.toDate === 'function') {
+                expiresAt = rawExpires.toDate();
+            } else if (rawExpires instanceof Date) {
+                expiresAt = rawExpires;
+            } else if (typeof rawExpires === 'string') {
+                const parsed = new Date(rawExpires);
+                if (!isNaN(parsed.getTime())) {
+                    expiresAt = parsed;
+                }
+            }
+        }
+
+        const now = new Date();
+        const isExpired = !expiresAt || expiresAt <= now;
+
+        // If token is expired and we have a refresh token, attempt to refresh it
+        if (isExpired && refreshToken) {
+            try {
+                console.log('QuickBooks access token expired (vendor costs), attempting refresh...');
+                const refreshed = await refreshQuickBooksToken(refreshToken);
+                const newAccessToken = refreshed.access_token;
+                const newRefreshToken = refreshed.refresh_token || refreshToken;
+                const newExpiresAt = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000);
+
+                await tokenDoc.ref.set({
+                    accessToken: newAccessToken,
+                    refreshToken: newRefreshToken,
+                    expiresAt: newExpiresAt,
+                    realmId: realmId || refreshed.realmId || null,
+                    updatedAt: new Date(),
+                }, { merge: true });
+
+                accessToken = newAccessToken;
+                refreshToken = newRefreshToken;
+            } catch (refreshError: any) {
+                console.error('Error refreshing QuickBooks token (vendor costs):', {
+                    message: refreshError.message,
+                    status: refreshError.response?.status,
+                    data: refreshError.response?.data,
+                });
+                throw new functions.https.HttpsError(
+                    'failed-precondition',
+                    'QuickBooks authorization has expired. Please reconnect QuickBooks from the Connect QuickBooks page.'
+                );
+            }
+        }
+
+        if (!accessToken || !realmId) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'QuickBooks token or realmId is missing. Please reconnect QuickBooks.'
+            );
+        }
+
+        try {
+            const apiBase = QUICKBOOKS_CONFIG.apiBase;
+            const url = `${apiBase}/v3/company/${realmId}/query?minorversion=65`;
+
+            // Escape single quotes for SQL-like query
+            const escapedProjectNumber = projectNumber.replace(/'/g, "''");
+
+            // 1) Find customers whose DisplayName starts with the project number.
+            const customerQuery =
+                `select Id, DisplayName, FullyQualifiedName from Customer where DisplayName like '${escapedProjectNumber}%' STARTPOSITION 1 MAXRESULTS 100`;
+
+            const customerResponse = await axios.post<{ QueryResponse?: { Customer?: any[] } }>(
+                url,
+                customerQuery,
+                {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        Accept: 'application/json',
+                        'Content-Type': 'application/text',
+                    },
+                }
+            );
+
+            const customers = customerResponse.data?.QueryResponse?.Customer || [];
+
+            if (!customers.length) {
+                return {
+                    success: true,
+                    projectNumber,
+                    hasCustomers: false,
+                    quickbooksCustomers: [],
+                    vendors: [],
+                    totalCost: 0,
+                };
+            }
+
+            const customerIds = customers
+                .map((c: any) => c.Id)
+                .filter((id: any) => typeof id === 'string' && id.length > 0);
+
+            if (!customerIds.length) {
+                return {
+                    success: true,
+                    projectNumber,
+                    hasCustomers: false,
+                    quickbooksCustomers: [],
+                    vendors: [],
+                    totalCost: 0,
+                };
+            }
+
+            // 2) Fetch cost transactions per customer (Purchase + Bill) with VendorRef.
+            const allCosts: any[] = [];
+
+            for (const cid of customerIds) {
+                const escapedId = String(cid).replace(/'/g, "''");
+
+                // Purchase (expenses, checks, CC charges) with CustomerRef + VendorRef
+                try {
+                    const purchaseQuery =
+                        `select Id, TxnDate, TotalAmt, CustomerRef, VendorRef from Purchase where CustomerRef = '${escapedId}' STARTPOSITION 1 MAXRESULTS 1000`;
+                    const purchaseRes = await axios.post<{ QueryResponse?: { Purchase?: any[] } }>(
+                        url,
+                        purchaseQuery,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${accessToken}`,
+                                Accept: 'application/json',
+                                'Content-Type': 'application/text',
+                            },
+                        }
+                    );
+                    const list = purchaseRes.data?.QueryResponse?.Purchase || [];
+                    for (const t of list) {
+                        allCosts.push({ _raw: t, txnType: 'Purchase' });
+                    }
+                } catch (purchaseError: any) {
+                    console.warn('QuickBooks Purchase query error (vendor costs):', {
+                        message: purchaseError.message,
+                        status: purchaseError.response?.status,
+                        data: purchaseError.response?.data,
+                    });
+                }
+
+                // Bills (vendor bills with CustomerRef + VendorRef)
+                try {
+                    const billQuery =
+                        `select Id, DocNumber, TxnDate, TotalAmt, CustomerRef, VendorRef from Bill where CustomerRef = '${escapedId}' STARTPOSITION 1 MAXRESULTS 1000`;
+                    const billRes = await axios.post<{ QueryResponse?: { Bill?: any[] } }>(
+                        url,
+                        billQuery,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${accessToken}`,
+                                Accept: 'application/json',
+                                'Content-Type': 'application/text',
+                            },
+                        }
+                    );
+                    const list = billRes.data?.QueryResponse?.Bill || [];
+                    for (const t of list) {
+                        allCosts.push({ _raw: t, txnType: 'Bill' });
+                    }
+                } catch (billError: any) {
+                    console.warn('QuickBooks Bill query error (vendor costs):', {
+                        message: billError.message,
+                        status: billError.response?.status,
+                        data: billError.response?.data,
+                    });
+                }
+            }
+
+            // Group by VendorRef
+            interface VendorAgg {
+                vendorId: string | null;
+                vendorName: string | null;
+                totalCost: number;
+                transactionCount: number;
+            }
+
+            const vendorMap = new Map<string, VendorAgg>();
+            let grandTotal = 0;
+
+            for (const entry of allCosts) {
+                const t = entry._raw;
+                const vendorId = t.VendorRef?.value || null;
+                const vendorName = t.VendorRef?.name || null;
+                const key = vendorId || vendorName || 'unknown';
+                const amt = typeof t.TotalAmt === 'number' ? t.TotalAmt : 0;
+
+                if (!vendorMap.has(key)) {
+                    vendorMap.set(key, {
+                        vendorId,
+                        vendorName,
+                        totalCost: 0,
+                        transactionCount: 0,
+                    });
+                }
+                const agg = vendorMap.get(key)!;
+                agg.totalCost += amt;
+                agg.transactionCount += 1;
+                grandTotal += amt;
+            }
+
+            const vendors = Array.from(vendorMap.values())
+                .sort((a, b) => b.totalCost - a.totalCost);
+
+            return {
+                success: true,
+                projectNumber,
+                hasCustomers: true,
+                quickbooksCustomers: customers.map((c: any) => ({
+                    id: c.Id,
+                    displayName: c.DisplayName,
+                    fullyQualifiedName: c.FullyQualifiedName,
+                })),
+                totalCost: grandTotal,
+                vendors,
+            };
+        } catch (error: any) {
+            const data = error.response?.data;
+            const fault = data?.Fault || data?.fault;
+            const errList = fault?.Error ?? fault?.error;
+            const firstErr = Array.isArray(errList) ? errList[0] : errList;
+            const msg =
+                firstErr?.Message ?? firstErr?.message ?? firstErr?.Detail ?? firstErr?.detail ?? error.message ?? 'Failed to fetch QuickBooks vendor costs';
+            console.error('QuickBooks vendor costs query error:', {
+                status: error.response?.status,
+                apiBase: QUICKBOOKS_CONFIG.apiBase,
+                fault,
+                firstError: firstErr,
+                msg,
+            });
+            throw new functions.https.HttpsError('internal', msg);
+        }
+    });
+
 

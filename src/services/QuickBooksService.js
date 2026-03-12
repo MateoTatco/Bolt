@@ -92,6 +92,23 @@ export const QuickBooksService = {
     },
 
     /**
+     * Fetch QuickBooks cost-by-vendor summary for a given Tatco project number.
+     * Groups Purchase/Bill transactions by VendorRef for the matched project customers.
+     * @param {string} projectNumber
+     * @returns {Promise<{
+     *   success: boolean,
+     *   projectNumber: string,
+     *   totalCost: number,
+     *   vendors: Array<{ vendorId: string | null, vendorName: string | null, totalCost: number, transactionCount: number }>
+     * }>}
+     */
+    async getProjectVendorCostsSummary(projectNumber) {
+        const fn = httpsCallable(getFunctionsInstance(), 'quickbooksGetProjectVendorCostsSummary')
+        const result = await fn({ projectNumber })
+        return result.data
+    },
+
+    /**
      * Start the OAuth flow by redirecting the browser to Intuit's authorization page.
      */
     async initiateOAuth() {
