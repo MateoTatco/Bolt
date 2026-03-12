@@ -257,7 +257,16 @@ const CrewTracker = () => {
                         unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
 
-                    setScheduleAssignments(mappedAssignments)
+                    // Deduplicate crew member assignments: keep first row per employeeId
+                    const seenEmployeeIds = new Set()
+                    const dedupedAssignments = mappedAssignments.filter((row) => {
+                        if (!row.employeeId) return true
+                        if (seenEmployeeIds.has(row.employeeId)) return false
+                        seenEmployeeIds.add(row.employeeId)
+                        return true
+                    })
+
+                    setScheduleAssignments(dedupedAssignments)
                 } else {
                     // Even on error, ensure at least one empty row
                     const emptyRows = Array.from({ length: 1 }, (_, i) => ({

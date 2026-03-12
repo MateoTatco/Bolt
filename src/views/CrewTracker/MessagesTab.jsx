@@ -791,7 +791,7 @@ const MessagesTab = ({
                                                     }
                                                     return next
                                                 })
-                                                setPinnedIds((prev) => prev.filter((pid) => prev !== id))
+                                                setPinnedIds((prev) => prev.filter((pid) => pid !== id))
                                             }}
                                             className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 focus:outline-none"
                                             title="Delete chat"
