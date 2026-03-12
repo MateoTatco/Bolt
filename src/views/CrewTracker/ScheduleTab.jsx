@@ -177,10 +177,28 @@ const ScheduleTab = ({
         return user.userName || user.displayName || (user.email && user.email.split('@')[0]) || userId
     }
 
-    // Base employee options with rich display name
+    // Employees already scheduled for this date (for uniqueness)
+    const usedEmployeeIds = useMemo(
+        () =>
+            new Set(
+                (scheduleAssignments || [])
+                    .map((row) => row.employeeId)
+                    .filter(Boolean),
+            ),
+        [scheduleAssignments],
+    )
+
+    // Base employee options with rich display name (only active crew are bookable;
+    // keep inactive crew if they are already scheduled on this date so existing rows still show names)
     const allEmployeeOptions = useMemo(
         () =>
-            (employees || []).map((emp) => {
+            (employees || [])
+                .filter((emp) => {
+                    const isActive = emp.active !== false
+                    if (isActive) return true
+                    return usedEmployeeIds.has(emp.id)
+                })
+                .map((emp) => {
                 const first = (emp.firstName || '').trim()
                 const last = (emp.lastName || '').trim()
                 const nickname = (emp.nickname || '').trim()
@@ -214,32 +232,27 @@ const ScheduleTab = ({
                     })
                 })()
 
+                const isActive = emp.active !== false
+
                 const labelBase = nickname && (first || last)
                     ? `${base} (${nickname})`
                     : base
 
+                const finalLabel = !isActive
+                    ? `${labelBase} — Inactive`
+                    : labelBase
+
                 return {
                     value: emp.id,
-                    label: isOffToday ? `${labelBase} — ⏸️ Time off` : labelBase,
+                    label: isOffToday ? `${finalLabel} — ⏸️ Time off` : finalLabel,
                     isOffToday,
-                    disabled: false, // Still allow selection but show visual indicator
+                    disabled: !isActive, // Inactive crew visible (for existing rows) but not bookable
                 }
             }),
-        [employees, scheduleDate],
+        [employees, scheduleDate, usedEmployeeIds],
     )
 
     const unassignedOption = useMemo(() => ({ value: '', label: '— Unassigned —' }), [])
-
-    // Employees already scheduled for this date (for uniqueness)
-    const usedEmployeeIds = useMemo(
-        () =>
-            new Set(
-                (scheduleAssignments || [])
-                    .map((row) => row.employeeId)
-                    .filter(Boolean),
-            ),
-        [scheduleAssignments],
-    )
 
     // Filter schedule assignments based on search text
     const filteredScheduleAssignments = useMemo(() => {
