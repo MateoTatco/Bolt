@@ -14,7 +14,7 @@ const getFunctionsInstance = () => {
             // If emulator is not available, fall back to default (production)
             // This ensures production still works even if connect fails locally
             // eslint-disable-next-line no-console
-            console.warn('Could not connect Functions SDK to emulator, falling back to default endpoint.', e)
+            console.warn('Could not connect Functions SDK to emulator, falling back to default endpoint', e)
         }
     }
     
