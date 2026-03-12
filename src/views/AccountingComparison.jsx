@@ -19,11 +19,6 @@ const AccountingComparison = () => {
         data: null,
         error: null,
     })
-    const [qbCostState, setQbCostState] = useState({
-        loading: false,
-        data: null,
-        error: null,
-    })
     const location = useLocation()
 
     const formatCurrency = (value) => {
@@ -113,25 +108,6 @@ const AccountingComparison = () => {
         [azureState.loading]
     )
 
-    const loadQuickBooksCosts = useCallback(
-        async (projNumber) => {
-            const trimmed = (projNumber || '').trim()
-            if (!trimmed || qbCostState.loading) return
-            setQbCostState({ loading: true, data: null, error: null })
-            try {
-                const data = await QuickBooksService.getProjectCostsSummary(trimmed)
-                setQbCostState({ loading: false, data, error: null })
-            } catch (err) {
-                setQbCostState({
-                    loading: false,
-                    data: null,
-                    error: err?.details || err?.message || 'Failed to load QuickBooks cost summary.',
-                })
-            }
-        },
-        [qbCostState.loading]
-    )
-
     // After QuickBooks is connected, load a small sample of transactions
     useEffect(() => {
         if (qbStatus.loading || !qbStatus.hasToken) {
@@ -168,18 +144,15 @@ const AccountingComparison = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search)
         const initialProjectNumber = params.get('projectNumber')
-            if (initialProjectNumber) {
-                setProjectNumber(initialProjectNumber)
-                if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
-                    loadProjectSummary(initialProjectNumber)
-                }
-                if (!azureState.loading && !azureState.data && !azureState.error) {
-                    loadAzureSummary(initialProjectNumber)
-                }
-                if (!qbCostState.loading && !qbCostState.data && !qbCostState.error) {
-                    loadQuickBooksCosts(initialProjectNumber)
-                }
+        if (initialProjectNumber) {
+            setProjectNumber(initialProjectNumber)
+            if (!qbStatus.loading && qbStatus.hasToken && !projectSummary.loading && !projectSummary.data) {
+                loadProjectSummary(initialProjectNumber)
             }
+            if (!azureState.loading && !azureState.data && !azureState.error) {
+                loadAzureSummary(initialProjectNumber)
+            }
+        }
     }, [
         location.search,
         qbStatus.loading,
@@ -191,10 +164,6 @@ const AccountingComparison = () => {
         azureState.error,
         loadProjectSummary,
         loadAzureSummary,
-        qbCostState.loading,
-        qbCostState.data,
-        qbCostState.error,
-        loadQuickBooksCosts,
     ])
 
     const handleConnectClick = () => {
@@ -234,10 +203,6 @@ const AccountingComparison = () => {
     const customerRetainage = azurePrimary?.customerRetainage ?? null
     const vendorRetainage = azurePrimary?.vendorRetainage ?? null
 
-    // QuickBooks cost summary
-    const hasQbCostSummary = !!qbCostState.data
-    const totalQbCost = hasQbCostSummary ? qbCostState.data.totalCost : null
-
     const revenueVsContract =
         typeof totalRevenue === 'number' && typeof contractAmount === 'number'
             ? totalRevenue - contractAmount
@@ -248,15 +213,10 @@ const AccountingComparison = () => {
             ? (revenueVsContract / contractAmount) * 100
             : null
 
-    // Reconciliation-focused metrics
+    // Reconciliation-focused metrics (revenue vs Azure cost & profit)
     const revenueVsJobCost =
         typeof totalRevenue === 'number' && typeof jobCostToDate === 'number'
             ? totalRevenue - jobCostToDate
-            : null
-
-    const costVariance =
-        typeof totalQbCost === 'number' && typeof jobCostToDate === 'number'
-            ? totalQbCost - jobCostToDate
             : null
 
     const marginPercentActual =
@@ -297,13 +257,6 @@ const AccountingComparison = () => {
             currencyOrDash(totalRevenue),
             currencyOrDash(jobCostToDate),
             currencyOrDash(revenueVsJobCost),
-        ])
-
-        rows.push([
-            'Cost to date (QuickBooks vs Project Profitability)',
-            currencyOrDash(totalQbCost),
-            currencyOrDash(jobCostToDate),
-            currencyOrDash(costVariance),
         ])
 
         rows.push([
@@ -555,32 +508,17 @@ const AccountingComparison = () => {
 
             {/* High-level comparison summary */}
             <Card className="p-4">
-                <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2 mb-3">
                     <h2 className="text-sm font-semibold">QuickBooks vs Project Profitability (high-level)</h2>
                     {hasProjectSummary && azurePrimary && (
-                        <div className="flex items-center gap-2">
-                            {typeof costVariance === 'number' && (
-                                <span
-                                    className={
-                                        Math.abs(costVariance) === 0
-                                            ? 'inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 px-2 py-0.5 text-[11px] font-medium'
-                                            : 'inline-flex items-center rounded-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300 px-2 py-0.5 text-[11px] font-medium'
-                                    }
-                                >
-                                    {Math.abs(costVariance) === 0
-                                        ? 'In balance (Procore vs QuickBooks cost)'
-                                        : `Out of balance by ${formatCurrency(Math.abs(costVariance))}`}
-                                </span>
-                            )}
-                            <Button
-                                size="xs"
-                                variant="outline"
-                                className="text-[11px]"
-                                onClick={handleDownloadReconciliationCsv}
-                            >
-                                Export reconciliation CSV
-                            </Button>
-                        </div>
+                        <Button
+                            size="xs"
+                            variant="outline"
+                            className="text-[11px]"
+                            onClick={handleDownloadReconciliationCsv}
+                        >
+                            Export reconciliation CSV
+                        </Button>
                     )}
                 </div>
                 {(!hasProjectSummary && contractAmount === null) ? (
@@ -789,20 +727,6 @@ const AccountingComparison = () => {
                                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
                                                     Projected profit (Azure) vs actual margin
                                                 </td>
-                                            <tr className="bg-white dark:bg-gray-900">
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    Cost to date (QuickBooks vs Project Profitability)
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof totalQbCost === 'number' ? formatCurrency(totalQbCost) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof costVariance === 'number' ? formatCurrency(costVariance) : '—'}
-                                                </td>
-                                            </tr>
                                                 <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
                                                     {typeof revenueVsJobCost === 'number'
                                                         ? formatCurrency(revenueVsJobCost)

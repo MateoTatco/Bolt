@@ -92,26 +92,6 @@ export const QuickBooksService = {
     },
 
     /**
-     * Fetch QuickBooks cost (Bills/Expenses) summary for a given Tatco project number.
-     * Matches the same customers as invoice summary and then sums cost transactions.
-     * @param {string} projectNumber
-     * @returns {Promise<{
-     *   success: boolean,
-     *   projectNumber: string,
-     *   hasCustomers: boolean,
-     *   quickbooksCustomers: Array,
-     *   transactionCount: number,
-     *   totalCost: number,
-     *   costs: Array
-     * }>}
-     */
-    async getProjectCostsSummary(projectNumber) {
-        const fn = httpsCallable(getFunctionsInstance(), 'quickbooksGetProjectCostsSummary')
-        const result = await fn({ projectNumber })
-        return result.data
-    },
-
-    /**
      * Start the OAuth flow by redirecting the browser to Intuit's authorization page.
      */
     async initiateOAuth() {
