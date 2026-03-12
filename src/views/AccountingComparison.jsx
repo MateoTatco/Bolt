@@ -654,7 +654,7 @@ const AccountingComparison = () => {
                             </div>
                         ) : null}
 
-                        {/* Reconciliation metrics table */}
+                        {/* Reconciliation metrics table (high-level only) */}
                         {(hasProjectSummary && azurePrimary) && (
                             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
@@ -707,40 +707,6 @@ const AccountingComparison = () => {
                                                     {typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}
                                                 </td>
                                             </tr>
-                                            <tr className="bg-white dark:bg-gray-900">
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    Margin % (actual vs QBO revenue)
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof marginPercentActual === 'number'
-                                                        ? `${marginPercentActual.toFixed(1)}%`
-                                                        : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    —
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    —
-                                                </td>
-                                            </tr>
-                                            <tr className="bg-gray-50 dark:bg-gray-800">
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    Projected profit (Azure) vs actual margin
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof revenueVsJobCost === 'number'
-                                                        ? formatCurrency(revenueVsJobCost)
-                                                        : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof varianceVsProjectedProfit === 'number'
-                                                        ? formatCurrency(varianceVsProjectedProfit)
-                                                        : '—'}
-                                                </td>
-                                            </tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -749,6 +715,73 @@ const AccountingComparison = () => {
                     </>
                 )}
             </Card>
+
+            {/* Reconciliation insights (detail dashboard) */}
+            {hasProjectSummary && azurePrimary && (
+                <Card className="p-4">
+                    <h2 className="text-sm font-semibold mb-3">Reconciliation insights (project-level)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Margin & projected profit
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Actual margin (revenue − job cost): </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}
+                                </span>
+                                {typeof marginPercentActual === 'number' && (
+                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                        ({marginPercentActual.toFixed(1)}%)
+                                    </span>
+                                )}
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Projected profit (Azure): </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
+                                </span>
+                                {typeof projectedProfitPercent === 'number' && (
+                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                        ({projectedProfitPercent.toFixed(1)}%)
+                                    </span>
+                                )}
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Variance (actual vs projected): </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof varianceVsProjectedProfit === 'number'
+                                        ? formatCurrency(varianceVsProjectedProfit)
+                                        : '—'}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Cost to date (Project Profitability)
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Job cost to date: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Remaining cost: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {typeof remainingCost === 'number' ? formatCurrency(remainingCost) : '—'}
+                                </span>
+                            </p>
+                            <p>
+                                <span className="text-gray-500 dark:text-gray-400">Contract value: </span>
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             {/* Project Profitability details (Azure SQL) */}
             {azurePrimary && (
