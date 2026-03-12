@@ -384,7 +384,14 @@ const AccountingComparison = () => {
                         placeholder="Project number"
                         value={projectNumber}
                         onChange={(e) => setProjectNumber(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && projectNumber.trim() && (loadProjectSummary(projectNumber.trim()), loadAzureSummary(projectNumber.trim()))}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && projectNumber.trim()) {
+                                const trimmed = projectNumber.trim()
+                                loadProjectSummary(trimmed)
+                                loadAzureSummary(trimmed)
+                                loadQuickBooksVendorCosts(trimmed)
+                            }
+                        }}
                     />
                     <Button
                         size="sm"
@@ -395,6 +402,7 @@ const AccountingComparison = () => {
                             const trimmed = projectNumber.trim()
                             loadProjectSummary(trimmed)
                             loadAzureSummary(trimmed)
+                            loadQuickBooksVendorCosts(trimmed)
                         }}
                     >
                         Load project
@@ -811,6 +819,87 @@ const AccountingComparison = () => {
                             </p>
                         </div>
                     </div>
+                </Card>
+            )}
+
+            {/* QuickBooks costs by vendor (project drilldown) */}
+            {hasProjectSummary && (
+                <Card className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            QuickBooks costs by vendor (project drilldown)
+                        </h2>
+                        {qbVendorsState.data?.totalCost != null && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Total QBO cost:&nbsp;
+                                <span className="font-mono">
+                                    {formatCurrency(qbVendorsState.data.totalCost || 0)}
+                                </span>
+                            </p>
+                        )}
+                    </div>
+                    {qbVendorsState.loading ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Loading QuickBooks vendor costs…
+                        </p>
+                    ) : qbVendorsState.error ? (
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                            {qbVendorsState.error}
+                        </p>
+                    ) : qbVendorsState.data && qbVendorsState.data.vendors?.length > 0 ? (
+                        <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+                            <table className="min-w-full text-xs">
+                                <thead className="bg-gray-50 dark:bg-gray-800">
+                                    <tr>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
+                                            Vendor
+                                        </th>
+                                        <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                            Total cost
+                                        </th>
+                                        <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                            % of QBO project cost
+                                        </th>
+                                        <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
+                                            Transactions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {qbVendorsState.data.vendors.map((v, idx) => {
+                                        const totalCost = typeof v.totalCost === 'number' ? v.totalCost : 0
+                                        const base = typeof qbVendorsState.data.totalCost === 'number'
+                                            ? qbVendorsState.data.totalCost
+                                            : 0
+                                        const pct = base > 0 ? (totalCost / base) * 100 : null
+                                        return (
+                                            <tr
+                                                key={v.vendorId || v.vendorName || idx}
+                                                className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}
+                                            >
+                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
+                                                    {v.vendorName || v.vendorId || 'Unknown vendor'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {formatCurrency(totalCost)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {pct != null ? `${pct.toFixed(1)}%` : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
+                                                    {v.transactionCount ?? 0}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            No cost transactions found for this project in QuickBooks.
+                        </p>
+                    )}
                 </Card>
             )}
 
