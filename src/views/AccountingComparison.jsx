@@ -343,25 +343,21 @@ const AccountingComparison = () => {
         varianceVsProjectedProfit,
     ])
 
+    const hasLoadedProject = !!projectSummary.data
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-semibold">Accounting Cost Comparison</h1>
+                    <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                        Accounting Cost Comparison
+                    </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Compare Tatco project costs and revenue between Procore (Azure SQL) and QuickBooks.
+                        Compare QuickBooks and Procore by project. Read-only.
                     </p>
-                    {projectNumber && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Project:{' '}
-                            <span className="font-mono">{projectNumber}</span>
-                            {projectNameFromUrl ? (
-                                <span className="ml-1">– {projectNameFromUrl}</span>
-                            ) : null}
-                        </p>
-                    )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                     <Tag className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                         Tatco Accounting
                     </Tag>
@@ -371,11 +367,46 @@ const AccountingComparison = () => {
                 </div>
             </div>
 
-            {/* Project lookup — primary entry point */}
+            {/* Active project bar — when a project is loaded */}
+            {hasLoadedProject && projectSummary.data && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Project <span className="font-mono">{projectSummary.data.projectNumber}</span>
+                            {projectNameFromUrl ? ` – ${projectNameFromUrl}` : ''}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                            QuickBooks: {projectSummary.data.invoiceCount} invoice{projectSummary.data.invoiceCount === 1 ? '' : 's'}
+                            {typeof projectSummary.data.totalRevenue === 'number'
+                                ? ` · ${formatCurrency(projectSummary.data.totalRevenue)} revenue`
+                                : ''}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {hasProjectSummary && azurePrimary && (
+                            <Button
+                                size="xs"
+                                variant="outline"
+                                className="text-xs"
+                                onClick={handleDownloadReconciliationCsv}
+                            >
+                                Export CSV
+                            </Button>
+                        )}
+                        {typeof projectSummary.error === 'string' && projectSummary.error.toLowerCase().includes('authorization has expired') ? (
+                            <Button size="xs" variant="outline" onClick={handleConnectClick}>
+                                Reconnect QuickBooks
+                            </Button>
+                        ) : null}
+                    </div>
+                </div>
+            )}
+
+            {/* Project selector — compact */}
             <Card className="p-4">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Select project</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    Enter a Tatco project number (e.g. <span className="font-mono">1130003</span>) to compare QuickBooks revenue with Project Profitability (Azure SQL). You can also open from Project Profitability via &quot;Open in Accounting&quot;.
+                    Enter a project number (e.g. <span className="font-mono">1130003</span>) or open from Project Profitability via &quot;Open in Accounting&quot;.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -431,224 +462,139 @@ const AccountingComparison = () => {
                 ) : null}
             </Card>
 
-            {/* QuickBooks KPI strip */}
-            <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                    QuickBooks KPIs
-                </h2>
-                {hasProjectSummary ? (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Based on {invoiceCount} invoice{invoiceCount === 1 ? '' : 's'} in QuickBooks.
-                    </p>
-                ) : null}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
-                    <p className="text-xs uppercase tracking-wide opacity-75">QuickBooks Revenue (project)</p>
-                    <p className="mt-2 text-2xl font-semibold">
-                        {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
-                    </p>
-                    <p className="mt-1 text-xs opacity-75">
-                        {hasProjectSummary ? `${invoiceCount} invoices` : 'Load a project to see totals.'}
-                    </p>
-                    {typeof revenueVsContract === 'number' && (
-                        <p className="mt-1 text-xs opacity-75">
-                            vs contract: {formatCurrency(revenueVsContract)}{' '}
-                            {revenueVsContract >= 0 ? 'above' : 'below'}
-                        </p>
-                    )}
-                </Card>
-                <Card className="p-4 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-200 dark:border-emerald-800">
-                    <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                        Primary QuickBooks customer
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        {firstCustomer ? firstCustomer.displayName || firstCustomer.fullyQualifiedName || '—' : '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                        {firstCustomer ? 'Matched by project number prefix.' : 'No customers matched yet.'}
-                    </p>
-                </Card>
-                <Card className="p-4 bg-gradient-to-r from-blue-500/10 to-blue-500/5 border border-blue-200 dark:border-blue-800">
-                    <p className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-300">
-                        Latest QuickBooks invoice
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        {latestInvoice ? formatDate(latestInvoice.txnDate) : '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                        {latestInvoice
-                            ? `${formatCurrency(latestInvoice.totalAmt)} • ${latestInvoice.customerName || ''}`
-                            : 'Load a project to see recent billing.'}
-                    </p>
-                </Card>
-            </div>
-
-            {/* Azure SQL / Project Profitability KPI strip */}
-            <div className="flex items-center justify-between gap-2 mt-2">
-                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                    Project Profitability KPIs (Azure SQL)
-                </h2>
-                {azureRecords.length > 0 && azureState.data?.mostRecentArchiveDate ? (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Latest archive: <span className="font-mono">{azureState.data.mostRecentArchiveDate}</span>
-                    </p>
-                ) : null}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Contract value (Azure SQL)
-                    </p>
-                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
-                        {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                    </p>
-                    {azureState.loading ? (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Loading Project Profitability snapshot…
-                        </p>
-                    ) : azureState.error ? (
-                        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-                            {azureState.error}
-                        </p>
-                    ) : azureRecords.length === 0 ? (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            No Project Profitability snapshot found in Azure for this project number.
-                        </p>
-                    ) : (
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            From latest Project Profitability archive snapshot.
-                        </p>
-                    )}
-                </Card>
-                <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Est. cost at completion (Azure SQL)
-                    </p>
-                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
-                        {estCostAtCompletion !== null ? formatCurrency(estCostAtCompletion) : '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Matches Project Profitability estimates.
-                    </p>
-                </Card>
-                <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Projected profit (Azure SQL)
-                    </p>
-                    <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
-                        {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Used as Procore/Bolt baseline for comparison.
-                    </p>
-                </Card>
-            </div>
-
-            {/* High-level comparison summary */}
-            <Card className="p-4">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                    <h2 className="text-sm font-semibold">QuickBooks vs Project Profitability (high-level)</h2>
+            {/* Hero: QuickBooks vs Procore – this project */}
+            <Card className="p-5">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                    <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+                        QuickBooks vs Procore – this project
+                    </h2>
                     {hasProjectSummary && azurePrimary && (
                         <Button
                             size="xs"
                             variant="outline"
-                            className="text-[11px]"
                             onClick={handleDownloadReconciliationCsv}
                         >
-                            Export reconciliation CSV
+                            Export CSV
                         </Button>
                     )}
                 </div>
                 {(!hasProjectSummary && contractAmount === null) ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Select a project and load QuickBooks revenue to see a side-by-side comparison with Project Profitability.
+                        Load a project to see QuickBooks and Procore side-by-side.
                     </p>
                 ) : (
                     <>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm mb-4">
-                            <div>
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    QBO revenue
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            {/* Left: QuickBooks */}
+                            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-4">
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+                                    QuickBooks
                                 </p>
-                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                    {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
-                                </p>
+                                <ul className="space-y-2 text-sm">
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Revenue (project)</span>
+                                        <span className="font-medium tabular-nums text-right">
+                                            {hasProjectSummary ? formatCurrency(totalRevenue) : '—'}
+                                        </span>
+                                    </li>
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Invoice count</span>
+                                        <span className="font-medium tabular-nums text-right">{invoiceCount}</span>
+                                    </li>
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Primary customer</span>
+                                        <span className="font-medium text-right truncate max-w-[12rem]" title={firstCustomer?.displayName || firstCustomer?.fullyQualifiedName}>
+                                            {firstCustomer ? (firstCustomer.displayName || firstCustomer.fullyQualifiedName || '—') : '—'}
+                                        </span>
+                                    </li>
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Latest invoice</span>
+                                        <span className="font-medium tabular-nums text-right">
+                                            {latestInvoice ? `${formatDate(latestInvoice.txnDate)} · ${formatCurrency(latestInvoice.totalAmt)}` : '—'}
+                                        </span>
+                                    </li>
+                                </ul>
                             </div>
-                            <div>
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    Contract value (Azure)
+                            {/* Right: Procore / Project Profitability */}
+                            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-4">
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+                                    Procore (Project Profitability)
                                 </p>
-                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    Variance
-                                </p>
-                                <p className="mt-1 font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    Variance %
-                                </p>
-                                <p className="mt-1 font-semibold">
-                                    {typeof variancePercent === 'number'
-                                        ? `${variancePercent >= 0 ? '+' : ''}${variancePercent.toFixed(1)}%`
-                                        : '—'}
-                                </p>
+                                <ul className="space-y-2 text-sm">
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Contract value</span>
+                                        <span className="font-medium tabular-nums text-right">
+                                            {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
+                                        </span>
+                                    </li>
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Est. cost at completion</span>
+                                        <span className="font-medium tabular-nums text-right">
+                                            {estCostAtCompletion !== null ? formatCurrency(estCostAtCompletion) : '—'}
+                                        </span>
+                                    </li>
+                                    <li className="flex justify-between">
+                                        <span className="text-gray-600 dark:text-gray-400">Projected profit</span>
+                                        <span className="font-medium tabular-nums text-right">
+                                            {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
+                                        </span>
+                                    </li>
+                                </ul>
+                                {azureState.loading && (
+                                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Loading…</p>
+                                )}
+                                {azureState.error && (
+                                    <p className="mt-2 text-xs text-red-600 dark:text-red-400">{azureState.error}</p>
+                                )}
                             </div>
                         </div>
 
-                        {typeof totalRevenue === 'number' && typeof contractAmount === 'number' ? (
-                            <div className="mt-2">
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                                    Visual comparison
-                                </p>
-                                <div className="relative h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                                    {/* Azure contract bar */}
+                        {/* Revenue vs contract – one row */}
+                        <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 px-4 py-3 mb-4">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Revenue vs contract</p>
+                            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                <span className="text-sm tabular-nums">
+                                    {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
+                                </span>
+                                <span className="text-sm tabular-nums text-gray-600 dark:text-gray-400">
+                                    {typeof variancePercent === 'number'
+                                        ? `(${variancePercent >= 0 ? '+' : ''}${variancePercent.toFixed(1)}%)`
+                                        : ''}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Small bar: revenue vs contract */}
+                        {typeof totalRevenue === 'number' && typeof contractAmount === 'number' && (totalRevenue > 0 || contractAmount > 0) && (
+                            <div className="mb-4">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Revenue vs contract</p>
+                                <div className="relative h-2.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                    <div className="absolute inset-y-0 left-0 bg-blue-500/70" style={{ width: '100%' }} />
                                     <div
-                                        className="absolute inset-y-0 left-0 bg-blue-500/70"
+                                        className="absolute -top-0.5 bottom-0 w-0.5 bg-emerald-400"
                                         style={{
-                                            width: '100%',
-                                        }}
-                                    />
-                                    {/* QBO marker */}
-                                    <div
-                                        className="absolute -top-1 bottom-0 w-0.5 bg-emerald-400"
-                                        style={{
-                                            left:
-                                                contractAmount !== 0
-                                                    ? `${Math.min(
-                                                          100,
-                                                          Math.max(0, (totalRevenue / contractAmount) * 100)
-                                                      )}%`
-                                                    : '0%',
+                                            left: contractAmount !== 0
+                                                ? `${Math.min(100, Math.max(0, (totalRevenue / contractAmount) * 100))}%`
+                                                : '0%',
                                         }}
                                     />
                                 </div>
-                                <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                                <div className="mt-1 flex justify-between text-[11px] text-gray-500 dark:text-gray-400">
                                     <span>0</span>
-                                    <span>Contract value</span>
-                                    <span>QBO revenue marker</span>
+                                    <span>Contract</span>
+                                    <span>QBO revenue</span>
                                 </div>
                             </div>
-                        ) : null}
+                        )}
 
-                        {/* Bar chart: QuickBooks vs Project Profitability */}
+                        {/* Bar chart */}
                         {(typeof totalRevenue === 'number' || typeof contractAmount === 'number') &&
                          (totalRevenue > 0 || (contractAmount !== null && contractAmount > 0)) ? (
-                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                    Revenue vs contract (chart)
-                                </p>
+                            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <Chart
                                     type="bar"
-                                    height={220}
-                                    xAxis={['QBO revenue', 'Contract (Azure)', 'Projected profit']}
+                                    height={200}
+                                    xAxis={['QBO revenue', 'Contract (Procore)', 'Projected profit']}
                                     series={[
                                         {
                                             name: 'Amount',
@@ -660,12 +606,7 @@ const AccountingComparison = () => {
                                         },
                                     ]}
                                     customOptions={{
-                                        plotOptions: {
-                                            bar: {
-                                                columnWidth: '50%',
-                                                distributed: true,
-                                            },
-                                        },
+                                        plotOptions: { bar: { columnWidth: '50%', distributed: true } },
                                         colors: ['#10b981', '#3b82f6', '#8b5cf6'],
                                         legend: { show: false },
                                         tooltip: {
@@ -682,159 +623,118 @@ const AccountingComparison = () => {
                                         dataLabels: {
                                             enabled: true,
                                             formatter: (val) =>
-                                                val >= 1e6
-                                                    ? `$${(val / 1e6).toFixed(2)}M`
-                                                    : val >= 1e3
-                                                      ? `$${(val / 1e3).toFixed(1)}K`
-                                                      : `$${Math.round(val)}`,
+                                                val >= 1e6 ? `$${(val / 1e6).toFixed(2)}M`
+                                                    : val >= 1e3 ? `$${(val / 1e3).toFixed(1)}K` : `$${Math.round(val)}`,
                                         },
                                     }}
                                 />
                             </div>
                         ) : null}
-
-                        {/* Reconciliation metrics table (high-level only) */}
-                        {(hasProjectSummary && azurePrimary) && (
-                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                                    Reconciliation metrics
-                                </p>
-                                <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
-                                    <table className="min-w-full text-xs">
-                                        <thead className="bg-gray-50 dark:bg-gray-800">
-                                            <tr>
-                                                <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
-                                                    Metric
-                                                </th>
-                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
-                                                    QuickBooks
-                                                </th>
-                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
-                                                    Project Profitability
-                                                </th>
-                                                <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
-                                                    Variance
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="bg-white dark:bg-gray-900">
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    Revenue vs contract
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}
-                                                </td>
-                                            </tr>
-                                            <tr className="bg-gray-50 dark:bg-gray-800">
-                                                <td className="px-3 py-2 text-gray-800 dark:text-gray-100">
-                                                    Revenue vs job cost (margin $)
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 text-right text-gray-800 dark:text-gray-100">
-                                                    {typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
                     </>
                 )}
             </Card>
 
-            {/* Reconciliation insights (detail dashboard) */}
-            {hasProjectSummary && azurePrimary && (
+            {/* Reconciliation table – single table */}
+            {(hasProjectSummary && azurePrimary) && (
                 <Card className="p-4">
-                    <h2 className="text-sm font-semibold mb-3">Reconciliation insights (project-level)</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Margin & projected profit
+                    <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Reconciliation</h2>
+                    <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th className="px-3 py-2.5 text-left font-semibold text-gray-600 dark:text-gray-300">Metric</th>
+                                    <th className="px-3 py-2.5 text-right font-semibold text-gray-600 dark:text-gray-300">QuickBooks</th>
+                                    <th className="px-3 py-2.5 text-right font-semibold text-gray-600 dark:text-gray-300">Procore</th>
+                                    <th className="px-3 py-2.5 text-right font-semibold text-gray-600 dark:text-gray-300">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr className="bg-white dark:bg-gray-900">
+                                    <td className="px-3 py-2.5 text-gray-800 dark:text-gray-100">Revenue vs contract</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{contractAmount !== null ? formatCurrency(contractAmount) : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof revenueVsContract === 'number' ? formatCurrency(revenueVsContract) : '—'}</td>
+                                </tr>
+                                <tr className="bg-gray-50 dark:bg-gray-800">
+                                    <td className="px-3 py-2.5 text-gray-800 dark:text-gray-100">Revenue vs job cost (margin $)</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof totalRevenue === 'number' ? formatCurrency(totalRevenue) : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}</td>
+                                </tr>
+                                <tr className="bg-white dark:bg-gray-900">
+                                    <td className="px-3 py-2.5 text-gray-800 dark:text-gray-100">Margin % (actual vs QBO revenue)</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof marginPercentActual === 'number' ? `${marginPercentActual.toFixed(1)}%` : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">—</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">—</td>
+                                </tr>
+                                <tr className="bg-gray-50 dark:bg-gray-800">
+                                    <td className="px-3 py-2.5 text-gray-800 dark:text-gray-100">Projected profit (Procore)</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">—</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums">{typeof varianceVsProjectedProfit === 'number' ? formatCurrency(varianceVsProjectedProfit) : '—'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
+
+            {/* Project Profitability (Azure) – snapshot – merged insights + details */}
+            {azurePrimary && (
+                <Card className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            Project Profitability (Azure) – snapshot
+                        </h2>
+                        {azureState.data?.mostRecentArchiveDate && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                Latest archive: <span className="font-mono">{azureState.data.mostRecentArchiveDate}</span>
                             </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Actual margin (revenue − job cost): </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof revenueVsJobCost === 'number' ? formatCurrency(revenueVsJobCost) : '—'}
-                                </span>
-                                {typeof marginPercentActual === 'number' && (
-                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                                        ({marginPercentActual.toFixed(1)}%)
-                                    </span>
-                                )}
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Projected profit (Azure): </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
-                                </span>
-                                {typeof projectedProfitPercent === 'number' && (
-                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                                        ({projectedProfitPercent.toFixed(1)}%)
-                                    </span>
-                                )}
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Variance (actual vs projected): </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof varianceVsProjectedProfit === 'number'
-                                        ? formatCurrency(varianceVsProjectedProfit)
-                                        : '—'}
-                                </span>
-                            </p>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                        <div className="space-y-1.5">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Contract & revenue</p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Contract value</span><span className="tabular-nums font-medium text-right">{contractAmount !== null ? formatCurrency(contractAmount) : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Total invoiced</span><span className="tabular-nums font-medium text-right">{typeof totalInvoicedAzure === 'number' ? formatCurrency(totalInvoicedAzure) : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Balance left on contract</span><span className="tabular-nums font-medium text-right">{typeof balanceLeftOnContract === 'number' ? formatCurrency(balanceLeftOnContract) : '—'}</span></p>
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Cost to date (Project Profitability)
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Job cost to date: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Remaining cost: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof remainingCost === 'number' ? formatCurrency(remainingCost) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Contract value: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                                </span>
-                            </p>
+                        <div className="space-y-1.5">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Cost & profit</p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Job cost to date</span><span className="tabular-nums font-medium text-right">{typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Remaining cost</span><span className="tabular-nums font-medium text-right">{typeof remainingCost === 'number' ? formatCurrency(remainingCost) : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Projected profit</span><span className="tabular-nums font-medium text-right">{projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}{typeof projectedProfitPercent === 'number' ? ` (${projectedProfitPercent.toFixed(1)}%)` : ''}</span></p>
+                        </div>
+                        <div className="space-y-1.5">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Progress & margin</p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">% complete (revenue)</span><span className="tabular-nums font-medium text-right">{typeof percentCompleteRevenue === 'number' ? `${percentCompleteRevenue.toFixed(1)}%` : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">% complete (cost)</span><span className="tabular-nums font-medium text-right">{typeof percentCompleteCost === 'number' ? `${percentCompleteCost.toFixed(1)}%` : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Margin vs projected</span><span className="tabular-nums font-medium text-right">{typeof varianceVsProjectedProfit === 'number' ? formatCurrency(varianceVsProjectedProfit) : '—'}</span></p>
+                        </div>
+                        <div className="space-y-1.5 md:col-span-2 lg:col-span-1">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Retainage</p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Customer</span><span className="tabular-nums font-medium text-right">{typeof customerRetainage === 'number' ? formatCurrency(customerRetainage) : '—'}</span></p>
+                            <p className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Vendor</span><span className="tabular-nums font-medium text-right">{typeof vendorRetainage === 'number' ? formatCurrency(vendorRetainage) : '—'}</span></p>
                         </div>
                     </div>
                 </Card>
             )}
 
-            {/* QuickBooks costs by vendor (project drilldown) */}
+            {/* Drill-down: QuickBooks costs by vendor — secondary */}
             {hasProjectSummary && (
-                <Card className="p-4">
+                <Card className="p-4 border-gray-200 dark:border-gray-700 bg-gray-50/30 dark:bg-gray-800/20">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            QuickBooks costs by vendor (project drilldown)
-                        </h2>
+                        <div>
+                            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                Drill-down: QuickBooks costs by vendor
+                            </h2>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                Bills and expenses for this project in QuickBooks.
+                            </p>
+                        </div>
                         {qbVendorsState.data?.totalCost != null && (
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Total QBO cost:&nbsp;
-                                <span className="font-mono">
-                                    {formatCurrency(qbVendorsState.data.totalCost || 0)}
-                                </span>
+                                Total: <span className="font-mono tabular-nums">{formatCurrency(qbVendorsState.data.totalCost || 0)}</span>
                             </p>
                         )}
                     </div>
@@ -903,221 +803,68 @@ const AccountingComparison = () => {
                 </Card>
             )}
 
-            {/* Project Profitability details (Azure SQL) */}
-            {azurePrimary && (
-                <Card className="p-4">
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                            Project Profitability details (Azure SQL)
-                        </h2>
-                        {azureState.data?.mostRecentArchiveDate && (
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                Latest archive:{' '}
-                                <span className="font-mono">{azureState.data.mostRecentArchiveDate}</span>
-                            </p>
+            {/* Connection & tools — footer */}
+            <Card className="p-4 border-gray-200 dark:border-gray-700">
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Connection & tools</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* QuickBooks connection — compact */}
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-3">
+                        <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">QuickBooks</h3>
+                        {qbStatus.loading ? (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Checking…</p>
+                        ) : qbStatus.error ? (
+                            <p className="text-xs text-red-600 dark:text-red-400">{qbStatus.error}</p>
+                        ) : qbStatus.hasToken ? (
+                            <>
+                                <p className="text-xs text-emerald-600 dark:text-emerald-400">Connected</p>
+                                {qbStatus.realmId && (
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 break-all mt-0.5">
+                                        Realm: <span className="font-mono">{qbStatus.realmId}</span>
+                                    </p>
+                                )}
+                            </>
+                        ) : (
+                            <Button size="xs" variant="solid" onClick={handleConnectClick}>
+                                Connect QuickBooks
+                            </Button>
                         )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Contract & revenue
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Contract value: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {contractAmount !== null ? formatCurrency(contractAmount) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Total invoiced: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof totalInvoicedAzure === 'number' ? formatCurrency(totalInvoicedAzure) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Balance left on contract: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof balanceLeftOnContract === 'number'
-                                        ? formatCurrency(balanceLeftOnContract)
-                                        : '—'}
-                                </span>
-                            </p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Cost & profit
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Job cost to date: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof jobCostToDate === 'number' ? formatCurrency(jobCostToDate) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Remaining cost: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof remainingCost === 'number' ? formatCurrency(remainingCost) : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Projected profit: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {projectedProfit !== null ? formatCurrency(projectedProfit) : '—'}
-                                </span>
-                                {typeof projectedProfitPercent === 'number' && (
-                                    <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                                        ({projectedProfitPercent.toFixed(1)}%)
-                                    </span>
-                                )}
-                            </p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Percent complete
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Based on revenue: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof percentCompleteRevenue === 'number'
-                                        ? `${percentCompleteRevenue.toFixed(1)}%`
-                                        : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Based on cost: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof percentCompleteCost === 'number'
-                                        ? `${percentCompleteCost.toFixed(1)}%`
-                                        : '—'}
-                                </span>
-                            </p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Retainage
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Customer retainage: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof customerRetainage === 'number'
-                                        ? formatCurrency(customerRetainage)
-                                        : '—'}
-                                </span>
-                            </p>
-                            <p>
-                                <span className="text-gray-500 dark:text-gray-400">Vendor retainage: </span>
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                    {typeof vendorRetainage === 'number'
-                                        ? formatCurrency(vendorRetainage)
-                                        : '—'}
-                                </span>
-                            </p>
-                        </div>
-                    </div>
-                </Card>
-            )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <Card className="p-4 lg:col-span-2 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Module status & tools</h2>
-                        <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                            Read-only · No sync to QBO or Procore
-                        </span>
-                    </div>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                        This module is live for Tatco accounting: project-level revenue from QuickBooks is compared against contract value and projected profit from Project Profitability (Azure SQL). All data is read-only; nothing is pushed to QuickBooks or Procore.
-                    </p>
-                    <ul className="list-disc list-inside text-xs text-gray-700 dark:text-gray-300 space-y-1">
-                        <li><strong>QuickBooks:</strong> OAuth connected per Bolt user; project revenue by customer name prefix; sample invoices for sanity checks.</li>
-                        <li><strong>Project Profitability (Azure SQL):</strong> Contract value, est. cost at completion, projected profit from latest archive per project.</li>
-                        <li><strong>Comparison:</strong> Variance (QBO vs contract), bar chart, and progress bar shown when a project is loaded.</li>
-                    </ul>
-
-                    <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
-                        <h3 className="text-sm font-semibold mb-1">QuickBooks sample transactions</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                            A rotating sample from QuickBooks, useful for spot-checking that the connection and basic invoice
-                            fields look correct.
-                        </p>
+                    {/* Sample transactions — compact, 5 rows */}
+                    <div className="lg:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-3">
+                        <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Sample transactions</h3>
                         {txState.loading ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">Loading transactions…</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Loading…</p>
                         ) : txState.error ? (
-                            <div className="space-y-2">
-                                <p className="text-sm text-red-600 dark:text-red-400">{txState.error}</p>
-                                {typeof txState.error === 'string' &&
-                                txState.error.toLowerCase().includes('authorization has expired') ? (
-                                    <Button size="sm" variant="outline" onClick={handleConnectClick}>
-                                        Reconnect QuickBooks
-                                    </Button>
+                            <div className="space-y-1">
+                                <p className="text-xs text-red-600 dark:text-red-400">{txState.error}</p>
+                                {typeof txState.error === 'string' && txState.error.toLowerCase().includes('authorization has expired') ? (
+                                    <Button size="xs" variant="outline" onClick={handleConnectClick}>Reconnect</Button>
                                 ) : null}
                             </div>
                         ) : txState.rows.length === 0 ? (
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                No transactions returned from QuickBooks for this sample query.
-                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">No sample transactions.</p>
                         ) : (
-                            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md">
-                                <table className="min-w-full text-xs">
-                                    <thead className="bg-gray-50 dark:bg-gray-800">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
-                                                Doc #
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
-                                                Date
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
-                                                Type
-                                            </th>
-                                            <th className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300">
-                                                Customer
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
-                                                Total
-                                            </th>
-                                            <th className="px-3 py-2 text-right font-semibold text-gray-600 dark:text-gray-300">
-                                                Balance
-                                            </th>
+                            <div className="overflow-x-auto -mx-1">
+                                <table className="min-w-full text-[11px]">
+                                    <thead>
+                                        <tr className="text-left text-gray-500 dark:text-gray-400">
+                                            <th className="px-1 py-1 font-medium">Doc #</th>
+                                            <th className="px-1 py-1 font-medium">Date</th>
+                                            <th className="px-1 py-1 font-medium">Type</th>
+                                            <th className="px-1 py-1 font-medium">Customer</th>
+                                            <th className="px-1 py-1 text-right font-medium">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {txState.rows.slice(0, 10).map((row, idx) => (
-                                            <tr
-                                                key={row.id || idx}
-                                                className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}
-                                            >
-                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200 font-mono">
-                                                    {row.docNumber ?? row.id ?? '-'}
-                                                </td>
-                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
-                                                    {row.txnDate || '-'}
-                                                </td>
-                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
-                                                    {row.txnType || '-'}
-                                                </td>
-                                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
-                                                    {row.customerName || '-'}
-                                                </td>
-                                                <td className="px-3 py-2 whitespace-nowrap text-right text-gray-800 dark:text-gray-200">
-                                                    {typeof row.totalAmt === 'number'
-                                                        ? new Intl.NumberFormat('en-US', {
-                                                              style: 'currency',
-                                                              currency: 'USD',
-                                                              minimumFractionDigits: 2,
-                                                              maximumFractionDigits: 2,
-                                                          }).format(row.totalAmt)
-                                                        : '-'}
-                                                </td>
-                                                <td className="px-3 py-2 whitespace-nowrap text-right text-gray-800 dark:text-gray-200">
-                                                    {typeof row.balance === 'number'
-                                                        ? new Intl.NumberFormat('en-US', {
-                                                              style: 'currency',
-                                                              currency: 'USD',
-                                                              minimumFractionDigits: 2,
-                                                              maximumFractionDigits: 2,
-                                                          }).format(row.balance)
-                                                        : '-'}
+                                        {txState.rows.slice(0, 5).map((row, idx) => (
+                                            <tr key={row.id || idx} className="border-t border-gray-100 dark:border-gray-700">
+                                                <td className="px-1 py-1 font-mono text-gray-800 dark:text-gray-200">{row.docNumber ?? row.id ?? '-'}</td>
+                                                <td className="px-1 py-1 text-gray-700 dark:text-gray-300">{row.txnDate || '-'}</td>
+                                                <td className="px-1 py-1 text-gray-700 dark:text-gray-300">{row.txnType || '-'}</td>
+                                                <td className="px-1 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[8rem]" title={row.customerName}>{row.customerName || '-'}</td>
+                                                <td className="px-1 py-1 text-right tabular-nums text-gray-800 dark:text-gray-200">
+                                                    {typeof row.totalAmt === 'number' ? formatCurrency(row.totalAmt) : '-'}
                                                 </td>
                                             </tr>
                                         ))}
@@ -1126,37 +873,16 @@ const AccountingComparison = () => {
                             </div>
                         )}
                     </div>
-                </Card>
-
-                <Card className="p-4">
-                    <h3 className="text-sm font-semibold mb-2">QuickBooks Connection</h3>
-                    {qbStatus.loading ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Checking connection…</p>
-                    ) : qbStatus.error ? (
-                        <p className="text-sm text-red-600 dark:text-red-400">{qbStatus.error}</p>
-                    ) : qbStatus.hasToken ? (
-                        <>
-                            <p className="text-sm text-emerald-600 dark:text-emerald-400 mb-2">
-                                Connected to QuickBooks.
-                            </p>
-                            {qbStatus.realmId && (
-                                <p className="text-xs text-gray-500 dark:text-gray-400 break-all">
-                                    Realm ID: <span className="font-mono">{qbStatus.realmId}</span>
-                                </p>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                QuickBooks is not connected for your user yet.
-                            </p>
-                            <Button size="sm" variant="solid" onClick={handleConnectClick}>
-                                Connect QuickBooks
-                            </Button>
-                        </>
-                    )}
-                </Card>
-            </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1.5">Module status</p>
+                    <ul className="list-disc list-inside text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                        <li>QuickBooks: OAuth per user; project revenue by customer prefix; read-only.</li>
+                        <li>Project Profitability (Azure): contract, cost, profit from latest archive; read-only.</li>
+                        <li>No data is synced to QuickBooks or Procore.</li>
+                    </ul>
+                </div>
+            </Card>
         </div>
     )
 }
