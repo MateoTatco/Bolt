@@ -257,16 +257,7 @@ const CrewTracker = () => {
                         unmergedFromJob: Boolean(a.unmergedFromJob),
                     }))
 
-                    // Deduplicate crew member assignments: keep first row per employeeId
-                    const seenEmployeeIds = new Set()
-                    const dedupedAssignments = mappedAssignments.filter((row) => {
-                        if (!row.employeeId) return true
-                        if (seenEmployeeIds.has(row.employeeId)) return false
-                        seenEmployeeIds.add(row.employeeId)
-                        return true
-                    })
-
-                    setScheduleAssignments(dedupedAssignments)
+                    setScheduleAssignments(mappedAssignments)
                 } else {
                     // Even on error, ensure at least one empty row
                     const emptyRows = Array.from({ length: 1 }, (_, i) => ({
@@ -1474,9 +1465,16 @@ const CrewTracker = () => {
         }
     }
 
-    // Auto-save schedule when there are valid assignments and the user is on the Schedule tab
+    // Auto-save schedule when there are valid assignments and the user is on the Schedule tab.
+    // IMPORTANT: Skip auto-save if there is a current schedule error so we don't overwrite
+    // a valid saved schedule with an empty/error fallback state.
     useEffect(() => {
         if (activeTab !== 'schedule') {
+            return
+        }
+
+        // If there is an error loading or working with the schedule, do not auto-save.
+        if (scheduleError) {
             return
         }
 
