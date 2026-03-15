@@ -710,65 +710,98 @@ export const quickbooksGetProjectVendorCostsSummary = functions
                 };
             }
 
-            // 2) Fetch cost transactions per customer (Purchase + Bill) with VendorRef.
+            // 2) Fetch cost transactions (Purchase + Bill) and then filter by CustomerRef
+            // at the line level, since CustomerRef is not a top-level property on these entities.
             const allCosts: any[] = [];
 
-            for (const cid of customerIds) {
-                const escapedId = String(cid).replace(/'/g, "''");
+            // Helper to decide whether a line belongs to one of the matched customers
+            const customerIdSet = new Set<string>(customerIds);
+            const isLineForProjectCustomer = (line: any): boolean => {
+                const direct = line?.CustomerRef?.value;
+                const acctDetail = line?.AccountBasedExpenseLineDetail?.CustomerRef?.value;
+                const itemDetail = line?.ItemBasedExpenseLineDetail?.CustomerRef?.value;
+                const candidate = direct || acctDetail || itemDetail;
+                return typeof candidate === 'string' && customerIdSet.has(candidate);
+            };
 
-                // Purchase (expenses, checks, CC charges) with CustomerRef + VendorRef
-                try {
-                    const purchaseQuery =
-                        `select Id, TxnDate, TotalAmt, CustomerRef, VendorRef from Purchase where CustomerRef = '${escapedId}' STARTPOSITION 1 MAXRESULTS 1000`;
-                    const purchaseRes = await axios.post<{ QueryResponse?: { Purchase?: any[] } }>(
-                        url,
-                        purchaseQuery,
-                        {
-                            headers: {
-                                Authorization: `Bearer ${accessToken}`,
-                                Accept: 'application/json',
-                                'Content-Type': 'application/text',
-                            },
-                        }
-                    );
-                    const list = purchaseRes.data?.QueryResponse?.Purchase || [];
-                    for (const t of list) {
-                        allCosts.push({ _raw: t, txnType: 'Purchase' });
+            // Purchases (expenses, checks, CC charges) with VendorRef; filter by line-level CustomerRef
+            try {
+                const purchaseQuery =
+                    'select Id, TxnDate, TotalAmt, VendorRef, Line from Purchase STARTPOSITION 1 MAXRESULTS 1000';
+                const purchaseRes = await axios.post<{ QueryResponse?: { Purchase?: any[] } }>(
+                    url,
+                    purchaseQuery,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            Accept: 'application/json',
+                            'Content-Type': 'application/text',
+                        },
                     }
-                } catch (purchaseError: any) {
-                    console.warn('QuickBooks Purchase query error (vendor costs):', {
-                        message: purchaseError.message,
-                        status: purchaseError.response?.status,
-                        data: purchaseError.response?.data,
-                    });
+                );
+                const list = purchaseRes.data?.QueryResponse?.Purchase || [];
+                for (const p of list) {
+                    const vendorId = p.VendorRef?.value || null;
+                    const vendorName = p.VendorRef?.name || null;
+                    const lines: any[] = Array.isArray(p.Line) ? p.Line : [];
+                    for (const line of lines) {
+                        if (!isLineForProjectCustomer(line)) continue;
+                        const amt = typeof line.Amount === 'number' ? line.Amount : 0;
+                        if (amt === 0) continue;
+                        allCosts.push({
+                            vendorId,
+                            vendorName,
+                            amount: amt,
+                            txnType: 'Purchase',
+                        });
+                    }
                 }
+            } catch (purchaseError: any) {
+                console.warn('QuickBooks Purchase query error (vendor costs):', {
+                    message: purchaseError.message,
+                    status: purchaseError.response?.status,
+                    data: purchaseError.response?.data,
+                });
+            }
 
-                // Bills (vendor bills with CustomerRef + VendorRef)
-                try {
-                    const billQuery =
-                        `select Id, DocNumber, TxnDate, TotalAmt, CustomerRef, VendorRef from Bill where CustomerRef = '${escapedId}' STARTPOSITION 1 MAXRESULTS 1000`;
-                    const billRes = await axios.post<{ QueryResponse?: { Bill?: any[] } }>(
-                        url,
-                        billQuery,
-                        {
-                            headers: {
-                                Authorization: `Bearer ${accessToken}`,
-                                Accept: 'application/json',
-                                'Content-Type': 'application/text',
-                            },
-                        }
-                    );
-                    const list = billRes.data?.QueryResponse?.Bill || [];
-                    for (const t of list) {
-                        allCosts.push({ _raw: t, txnType: 'Bill' });
+            // Bills (vendor bills with VendorRef; filter by line-level CustomerRef)
+            try {
+                const billQuery =
+                    'select Id, DocNumber, TxnDate, TotalAmt, VendorRef, Line from Bill STARTPOSITION 1 MAXRESULTS 1000';
+                const billRes = await axios.post<{ QueryResponse?: { Bill?: any[] } }>(
+                    url,
+                    billQuery,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            Accept: 'application/json',
+                            'Content-Type': 'application/text',
+                        },
                     }
-                } catch (billError: any) {
-                    console.warn('QuickBooks Bill query error (vendor costs):', {
-                        message: billError.message,
-                        status: billError.response?.status,
-                        data: billError.response?.data,
-                    });
+                );
+                const list = billRes.data?.QueryResponse?.Bill || [];
+                for (const b of list) {
+                    const vendorId = b.VendorRef?.value || null;
+                    const vendorName = b.VendorRef?.name || null;
+                    const lines: any[] = Array.isArray(b.Line) ? b.Line : [];
+                    for (const line of lines) {
+                        if (!isLineForProjectCustomer(line)) continue;
+                        const amt = typeof line.Amount === 'number' ? line.Amount : 0;
+                        if (amt === 0) continue;
+                        allCosts.push({
+                            vendorId,
+                            vendorName,
+                            amount: amt,
+                            txnType: 'Bill',
+                        });
+                    }
                 }
+            } catch (billError: any) {
+                console.warn('QuickBooks Bill query error (vendor costs):', {
+                    message: billError.message,
+                    status: billError.response?.status,
+                    data: billError.response?.data,
+                });
             }
 
             // Group by VendorRef
@@ -783,11 +816,10 @@ export const quickbooksGetProjectVendorCostsSummary = functions
             let grandTotal = 0;
 
             for (const entry of allCosts) {
-                const t = entry._raw;
-                const vendorId = t.VendorRef?.value || null;
-                const vendorName = t.VendorRef?.name || null;
+                const vendorId = entry.vendorId || null;
+                const vendorName = entry.vendorName || null;
                 const key = vendorId || vendorName || 'unknown';
-                const amt = typeof t.TotalAmt === 'number' ? t.TotalAmt : 0;
+                const amt = typeof entry.amount === 'number' ? entry.amount : 0;
 
                 if (!vendorMap.has(key)) {
                     vendorMap.set(key, {
